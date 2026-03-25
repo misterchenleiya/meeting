@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting Console Preview</title>
+    <link rel="stylesheet" href="./meeting-console-preview.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero-card">
+        <div class="hero-copy">
+          <p class="eyebrow">Meeting / In Meeting</p>
+          <h1>P2P 会议控制台</h1>
+          <p>
+            当前页面对应仓库中已经落地的会中主界面。媒体舞台、白板、权限授权、就位确认、聊天、临时纪要、本地录制和事件流共存于同一页，
+            所有协作运行态仅保留到会议结束。
+          </p>
+          <div class="hero-tags">
+            <span>WebRTC</span>
+            <span>WSS</span>
+            <span>Local Recording</span>
+            <span>Audit</span>
+          </div>
+        </div>
+        <div class="status-stack">
+          <div class="status-pill success">WSS 信令已连接</div>
+          <div class="status-pill">2 路远端视频 / screen-sharing</div>
+          <div class="status-pill muted">基础审计 15 秒上报一次</div>
+          <div class="status-pill muted">会中数据仅保留运行态</div>
+        </div>
+      </section>
+
+      <section class="panel stage-panel">
+        <header class="panel-header">
+          <h2>媒体舞台</h2>
+          <span>3 路画面 / 屏幕共享中</span>
+        </header>
+        <div class="video-stage">
+          <article class="video-card">
+            <header>
+              <strong>本地预览</strong>
+              <span>camera: granted / microphone: granted</span>
+            </header>
+            <div class="video-frame">
+              <div class="video-avatar primary">
+                <span>主持人</span>
+              </div>
+            </div>
+          </article>
+          <article class="video-card">
+            <header>
+              <strong>远端 成员A</strong>
+              <span>participantId: a1f0 / state: connected</span>
+            </header>
+            <div class="video-frame">
+              <div class="video-avatar secondary">
+                <span>成员A</span>
+              </div>
+            </div>
+          </article>
+          <article class="video-card">
+            <header>
+              <strong>远端 成员B</strong>
+              <span>participantId: b2c0 / state: connected</span>
+            </header>
+            <div class="video-frame">
+              <div class="screen-share-card">
+                <div class="screen-share-topbar"></div>
+                <div class="screen-share-grid">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel whiteboard-panel">
+          <header class="panel-header">
+            <h2>白板</h2>
+            <span>7 条笔迹</span>
+          </header>
+          <div class="whiteboard-toolbar">
+            <div class="chip-row">
+              <span class="chip active">可绘制</span>
+              <span class="chip">颜色 #2251e6</span>
+              <span class="chip">线宽 4px</span>
+            </div>
+          </div>
+          <div class="whiteboard-surface">
+            <svg viewBox="0 0 900 260" role="img" aria-label="whiteboard sketch">
+              <rect x="0" y="0" width="900" height="260" rx="24" fill="#fbfcff"></rect>
+              <path d="M40 185 C100 80 160 70 230 122" stroke="#2251e6" stroke-width="8" fill="none" stroke-linecap="round"></path>
+              <path d="M260 60 C340 50 410 90 470 150" stroke="#ff7b54" stroke-width="7" fill="none" stroke-linecap="round"></path>
+              <path d="M520 190 C575 130 620 120 700 155" stroke="#1d6d42" stroke-width="8" fill="none" stroke-linecap="round"></path>
+              <circle cx="760" cy="76" r="32" fill="#e8eeff"></circle>
+              <rect x="735" y="128" width="88" height="54" rx="14" fill="#eef3ff"></rect>
+              <text x="108" y="64" fill="#31415f" font-size="26" font-family="Segoe UI, PingFang SC, sans-serif">评审重点</text>
+              <text x="544" y="226" fill="#31415f" font-size="24" font-family="Segoe UI, PingFang SC, sans-serif">就位确认结果同步到纪要</text>
+            </svg>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>会议信息</h2>
+            <span>active</span>
+          </header>
+          <div class="info-grid">
+            <div><strong>会议标题</strong><span>产品评审会</span></div>
+            <div><strong>会议 ID</strong><span>f82a0b2c</span></div>
+            <div><strong>加入码</strong><span>82c1f0</span></div>
+            <div><strong>当前身份</strong><span>主持人 / host</span></div>
+            <label>
+              修改昵称
+              <div class="inline-action">
+                <input value="主持人" readonly />
+                <button class="ghost">保存昵称</button>
+              </div>
+            </label>
+            <div class="button-row">
+              <button class="primary">连接信令</button>
+              <button class="ghost">断开信令</button>
+              <button class="danger">结束会议</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>参会者</h2>
+            <span>3 在线</span>
+          </header>
+          <ul class="participant-list">
+            <li>
+              <div><strong>主持人</strong><span>host-01</span></div>
+              <div class="participant-meta"><span>host</span><span>online</span><span>chat,camera,microphone</span></div>
+            </li>
+            <li>
+              <div><strong>成员A</strong><span>a1f0</span></div>
+              <div class="participant-meta"><span>assistant</span><span>online</span><span>chat,whiteboard,ready_check</span></div>
+            </li>
+            <li>
+              <div><strong>测试同学</strong><span>b2c0</span></div>
+              <div class="participant-meta"><span>participant</span><span>online</span><span>chat,screen_share</span></div>
+            </li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>权限与角色</h2>
+            <span>participant 默认仅聊天</span>
+          </header>
+          <div class="form-grid">
+            <label>
+              我想申请
+              <select>
+                <option>camera</option>
+              </select>
+            </label>
+            <button class="primary">发起权限申请</button>
+            <label>
+              授权目标 participantId
+              <input value="a1f0e7" readonly />
+            </label>
+            <label>
+              授权能力
+              <select>
+                <option>screen_share</option>
+              </select>
+            </label>
+            <button class="ghost">主持人授权</button>
+            <label>
+              助理 participantId
+              <input value="b2c0d3" readonly />
+            </label>
+            <button class="ghost">设为助理</button>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>就位确认</h2>
+            <span>active</span>
+          </header>
+          <div class="ready-check-card">
+            <strong>轮次 rc-17</strong>
+            <span>截止时间：14:03:30</span>
+            <ul class="ready-check-list">
+              <li><span>主持人</span><strong>confirmed</strong></li>
+              <li><span>成员A</span><strong>confirmed</strong></li>
+              <li><span>测试同学</span><strong>pending</strong></li>
+            </ul>
+            <div class="button-row">
+              <button class="primary">发起就位确认</button>
+              <button class="ghost">确认</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>聊天</h2>
+            <span>4 条</span>
+          </header>
+          <div class="chat-form">
+            <textarea readonly>输入一条聊天消息</textarea>
+            <button class="primary">发送聊天</button>
+          </div>
+          <ul class="chat-log">
+            <li>
+              <div><strong>系统消息</strong><span>匿名参会者 将昵称修改为 测试同学。</span></div>
+              <time>14:03:18</time>
+            </li>
+            <li>
+              <div><strong>主持人</strong><span>白板上的第 2 条流程线请再细化。</span></div>
+              <time>14:02:44</time>
+            </li>
+            <li>
+              <div><strong>成员A</strong><span>收到，我先发起一次就位确认。</span></div>
+              <time>14:02:10</time>
+            </li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>临时纪要与审计</h2>
+            <span>6 条纪要</span>
+          </header>
+          <div class="button-row">
+            <button class="ghost">导出临时纪要</button>
+          </div>
+          <div class="audit-grid">
+            <div><strong>平均延迟</strong><span>36 ms</span></div>
+            <div><strong>丢包率</strong><span>0.42%</span></div>
+            <div><strong>平均帧率</strong><span>22.8 fps</span></div>
+            <div><strong>平均码率</strong><span>1284.5 kbps</span></div>
+            <div><strong>对端连接数</strong><span>2</span></div>
+            <div><strong>最近上报</strong><span>14:03:20</span></div>
+          </div>
+          <ul class="minutes-list">
+            <li>[14:03:18] 匿名参会者 将昵称修改为 测试同学。</li>
+            <li>[14:02:55] 成员A 发起了就位确认，超时时间 15 秒。</li>
+            <li>[14:02:44] 主持人：白板上的第 2 条流程线请再细化。</li>
+            <li>[14:01:26] 主持人 已向 成员A 授权 ready_check。</li>
+            <li>[14:00:56] 成员A 加入会议。</li>
+            <li>[14:00:12] 会议已创建，主持人 主持人 已入会。</li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>本地录制</h2>
+            <span>cached</span>
+          </header>
+          <div class="recording-card">
+            <strong>产品评审会-meeting-2026-03-25T14-03-20.webm</strong>
+            <span>meeting_video / 248.6 MB / 18:20</span>
+            <div class="button-row">
+              <button class="primary">下载录制</button>
+              <button class="ghost">丢弃缓存</button>
+            </div>
+          </div>
+          <p class="empty-copy">录制文件先保存在浏览器内存缓存中，下载时优先调用系统保存对话框。</p>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>事件流</h2>
+            <span>最近 80 条</span>
+          </header>
+          <ul class="event-list">
+            <li>
+              <div><strong>recording.stopped</strong><span>本地录制已停止，缓存大小 248.6 MB</span></div>
+              <time>14:03:20</time>
+            </li>
+            <li>
+              <div><strong>ready_check.started</strong><span>就位确认轮次 rc-17 已更新</span></div>
+              <time>14:02:55</time>
+            </li>
+            <li>
+              <div><strong>participant.nickname_updated</strong><span>匿名参会者 已将昵称修改为 测试同学</span></div>
+              <time>14:02:18</time>
+            </li>
+          </ul>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

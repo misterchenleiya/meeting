@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting Room Preview</title>
+    <link rel="stylesheet" href="./meeting-room-preview.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="preview-toolbar">
+        <div>
+          <strong>Meeting / Room Preview</strong>
+          <p>顶部控制用于切换无人开视频、主舞台、成员侧栏、聊天侧栏、邀请弹窗和录制申请弹窗。右侧缩略窗支持双击切换主画面。</p>
+        </div>
+        <div class="toolbar-row">
+          <div class="toolbar-group">
+            <span>舞台</span>
+            <button class="preview-switch active" data-stage-target="active" type="button">主舞台</button>
+            <button class="preview-switch" data-stage-target="idle" type="button">头像墙</button>
+          </div>
+          <div class="toolbar-group">
+            <span>侧栏</span>
+            <button class="preview-switch active" data-sidebar-target="none" type="button">关闭</button>
+            <button class="preview-switch" data-sidebar-target="members" type="button">成员</button>
+            <button class="preview-switch" data-sidebar-target="chat" type="button">聊天</button>
+          </div>
+          <div class="toolbar-group">
+            <span>弹窗</span>
+            <button class="preview-switch active" data-modal-target="none" type="button">关闭</button>
+            <button class="preview-switch" data-modal-target="invite" type="button">邀请</button>
+            <button class="preview-switch" data-modal-target="record" type="button">录制申请</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="room-frame" data-stage="active" data-sidebar="none" data-modal="none">
+        <header class="room-header">
+          <div class="meeting-meta">
+            <h1>全球产品评审会</h1>
+            <p>Meeting Code 82C1F0 · Host Studio · macOS dark product preview</p>
+          </div>
+          <div class="room-header-status">
+            <div class="meeting-pill-row">
+              <span class="meeting-pill live">Meeting live</span>
+              <span class="meeting-pill">12:04 PM Shanghai</span>
+              <span class="meeting-pill">主持人已连接信令</span>
+            </div>
+          </div>
+        </header>
+
+        <div class="room-body">
+          <section class="stage-shell">
+            <div class="idle-view">
+              <div class="idle-stage">
+                <div class="idle-headline">
+                  <h2>当前还没有人打开摄像头或共享屏幕</h2>
+                  <p>舞台保持黑场，参会者按照入会顺序展示头像与昵称。昵称左侧保留麦克风状态，方便快速确认谁能发言。</p>
+                </div>
+
+                <div class="avatar-wall">
+                  <article class="avatar-card">
+                    <div class="avatar-badge">ME</div>
+                    <div class="avatar-copy">
+                      <strong><span class="mic-status">mic on</span> 主持人</strong>
+                      <span>第 1 位入会 · host</span>
+                    </div>
+                  </article>
+                  <article class="avatar-card secondary">
+                    <div class="avatar-badge">A</div>
+                    <div class="avatar-copy">
+                      <strong><span class="mic-status">mic on</span> 成员A</strong>
+                      <span>第 2 位入会 · assistant</span>
+                    </div>
+                  </article>
+                  <article class="avatar-card tertiary">
+                    <div class="avatar-badge">B</div>
+                    <div class="avatar-copy">
+                      <strong><span class="mic-status off">mic off</span> 成员B</strong>
+                      <span>第 3 位入会 · participant</span>
+                    </div>
+                  </article>
+                  <article class="avatar-card quaternary">
+                    <div class="avatar-badge">C</div>
+                    <div class="avatar-copy">
+                      <strong><span class="mic-status">mic on</span> 观察员</strong>
+                      <span>第 4 位入会 · participant</span>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </div>
+
+            <div class="active-view">
+              <section class="featured-panel">
+                <div class="featured-header">
+                  <div>
+                    <strong id="featured-name">主持人主画面</strong>
+                    <span id="featured-meta">默认展示主持人的视频或共享画面，其他画面缩成右侧缩略窗。</span>
+                  </div>
+                  <div class="meeting-pill-row">
+                    <span class="meeting-pill">Camera on</span>
+                    <span class="meeting-pill">Microphone on</span>
+                  </div>
+                </div>
+
+                <div class="featured-canvas">
+                  <div class="featured-scene">
+                    <div class="scene-frame" id="featured-scene">
+                      <div class="scene-label">
+                        <strong id="featured-title">主持人 · 视频主舞台</strong>
+                        <span id="featured-description">主持人画面优先置顶。若主持人开启共享屏幕，则主舞台切到共享内容，右侧保留其他人的缩略窗。</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="featured-caption">双击右侧任意缩略窗，可以将该画面切到主舞台预览。</div>
+              </section>
+
+              <aside class="thumbnail-rail">
+                <article class="thumbnail-card active" data-feature-description="主持人画面优先置顶。若主持人开启共享屏幕，则主舞台切到共享内容，右侧保留其他人的缩略窗。" data-feature-meta="主持人在线 · camera on · mic on" data-feature-variant="host" data-feature-name="主持人主画面" data-feature-title="主持人 · 视频主舞台">
+                  <div class="thumbnail-preview"></div>
+                  <div class="thumbnail-copy">
+                    <strong>主持人</strong>
+                    <span>视频已开启</span>
+                  </div>
+                </article>
+                <article class="thumbnail-card" data-feature-description="成员A 当前在共享设计稿，双击后主舞台切换到共享内容，主持人视频缩回右侧。" data-feature-meta="成员A在线 · share on · mic on" data-feature-variant="share" data-feature-name="成员A共享画面" data-feature-title="成员A · 共享屏幕">
+                  <div class="thumbnail-preview share"></div>
+                  <div class="thumbnail-copy">
+                    <strong>成员A</strong>
+                    <span>共享屏幕中</span>
+                  </div>
+                </article>
+                <article class="thumbnail-card" data-feature-description="成员B 已打开摄像头，但没有共享内容。主舞台切换后，画面仍保持黑色系舞台感，不会回退到开发面板布局。" data-feature-meta="成员B在线 · camera on · mic muted" data-feature-variant="participant" data-feature-name="成员B视频画面" data-feature-title="成员B · 视频画面">
+                  <div class="thumbnail-preview participant"></div>
+                  <div class="thumbnail-copy">
+                    <strong>成员B</strong>
+                    <span>视频开启，麦克风关闭</span>
+                  </div>
+                </article>
+              </aside>
+            </div>
+
+            <aside class="side-drawer members">
+              <div class="drawer-header">
+                <div>
+                  <h3>成员</h3>
+                  <p>默认隐藏，打开后从右侧抽出。</p>
+                </div>
+                <div class="drawer-pill">4 online</div>
+              </div>
+              <ul class="member-list">
+                <li class="member-row">
+                  <strong>主持人</strong>
+                  <div class="member-meta"><span>host</span><span>camera on · mic on</span></div>
+                </li>
+                <li class="member-row">
+                  <strong>成员A</strong>
+                  <div class="member-meta"><span>assistant</span><span>share on · mic on</span></div>
+                </li>
+                <li class="member-row">
+                  <strong>成员B</strong>
+                  <div class="member-meta"><span>participant</span><span>camera on · mic off</span></div>
+                </li>
+                <li class="member-row">
+                  <strong>观察员</strong>
+                  <div class="member-meta"><span>participant</span><span>camera off · mic on</span></div>
+                </li>
+              </ul>
+              <button class="button ghost" data-sidebar-target="none" type="button">收起成员列表</button>
+            </aside>
+
+            <aside class="side-drawer chat">
+              <div class="drawer-header">
+                <div>
+                  <h3>聊天</h3>
+                  <p>默认隐藏，打开后贴在舞台右侧。</p>
+                </div>
+                <div class="drawer-pill">3 new</div>
+              </div>
+              <ul class="chat-list">
+                <li class="chat-row">
+                  <strong>主持人</strong>
+                  <div class="chat-meta"><span>现在切到设计稿页。</span><span>12:03</span></div>
+                </li>
+                <li class="chat-row">
+                  <strong>成员A</strong>
+                  <div class="chat-meta"><span>收到，我来共享屏幕。</span><span>12:04</span></div>
+                </li>
+                <li class="chat-row">
+                  <strong>成员B</strong>
+                  <div class="chat-meta"><span>我这边先静音。</span><span>12:04</span></div>
+                </li>
+              </ul>
+              <div class="chat-composer">
+                <textarea>输入一条聊天消息</textarea>
+                <button class="button secondary" type="button">发送消息</button>
+              </div>
+            </aside>
+
+            <div class="meeting-toolbar">
+              <button class="toolbar-button is-active" type="button">
+                <span class="glyph">MIC</span>
+                <span>麦克风</span>
+              </button>
+              <button class="toolbar-button is-active" type="button">
+                <span class="glyph">CAM</span>
+                <span>视频</span>
+              </button>
+              <button class="toolbar-button" type="button">
+                <span class="glyph">SCR</span>
+                <span>共享屏幕</span>
+              </button>
+              <button class="toolbar-button" data-modal-target="invite" type="button">
+                <span class="glyph">INV</span>
+                <span>邀请</span>
+              </button>
+              <button class="toolbar-button" data-sidebar-target="members" type="button">
+                <span class="glyph">MEM</span>
+                <span>成员</span>
+              </button>
+              <button class="toolbar-button" data-sidebar-target="chat" type="button">
+                <span class="glyph">CHT</span>
+                <span>聊天</span>
+              </button>
+              <button class="toolbar-button warn" data-modal-target="record" type="button">
+                <span class="glyph">REC</span>
+                <span>录制</span>
+              </button>
+            </div>
+          </section>
+
+          <div class="modal-layer invite">
+            <div class="modal-card">
+              <div>
+                <h3>邀请参会者</h3>
+                <p>邀请窗口展示会议信息，并提供“复制全部信息”和“复制会议号和链接”两个主按钮。</p>
+              </div>
+              <div class="info-list">
+                <div class="info-row">
+                  <strong>会议主题</strong>
+                  <span>全球产品评审会</span>
+                </div>
+                <div class="info-row">
+                  <strong>会议号</strong>
+                  <span>82C1F0</span>
+                </div>
+                <div class="info-row">
+                  <strong>邀请链接</strong>
+                  <span>https://meeting.dev/join/82C1F0</span>
+                </div>
+                <div class="info-row">
+                  <strong>会议密码</strong>
+                  <span>stage2026</span>
+                </div>
+              </div>
+              <div class="button-row">
+                <button class="button primary" type="button">复制全部信息</button>
+                <button class="button secondary" type="button">复制会议号和链接</button>
+              </div>
+              <button class="button ghost" data-modal-target="none" type="button">关闭</button>
+            </div>
+          </div>
+
+          <div class="modal-layer record">
+            <div class="modal-card">
+              <div>
+                <h3>申请录制权限</h3>
+                <p>当前用户没有录制权限。点击确认后，前端会向主持人发送权限申请，而不是直接开始录制。</p>
+              </div>
+              <div class="info-list">
+                <div class="info-row">
+                  <strong>当前状态</strong>
+                  <span>record capability unavailable</span>
+                </div>
+                <div class="info-row">
+                  <strong>发起对象</strong>
+                  <span>主持人 / host</span>
+                </div>
+              </div>
+              <div class="button-row">
+                <button class="button primary" type="button">向主持人申请</button>
+                <button class="button ghost" data-modal-target="none" type="button">取消</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const frame = document.querySelector(".room-frame");
+        const stageSwitches = Array.from(document.querySelectorAll("[data-stage-target]"));
+        const sidebarSwitches = Array.from(document.querySelectorAll("[data-sidebar-target]"));
+        const modalSwitches = Array.from(document.querySelectorAll("[data-modal-target]"));
+        const thumbnails = Array.from(document.querySelectorAll(".thumbnail-card"));
+        const featuredName = document.getElementById("featured-name");
+        const featuredMeta = document.getElementById("featured-meta");
+        const featuredTitle = document.getElementById("featured-title");
+        const featuredDescription = document.getElementById("featured-description");
+        const featuredScene = document.getElementById("featured-scene");
+
+        if (!frame) {
+          return;
+        }
+
+        function syncSwitches(selector, datasetKey, currentValue) {
+          for (const button of document.querySelectorAll(selector)) {
+            button.classList.toggle("active", button.dataset[datasetKey] === currentValue);
+          }
+        }
+
+        function setStage(nextStage) {
+          frame.dataset.stage = nextStage;
+          syncSwitches("[data-stage-target]", "stageTarget", nextStage);
+        }
+
+        function setSidebar(nextSidebar) {
+          frame.dataset.sidebar = nextSidebar;
+          syncSwitches("[data-sidebar-target]", "sidebarTarget", nextSidebar);
+        }
+
+        function setModal(nextModal) {
+          frame.dataset.modal = nextModal;
+          syncSwitches("[data-modal-target]", "modalTarget", nextModal);
+        }
+
+        function setFeatured(card) {
+          if (!card || !featuredName || !featuredMeta || !featuredTitle || !featuredDescription || !featuredScene) {
+            return;
+          }
+
+          for (const thumbnail of thumbnails) {
+            thumbnail.classList.toggle("active", thumbnail === card);
+          }
+
+          featuredName.textContent = card.dataset.featureName || "";
+          featuredMeta.textContent = card.dataset.featureMeta || "";
+          featuredTitle.textContent = card.dataset.featureTitle || "";
+          featuredDescription.textContent = card.dataset.featureDescription || "";
+
+          featuredScene.className = "scene-frame";
+          const variant = card.dataset.featureVariant;
+          if (variant === "share") {
+            featuredScene.classList.add("share");
+          } else if (variant === "participant") {
+            featuredScene.classList.add("participant");
+          }
+        }
+
+        for (const button of stageSwitches) {
+          button.addEventListener("click", () => {
+            const nextStage = button.dataset.stageTarget;
+            if (nextStage) {
+              setStage(nextStage);
+            }
+          });
+        }
+
+        for (const button of sidebarSwitches) {
+          button.addEventListener("click", () => {
+            const nextSidebar = button.dataset.sidebarTarget;
+            if (!nextSidebar) {
+              return;
+            }
+
+            if (button.classList.contains("toolbar-button") && frame.dataset.sidebar === nextSidebar) {
+              setSidebar("none");
+              return;
+            }
+
+            setSidebar(nextSidebar);
+          });
+        }
+
+        for (const button of modalSwitches) {
+          button.addEventListener("click", () => {
+            const nextModal = button.dataset.modalTarget;
+            if (!nextModal) {
+              return;
+            }
+
+            if (button.classList.contains("toolbar-button") && frame.dataset.modal === nextModal) {
+              setModal("none");
+              return;
+            }
+
+            setModal(nextModal);
+          });
+        }
+
+        for (const card of thumbnails) {
+          card.addEventListener("dblclick", () => {
+            setStage("active");
+            setFeatured(card);
+          });
+        }
+
+        setStage(frame.dataset.stage || "active");
+        setSidebar(frame.dataset.sidebar || "none");
+        setModal(frame.dataset.modal || "none");
+        setFeatured(thumbnails[0]);
+      })();
+    </script>
+  </body>
+</html>

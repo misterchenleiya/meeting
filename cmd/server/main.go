@@ -1,0 +1,73 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/07c2/projects/meeting/internal/config"
+	"github.com/07c2/projects/meeting/internal/httpapi"
+	"github.com/07c2/projects/meeting/internal/logging"
+	"github.com/07c2/projects/meeting/internal/meeting"
+	"github.com/07c2/projects/meeting/internal/signaling"
+	"github.com/07c2/projects/meeting/internal/storage/sqlite"
+)
+
+func main() {
+	cfg := config.Load()
+	bootstrapLogger := logging.NewBootstrapLogger(os.Stderr)
+
+	logger, closeLogger, err := logging.NewLogger(cfg.LogDir)
+	if err != nil {
+		bootstrapLogger.Error("failed to initialize logger", "error", err, "logDir", cfg.LogDir)
+		os.Exit(1)
+	}
+	defer closeLogger()
+
+	ctx := context.Background()
+
+	store, err := sqlite.Open(ctx, cfg.SQLitePath)
+	if err != nil {
+		logger.Error("failed to open sqlite store", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if closeErr := store.Close(); closeErr != nil {
+			logger.Error("failed to close sqlite store", "error", closeErr)
+		}
+	}()
+
+	meetingService := meeting.NewService(logger, store)
+	signalingHub := signaling.NewHub(logger, meetingService)
+	server := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           httpapi.NewServer(logger, meetingService, store, signalingHub).Routes(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	go func() {
+		logger.Info("http server started", "addr", cfg.HTTPAddr)
+		if serveErr := server.ListenAndServe(); serveErr != nil && serveErr != http.ErrServerClosed {
+			logger.Error("http server stopped unexpectedly", "error", serveErr)
+			os.Exit(1)
+		}
+	}()
+
+	signalContext, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	<-signalContext.Done()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if shutdownErr := server.Shutdown(shutdownCtx); shutdownErr != nil {
+		logger.Error("failed to shutdown http server", "error", shutdownErr)
+		os.Exit(1)
+	}
+
+	logger.Info("http server stopped")
+}

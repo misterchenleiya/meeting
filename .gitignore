@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Build outputs and runtime data
+/build/
+/logs/
+/data/
+*.db
+*.db-shm
+*.db-wal
+coverage.out
+
+# Go
+*.test
+/server
+
+# Frontend dependencies and generated assets
+/web/node_modules/
+/web/dist/
+/web/tsconfig.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Design preview images are local render artifacts
+/docs/design/*.png
+/docs/design/*.jpg
+/docs/design/*.jpeg
+/docs/design/*.webp

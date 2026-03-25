@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting Entry Preview</title>
+    <link rel="stylesheet" href="./meeting-console-preview.css" />
+    <link rel="stylesheet" href="./meeting-entry-preview.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero-card">
+        <div class="hero-copy">
+          <p class="eyebrow">Meeting / Entry</p>
+          <h1>创建或加入会议</h1>
+          <p>
+            当前前端没有单独的多页面路由，桌面端和移动端共用同一套响应式单页。入会前主状态聚焦在创建会议、加入会议和会前规则说明。
+          </p>
+          <div class="hero-tags">
+            <span>Create</span>
+            <span>Join</span>
+            <span>Anonymous</span>
+            <span>Responsive</span>
+          </div>
+        </div>
+        <div class="status-stack">
+          <div class="status-pill">mode = create / join</div>
+          <div class="status-pill muted">主持人默认进入创建流</div>
+          <div class="status-pill muted">匿名参会者可直接填写昵称加入</div>
+        </div>
+      </section>
+
+      <section class="content-grid entry-grid">
+        <article class="panel entry-main-panel">
+          <header class="panel-header">
+            <h2>创建或加入</h2>
+            <div class="segmented">
+              <button class="active" type="button">创建会议</button>
+              <button type="button">加入会议</button>
+            </div>
+          </header>
+
+          <div class="entry-columns">
+            <section class="entry-form-card">
+              <p class="eyebrow">Create Meeting</p>
+              <h3>主持人创建会议</h3>
+              <form class="form-grid">
+                <label>
+                  会议标题
+                  <input value="产品评审会" readonly />
+                </label>
+                <label>
+                  房间密码
+                  <input value="secret" readonly />
+                </label>
+                <label>
+                  主持人用户 ID
+                  <input value="host-demo" readonly />
+                </label>
+                <label>
+                  主持人昵称
+                  <input value="主持人" readonly />
+                </label>
+                <button class="primary" type="button">创建会议</button>
+              </form>
+            </section>
+
+            <section class="entry-form-card">
+              <p class="eyebrow">Join Meeting</p>
+              <h3>参会者加入会议</h3>
+              <form class="form-grid">
+                <label>
+                  会议 ID
+                  <input value="f82a0b2c" readonly />
+                </label>
+                <label>
+                  房间密码
+                  <input value="secret" readonly />
+                </label>
+                <label>
+                  昵称
+                  <input value="匿名参会者" readonly />
+                </label>
+                <label>
+                  用户 ID
+                  <input value="" readonly placeholder="匿名加入时可留空" />
+                </label>
+                <label class="checkbox-row">
+                  <input checked type="checkbox" />
+                  匿名加入
+                </label>
+                <label class="checkbox-row">
+                  <input type="checkbox" />
+                  入会时希望开启摄像头
+                </label>
+                <label class="checkbox-row">
+                  <input type="checkbox" />
+                  入会时希望开启麦克风
+                </label>
+                <button class="ghost" type="button">加入会议</button>
+              </form>
+            </section>
+          </div>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>会前规则</h2>
+            <span>P2P-first</span>
+          </header>
+          <ul class="flow-list">
+            <li><strong>角色权限</strong><span>participant 默认只有文字聊天权限，其他能力需主持人授权。</span></li>
+            <li><strong>本地录制</strong><span>录屏和录音默认只保存在浏览器本地，不上传服务器。</span></li>
+            <li><strong>数据生命周期</strong><span>聊天、白板、就位确认和临时纪要仅保留到会议结束。</span></li>
+            <li><strong>主持人保护</strong><span>房间还有其他人时，主持人不能直接离会，只能显式结束会议。</span></li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <header class="panel-header">
+            <h2>当前已接入能力</h2>
+            <span>第一阶段</span>
+          </header>
+          <ul class="capability-list">
+            <li><strong>已实现</strong><span>会议创建、加入、聊天、白板、共享屏幕、本地录制、纪要导出</span></li>
+            <li><strong>部分实现</strong><span>多人 Mesh、审计摘要、会中权限审批</span></li>
+            <li><strong>待补齐</strong><span>TURN 接入、登录体系、邀请链接、移动端真机验证</span></li>
+          </ul>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
