@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/07c2/projects/meeting/internal/logging"
+	"github.com/misterchenleiya/meeting/internal/logging"
 )
 
 func TestHandleClientLogsAccepted(t *testing.T) {

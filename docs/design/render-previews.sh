@@ -81,28 +81,12 @@ render_page() {
   fi
 }
 
-render_console_desktop() {
-  render_page "meeting-console-preview.html" "1440,4400" "meeting-console-preview-desktop.png" "meeting-preview-console-desktop"
-}
-
-render_console_mobile() {
-  render_page "meeting-console-preview.html" "430,5600" "meeting-console-preview-mobile.png" "meeting-preview-console-mobile"
-}
-
 render_room_desktop() {
   render_page "meeting-room-preview.html" "1440,2200" "meeting-room-preview-desktop.png" "meeting-preview-room-desktop"
 }
 
 render_room_mobile() {
   render_page "meeting-room-preview.html" "430,3200" "meeting-room-preview-mobile.png" "meeting-preview-room-mobile"
-}
-
-render_entry_desktop() {
-  render_page "meeting-entry-preview.html" "1440,2600" "meeting-entry-preview-desktop.png" "meeting-preview-entry-desktop"
-}
-
-render_entry_mobile() {
-  render_page "meeting-entry-preview.html" "430,3000" "meeting-entry-preview-mobile.png" "meeting-preview-entry-mobile"
 }
 
 render_auth_desktop() {
@@ -134,10 +118,6 @@ case "${MODE}" in
     render_host_login_preview
     render_host_create_preview
     render_host_room_preview
-    render_console_desktop
-    render_console_mobile
-    render_entry_desktop
-    render_entry_mobile
     ;;
   host-flow)
     render_host_login_preview
@@ -152,25 +132,13 @@ case "${MODE}" in
     render_room_desktop
     render_room_mobile
     ;;
-  console)
-    render_console_desktop
-    render_console_mobile
-    ;;
-  entry)
-    render_entry_desktop
-    render_entry_mobile
-    ;;
   desktop)
     render_auth_desktop
     render_room_desktop
-    render_console_desktop
-    render_entry_desktop
     ;;
   mobile)
     render_auth_mobile
     render_room_mobile
-    render_console_mobile
-    render_entry_mobile
     ;;
   auth-desktop)
     render_auth_desktop
@@ -193,21 +161,9 @@ case "${MODE}" in
   room-mobile)
     render_room_mobile
     ;;
-  console-desktop)
-    render_console_desktop
-    ;;
-  console-mobile)
-    render_console_mobile
-    ;;
-  entry-desktop)
-    render_entry_desktop
-    ;;
-  entry-mobile)
-    render_entry_mobile
-    ;;
   *)
     echo "Unsupported mode: ${MODE}" >&2
-    echo "Supported modes: all, host-flow, host-login, host-create, host-room, auth, room, console, entry, desktop, mobile, auth-desktop, auth-mobile, room-desktop, room-mobile, console-desktop, console-mobile, entry-desktop, entry-mobile" >&2
+    echo "Supported modes: all, host-flow, host-login, host-create, host-room, auth, room, desktop, mobile, auth-desktop, auth-mobile, room-desktop, room-mobile" >&2
     exit 1
     ;;
 esac

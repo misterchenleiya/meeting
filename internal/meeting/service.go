@@ -9,11 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/07c2/projects/meeting/internal/storage/sqlite"
+	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
 )
 
 var (
@@ -34,6 +35,7 @@ type Service struct {
 	store    PreferenceStore
 	mu       sync.RWMutex
 	meetings map[string]*Meeting
+	numbers  map[string]string
 }
 
 type CreateMeetingInput struct {
@@ -135,6 +137,7 @@ func NewService(logger *slog.Logger, store PreferenceStore) *Service {
 		logger:   logger,
 		store:    store,
 		meetings: make(map[string]*Meeting),
+		numbers:  make(map[string]string),
 	}
 }
 
@@ -185,8 +188,16 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 		GrantedCapabilities: capabilitySet(allCapabilities()...),
 	}
 
+	s.mu.Lock()
+	meetingNumber, err := s.generateUniqueMeetingNumberLocked()
+	if err != nil {
+		s.mu.Unlock()
+		return nil, nil, err
+	}
+
 	meeting := &Meeting{
 		ID:                meetingID,
+		MeetingNumber:     meetingNumber,
 		JoinCode:          joinCode,
 		PasswordRequired:  passwordRequired,
 		Title:             input.Title,
@@ -201,8 +212,8 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 	}
 	addMinuteLocked(meeting, time.Now().UTC(), fmt.Sprintf("会议已创建，主持人 %s 已入会。", host.Nickname))
 
-	s.mu.Lock()
 	s.meetings[meeting.ID] = meeting
+	s.numbers[meeting.MeetingNumber] = meeting.ID
 	s.mu.Unlock()
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
@@ -226,7 +237,7 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	meeting, ok := s.meetings[input.MeetingID]
+	meeting, _, ok := s.meetingByIdentifierLocked(input.MeetingID)
 	if !ok {
 		return nil, nil, ErrMeetingNotFound
 	}
@@ -292,7 +303,7 @@ func (s *Service) LeaveMeeting(ctx context.Context, meetingID string, participan
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	meeting, ok := s.meetings[meetingID]
+	meeting, internalMeetingID, ok := s.meetingByIdentifierLocked(meetingID)
 	if !ok {
 		return ErrMeetingNotFound
 	}
@@ -326,7 +337,8 @@ func (s *Service) LeaveMeeting(ctx context.Context, meetingID string, participan
 	delete(meeting.Participants, participantID)
 	if len(meeting.Participants) == 0 {
 		endMeetingLocked(meeting)
-		delete(s.meetings, meetingID)
+		delete(s.meetings, internalMeetingID)
+		delete(s.numbers, meeting.MeetingNumber)
 	}
 
 	return nil
@@ -336,7 +348,7 @@ func (s *Service) EndMeeting(ctx context.Context, meetingID string, endedByParti
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	meeting, ok := s.meetings[meetingID]
+	meeting, internalMeetingID, ok := s.meetingByIdentifierLocked(meetingID)
 	if !ok {
 		return ErrMeetingNotFound
 	}
@@ -359,7 +371,8 @@ func (s *Service) EndMeeting(ctx context.Context, meetingID string, endedByParti
 	}
 
 	endMeetingLocked(meeting)
-	delete(s.meetings, meetingID)
+	delete(s.meetings, internalMeetingID)
+	delete(s.numbers, meeting.MeetingNumber)
 
 	return nil
 }
@@ -368,7 +381,7 @@ func (s *Service) GrantCapability(ctx context.Context, input GrantCapabilityInpu
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	meeting, ok := s.meetings[input.MeetingID]
+	meeting, _, ok := s.meetingByIdentifierLocked(input.MeetingID)
 	if !ok {
 		return ErrMeetingNotFound
 	}
@@ -695,7 +708,7 @@ func (s *Service) FinalizeReadyCheck(ctx context.Context, input FinalizeReadyChe
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	meetingValue, ok := s.meetings[input.MeetingID]
+	meetingValue, _, ok := s.meetingByIdentifierLocked(input.MeetingID)
 	if !ok {
 		return nil, false, ErrMeetingNotFound
 	}
@@ -773,7 +786,7 @@ func (s *Service) GetMeeting(meetingID string) (*Meeting, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	meeting, ok := s.meetings[meetingID]
+	meeting, _, ok := s.meetingByIdentifierLocked(meetingID)
 	if !ok {
 		return nil, false
 	}
@@ -900,7 +913,7 @@ func endMeetingLocked(meeting *Meeting) {
 }
 
 func (s *Service) meetingActorLocked(meetingID string, participantID string) (*Meeting, *Participant, error) {
-	meetingValue, ok := s.meetings[meetingID]
+	meetingValue, _, ok := s.meetingByIdentifierLocked(meetingID)
 	if !ok {
 		return nil, nil, ErrMeetingNotFound
 	}
@@ -967,6 +980,49 @@ func addMinuteLocked(meeting *Meeting, timestamp time.Time, message string) {
 	meeting.TemporaryMinutes = append(meeting.TemporaryMinutes, entry)
 }
 
+func (s *Service) generateUniqueMeetingNumberLocked() (string, error) {
+	for attempt := 0; attempt < 64; attempt++ {
+		meetingNumber, err := generateMeetingNumber()
+		if err != nil {
+			return "", err
+		}
+		if _, exists := s.numbers[meetingNumber]; exists {
+			continue
+		}
+		return meetingNumber, nil
+	}
+
+	return "", fmt.Errorf("generate meeting number: too many collisions")
+}
+
+func (s *Service) meetingByIdentifierLocked(identifier string) (*Meeting, string, bool) {
+	trimmedIdentifier := strings.TrimSpace(identifier)
+	if trimmedIdentifier == "" {
+		return nil, "", false
+	}
+
+	if meetingValue, ok := s.meetings[trimmedIdentifier]; ok {
+		return meetingValue, trimmedIdentifier, true
+	}
+
+	meetingNumber := normalizeMeetingNumber(trimmedIdentifier)
+	if meetingNumber == "" {
+		return nil, "", false
+	}
+
+	internalMeetingID, ok := s.numbers[meetingNumber]
+	if !ok {
+		return nil, "", false
+	}
+
+	meetingValue, ok := s.meetings[internalMeetingID]
+	if !ok {
+		return nil, "", false
+	}
+
+	return meetingValue, internalMeetingID, true
+}
+
 func (s *Service) appendSystemChatLocked(meetingValue *Meeting, participantID string, message string) (ChatMessage, error) {
 	messageID, err := generateID(10)
 	if err != nil {
@@ -1013,6 +1069,28 @@ func summarizeReadyCheck(round *ReadyCheckRound) string {
 func hashPassword(password string, salt string) string {
 	sum := sha256.Sum256([]byte(salt + ":" + password))
 	return hex.EncodeToString(sum[:])
+}
+
+func generateMeetingNumber() (string, error) {
+	const baseValue = 100000000
+	rangeValue := big.NewInt(900000000)
+
+	randomValue, err := rand.Int(rand.Reader, rangeValue)
+	if err != nil {
+		return "", fmt.Errorf("generate meeting number: %w", err)
+	}
+
+	return fmt.Sprintf("%09d", randomValue.Int64()+baseValue), nil
+}
+
+func normalizeMeetingNumber(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	noHyphen := strings.ReplaceAll(trimmed, "-", "")
+	return strings.Join(strings.Fields(noHyphen), "")
 }
 
 func generateID(bytesLength int) (string, error) {

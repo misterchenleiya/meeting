@@ -1,4 +1,4 @@
-module github.com/07c2/projects/meeting
+module github.com/misterchenleiya/meeting
 
 go 1.23.12
 

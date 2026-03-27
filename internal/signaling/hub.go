@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/07c2/projects/meeting/internal/meeting"
 	"github.com/gorilla/websocket"
+	"github.com/misterchenleiya/meeting/internal/meeting"
 )
 
 const (

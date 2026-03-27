@@ -97,6 +97,7 @@ type Participant struct {
 
 type Meeting struct {
 	ID                string                  `json:"id"`
+	MeetingNumber     string                  `json:"meetingNumber"`
 	JoinCode          string                  `json:"joinCode"`
 	PasswordRequired  bool                    `json:"passwordRequired"`
 	Title             string                  `json:"title"`

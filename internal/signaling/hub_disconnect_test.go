@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/07c2/projects/meeting/internal/meeting"
-	"github.com/07c2/projects/meeting/internal/storage/sqlite"
 	"github.com/gorilla/websocket"
+	"github.com/misterchenleiya/meeting/internal/meeting"
+	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
 )
 
 type disconnectTestStore struct{}

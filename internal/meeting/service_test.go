@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/07c2/projects/meeting/internal/storage/sqlite"
+	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
 )
 
 type stubStore struct {
@@ -34,6 +34,56 @@ func (s *stubStore) UpsertUserPreference(_ context.Context, pref sqlite.UserPref
 func (s *stubStore) InsertAuditEvent(_ context.Context, event sqlite.AuditEvent) error {
 	s.auditEvents = append(s.auditEvents, event)
 	return nil
+}
+
+func isNineDigitMeetingNumber(value string) bool {
+	if len(value) != 9 {
+		return false
+	}
+
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return true
+}
+
+func TestCreateMeetingAssignsPublicMeetingNumber(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := NewService(testLogger(t), newStubStore())
+
+	meetingValue, _, err := service.CreateMeeting(ctx, CreateMeetingInput{
+		Title:        "number rollout",
+		Password:     "",
+		HostUserID:   "host-user",
+		HostNickname: "主持人",
+		DeviceType:   "desktop",
+		IPAddress:    "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CreateMeeting() error = %v", err)
+	}
+
+	if !isNineDigitMeetingNumber(meetingValue.MeetingNumber) {
+		t.Fatalf("MeetingNumber = %q, want 9 digits", meetingValue.MeetingNumber)
+	}
+
+	if meetingValue.MeetingNumber == meetingValue.ID {
+		t.Fatalf("MeetingNumber should differ from internal ID")
+	}
+
+	resolvedMeeting, found := service.GetMeeting(meetingValue.MeetingNumber)
+	if !found {
+		t.Fatalf("GetMeeting() with public meeting number found = false, want true")
+	}
+
+	if resolvedMeeting.ID != meetingValue.ID {
+		t.Fatalf("resolved meeting ID = %q, want %q", resolvedMeeting.ID, meetingValue.ID)
+	}
 }
 
 func TestJoinMeetingParticipantDefaultsToChatOnly(t *testing.T) {
@@ -151,6 +201,41 @@ func TestJoinMeetingAllowsPasswordlessMeeting(t *testing.T) {
 	}
 }
 
+func TestJoinMeetingAcceptsPublicMeetingNumber(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := NewService(testLogger(t), newStubStore())
+
+	meetingValue, _, err := service.CreateMeeting(ctx, CreateMeetingInput{
+		Title:        "public number join",
+		Password:     "secret",
+		HostUserID:   "host-user",
+		HostNickname: "主持人",
+		DeviceType:   "desktop",
+		IPAddress:    "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CreateMeeting() error = %v", err)
+	}
+
+	_, participant, err := service.JoinMeeting(ctx, JoinMeetingInput{
+		MeetingID:   meetingValue.MeetingNumber,
+		Password:    "secret",
+		Nickname:    "成员A",
+		IsAnonymous: true,
+		DeviceType:  "desktop",
+		IPAddress:   "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("JoinMeeting() with public meeting number error = %v", err)
+	}
+
+	if participant == nil {
+		t.Fatalf("JoinMeeting() participant is nil")
+	}
+}
+
 func TestEndMeetingRemovesRuntimeState(t *testing.T) {
 	t.Parallel()
 
@@ -175,6 +260,10 @@ func TestEndMeetingRemovesRuntimeState(t *testing.T) {
 
 	if _, ok := service.GetMeeting(meetingValue.ID); ok {
 		t.Fatalf("meeting still exists after EndMeeting()")
+	}
+
+	if _, ok := service.GetMeeting(meetingValue.MeetingNumber); ok {
+		t.Fatalf("meeting still exists by public meeting number after EndMeeting()")
 	}
 }
 

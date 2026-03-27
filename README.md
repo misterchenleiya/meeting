@@ -6,6 +6,8 @@ English | [简体中文](README.zh-CN.md)
 
 Current capabilities include video meetings, whiteboard collaboration, screen sharing, local recording, chat, ready checks, temporary meeting minutes, host/assistant/participant roles, anonymous display names, and a browser-friendly `WSS + WebRTC` communication model.
 
+![Meeting login preview](docs/meeting_login.png)
+
 ## Architecture
 
 - Media plane: `WebRTC`
@@ -64,6 +66,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - [x] Basic audit reporting
 - [x] Anonymous and registered display names
 - [x] Nickname updates with chat trail
+- [x] Public 9-digit meeting numbers, meeting-number copy, and in-room share QR codes
 - [x] Runtime state cleanup after meeting end
 
 ### Partially Implemented
@@ -83,16 +86,17 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - [ ] Dynamic multi-peer mesh management and performance optimization
 - [ ] WeChat registration and QR-code login
 - [ ] Email verification code registration/login
-- [ ] Invite links and QR-code based join flow
+- [ ] Auto-fill the join form when opening an invite link directly
 - [ ] Host reminder to save meeting minutes at meeting end
 
 ## Current UI Flow
 
-- Before joining a meeting, the app now uses a dark product shell with a left-side stage and a right-side action panel.
-- Host flow: local email sign-in UI, then quick meeting or scheduled meeting entry. In the current test mode, any non-empty email and password can sign in, and the page pre-fills `meeting@07c2.com.cn / helloworld`. The scheduled form currently reuses the existing create-meeting API and enters the room immediately.
-- Join flow: enter a meeting ID, run a preflight lookup, and then enter the password in a modal only if the meeting requires one.
-- In-room flow: idle meetings show an avatar wall; active media switches to a featured stage with a thumbnail rail, while members and chat live in right-side drawers.
-- Whiteboard, ready check, temporary minutes, audit summary, and capability management remain available as secondary collaboration panels below the main stage.
+- Before joining a meeting, the login view now uses a full-screen single-card layout with a large `meeting` wordmark, a focused spotlight below it, and a centered auth card in the same macOS-dark visual system as the room UI.
+- Host flow: after sign-in, the app returns to the dark entry shell for quick meeting or scheduled meeting entry. In the current test mode, any non-empty email and password can sign in, and the page pre-fills `meeting@07c2.com.cn / helloworld`. The scheduled form currently reuses the existing create-meeting API and enters the room immediately.
+- Join flow: enter the public 9-digit meeting number, run a preflight lookup, and then enter the password in a modal only if the meeting requires one. Grouped `3-3-3` meeting numbers with spaces are normalized automatically.
+- In-room flow: the room now uses a single-screen full-stage layout with a top title bar, a bottom dock toolbar, attached host / meeting / settings / apps / end panels, and right-side drawers for members and chat. Idle meetings show an avatar wall; active media switches to a featured stage with a thumbnail rail.
+- The share window now shows the public 9-digit meeting number, a QR code, and copy actions; the internal room id is no longer shown directly in user-facing UI.
+- Whiteboard, ready check, temporary minutes, audit summary, and capability management remain available through menus, drawers, and floating panels around the main stage.
 
 ## API Surface
 
@@ -109,6 +113,12 @@ Key endpoints that are already available:
 - `POST /api/meetings/{meetingID}/end`
 - `PUT /api/users/{userID}/preferences`
 - `GET /ws/meetings/{meetingID}`
+
+Notes:
+
+- `POST /api/meetings` now returns both the internal `id` and the public `meetingNumber`.
+- Meeting-scoped REST endpoints such as `GET /api/meetings/{meetingID}` and `POST /api/meetings/{meetingID}/join` accept either the internal runtime id or the public 9-digit meeting number.
+- `GET /ws/meetings/{meetingID}` still uses the internal runtime id to keep the signaling path stable.
 
 ## Local Development
 

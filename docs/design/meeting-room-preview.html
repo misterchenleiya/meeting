@@ -8,401 +8,1939 @@
   </head>
   <body>
     <main class="page-shell">
-      <section class="preview-toolbar">
-        <div>
+      <section class="preview-toolbar" aria-label="预览控制">
+        <div class="preview-copy">
           <strong>Meeting / Room Preview</strong>
-          <p>顶部控制用于切换无人开视频、主舞台、成员侧栏、聊天侧栏、邀请弹窗和录制申请弹窗。右侧缩略窗支持双击切换主画面。</p>
+          <p>参考截图重做的深色单屏会议房间：顶部状态栏、居中头像、悬浮昵称编辑、底部工具栏和临时弹窗。</p>
         </div>
-        <div class="toolbar-row">
-          <div class="toolbar-group">
+
+        <div class="preview-controls">
+          <div class="control-group">
             <span>舞台</span>
-            <button class="preview-switch active" data-stage-target="active" type="button">主舞台</button>
-            <button class="preview-switch" data-stage-target="idle" type="button">头像墙</button>
+            <button class="preview-switch active" data-state-group="stage" data-state-value="active" type="button">
+              主画面
+            </button>
+            <button class="preview-switch" data-state-group="stage" data-state-value="idle" type="button">
+              头像墙
+            </button>
           </div>
-          <div class="toolbar-group">
-            <span>侧栏</span>
-            <button class="preview-switch active" data-sidebar-target="none" type="button">关闭</button>
-            <button class="preview-switch" data-sidebar-target="members" type="button">成员</button>
-            <button class="preview-switch" data-sidebar-target="chat" type="button">聊天</button>
+
+          <div class="control-group">
+            <span>菜单</span>
+            <button class="preview-switch active" data-state-group="menu" data-state-value="none" type="button">
+              关闭
+            </button>
+            <button class="preview-switch" data-state-group="menu" data-state-value="participant" type="button">
+              参会者
+            </button>
+            <button class="preview-switch" data-state-group="menu" data-state-value="host" type="button">
+              主持人
+            </button>
           </div>
-          <div class="toolbar-group">
+
+          <div class="control-group">
             <span>弹窗</span>
-            <button class="preview-switch active" data-modal-target="none" type="button">关闭</button>
-            <button class="preview-switch" data-modal-target="invite" type="button">邀请</button>
-            <button class="preview-switch" data-modal-target="record" type="button">录制申请</button>
+            <button class="preview-switch" data-state-group="overlay" data-state-value="rename" type="button">
+              昵称修改
+            </button>
+            <button class="preview-switch" data-state-group="overlay" data-state-value="invite" type="button">
+              邀请
+            </button>
+            <button class="preview-switch" data-state-group="overlay" data-state-value="record" type="button">
+              录制申请
+            </button>
+            <button class="preview-switch" data-state-group="overlay" data-state-value="ready" type="button">
+              就位确认
+            </button>
+            <button class="preview-switch" data-state-group="overlay" data-state-value="minutes" type="button">
+              保存纪要
+            </button>
+            <button class="preview-switch active" data-state-group="overlay" data-state-value="none" type="button">
+              关闭
+            </button>
+          </div>
+
+          <div class="control-group">
+            <span>网络</span>
+            <button class="preview-switch active" data-state-group="connection" data-state-value="normal" type="button">
+              正常
+            </button>
+            <button class="preview-switch" data-state-group="connection" data-state-value="degraded" type="button">
+              异常
+            </button>
+          </div>
+
+          <div class="control-group">
+            <span>聊天未读</span>
+            <button class="preview-switch" data-state-group="chatUnread" data-state-value="off" type="button">
+              无
+            </button>
+            <button class="preview-switch active" data-state-group="chatUnread" data-state-value="on" type="button">
+              红点
+            </button>
           </div>
         </div>
       </section>
 
-      <section class="room-frame" data-stage="active" data-sidebar="none" data-modal="none">
-        <header class="room-header">
-          <div class="meeting-meta">
-            <h1>全球产品评审会</h1>
-            <p>Meeting Code 82C1F0 · Host Studio · macOS dark product preview</p>
-          </div>
-          <div class="room-header-status">
-            <div class="meeting-pill-row">
-              <span class="meeting-pill live">Meeting live</span>
-              <span class="meeting-pill">12:04 PM Shanghai</span>
-              <span class="meeting-pill">主持人已连接信令</span>
+      <section
+        class="room-preview"
+        data-stage="active"
+        data-menu="none"
+        data-overlay="none"
+        data-sidepanel="none"
+        data-fullscreen="off"
+        data-connection="normal"
+        data-chat-unread="on"
+      >
+        <header class="room-topbar">
+          <div class="topbar-left">
+            <div class="room-brand">
+              <div class="room-meta">
+                <strong>会议详情</strong>
+                <span>01:19</span>
+              </div>
             </div>
+
+            <div class="topbar-status" aria-label="连接与分享">
+              <div class="network-hover-anchor" aria-label="网络状态预览">
+                <button class="topbar-action icon-only" type="button" aria-label="网络状态">
+                  <svg viewBox="0 0 24 24"><use href="#icon-signal" /></svg>
+                </button>
+                <div class="network-hover-card">
+                  <div class="network-hover-row">
+                    <strong>网络状态</strong>
+                    <span>正常</span>
+                  </div>
+                  <div class="network-hover-row">
+                    <strong>延迟</strong>
+                    <span>32 ms</span>
+                  </div>
+                  <div class="network-hover-row">
+                    <strong>丢包率</strong>
+                    <span>0.30%</span>
+                  </div>
+                  <div class="network-hover-row">
+                    <strong>传输速率</strong>
+                    <span>12.48 MB/s</span>
+                  </div>
+                </div>
+              </div>
+              <button class="topbar-action icon-only" data-preview-action="open-share" type="button" aria-label="分享会议">
+                <svg viewBox="0 0 24 24"><use href="#icon-share" /></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="topbar-right">
+            <button class="topbar-action host-tools" data-menu-target="host" type="button">
+              <svg viewBox="0 0 24 24"><use href="#icon-person" /></svg>
+              <span>主持人工具</span>
+              <small>▾</small>
+            </button>
+            <button class="topbar-action meeting-tools" data-menu-target="participant" type="button">
+              <svg viewBox="0 0 24 24"><use href="#icon-apps" /></svg>
+              <span>会议工具</span>
+              <small>▾</small>
+            </button>
+            <button class="topbar-action utility-tools" data-preview-action="open-settings" type="button">
+              <svg viewBox="0 0 24 24"><use href="#icon-settings" /></svg>
+              <span>设置</span>
+            </button>
+            <button class="topbar-action icon-only utility-tools" data-preview-action="toggle-fullscreen" type="button" aria-label="进入全屏模式" data-tooltip="进入全屏模式">
+              <svg viewBox="0 0 24 24"><use href="#icon-fullscreen" /></svg>
+            </button>
           </div>
         </header>
 
-        <div class="room-body">
-          <section class="stage-shell">
-            <div class="idle-view">
-              <div class="idle-stage">
-                <div class="idle-headline">
-                  <h2>当前还没有人打开摄像头或共享屏幕</h2>
-                  <p>舞台保持黑场，参会者按照入会顺序展示头像与昵称。昵称左侧保留麦克风状态，方便快速确认谁能发言。</p>
+        <div class="room-stage">
+          <div class="speaker-pill">正在讲话:</div>
+          <div class="room-toast" data-room-toast hidden></div>
+
+          <section class="stage-view stage-active" aria-label="主画面">
+            <article class="participant-card focus" data-participant-id="speaker" data-nickname="主持人">
+              <div class="avatar-shell tone-1">
+                <div class="avatar-portrait" aria-hidden="true"></div>
+                <span class="role-badge" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><use href="#icon-person" /></svg>
+                </span>
+              </div>
+
+              <div class="participant-meta">
+                <div class="mic-state off" aria-label="静音">
+                  <svg viewBox="0 0 24 24"><use href="#icon-mic-off" /></svg>
                 </div>
 
-                <div class="avatar-wall">
-                  <article class="avatar-card">
-                    <div class="avatar-badge">ME</div>
-                    <div class="avatar-copy">
-                      <strong><span class="mic-status">mic on</span> 主持人</strong>
-                      <span>第 1 位入会 · host</span>
-                    </div>
-                  </article>
-                  <article class="avatar-card secondary">
-                    <div class="avatar-badge">A</div>
-                    <div class="avatar-copy">
-                      <strong><span class="mic-status">mic on</span> 成员A</strong>
-                      <span>第 2 位入会 · assistant</span>
-                    </div>
-                  </article>
-                  <article class="avatar-card tertiary">
-                    <div class="avatar-badge">B</div>
-                    <div class="avatar-copy">
-                      <strong><span class="mic-status off">mic off</span> 成员B</strong>
-                      <span>第 3 位入会 · participant</span>
-                    </div>
-                  </article>
-                  <article class="avatar-card quaternary">
-                    <div class="avatar-badge">C</div>
-                    <div class="avatar-copy">
-                      <strong><span class="mic-status">mic on</span> 观察员</strong>
-                      <span>第 4 位入会 · participant</span>
-                    </div>
-                  </article>
+                <div class="nickname-shell">
+                  <span class="participant-name" data-nickname-text>主持人</span>
+                  <button class="nickname-edit-btn" data-open-rename type="button" aria-label="编辑昵称">
+                    <svg viewBox="0 0 24 24"><use href="#icon-edit" /></svg>
+                  </button>
                 </div>
               </div>
-            </div>
+            </article>
+          </section>
 
-            <div class="active-view">
-              <section class="featured-panel">
-                <div class="featured-header">
-                  <div>
-                    <strong id="featured-name">主持人主画面</strong>
-                    <span id="featured-meta">默认展示主持人的视频或共享画面，其他画面缩成右侧缩略窗。</span>
-                  </div>
-                  <div class="meeting-pill-row">
-                    <span class="meeting-pill">Camera on</span>
-                    <span class="meeting-pill">Microphone on</span>
-                  </div>
+          <section class="stage-view stage-idle" aria-label="头像墙">
+            <div class="participant-wall">
+              <article class="participant-card wall" data-participant-id="speaker" data-nickname="主持人">
+                <div class="avatar-shell tone-1">
+                  <div class="avatar-portrait" aria-hidden="true"></div>
+                  <span class="role-badge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><use href="#icon-person" /></svg>
+                  </span>
                 </div>
 
-                <div class="featured-canvas">
-                  <div class="featured-scene">
-                    <div class="scene-frame" id="featured-scene">
-                      <div class="scene-label">
-                        <strong id="featured-title">主持人 · 视频主舞台</strong>
-                        <span id="featured-description">主持人画面优先置顶。若主持人开启共享屏幕，则主舞台切到共享内容，右侧保留其他人的缩略窗。</span>
-                      </div>
-                    </div>
+                <div class="participant-meta">
+                  <div class="mic-state off" aria-label="静音">
+                    <svg viewBox="0 0 24 24"><use href="#icon-mic-off" /></svg>
+                  </div>
+
+                  <div class="nickname-shell">
+                    <span class="participant-name" data-nickname-text>主持人</span>
+                    <button class="nickname-edit-btn" data-open-rename type="button" aria-label="编辑昵称">
+                      <svg viewBox="0 0 24 24"><use href="#icon-edit" /></svg>
+                    </button>
                   </div>
                 </div>
+              </article>
 
-                <div class="featured-caption">双击右侧任意缩略窗，可以将该画面切到主舞台预览。</div>
-              </section>
-
-              <aside class="thumbnail-rail">
-                <article class="thumbnail-card active" data-feature-description="主持人画面优先置顶。若主持人开启共享屏幕，则主舞台切到共享内容，右侧保留其他人的缩略窗。" data-feature-meta="主持人在线 · camera on · mic on" data-feature-variant="host" data-feature-name="主持人主画面" data-feature-title="主持人 · 视频主舞台">
-                  <div class="thumbnail-preview"></div>
-                  <div class="thumbnail-copy">
-                    <strong>主持人</strong>
-                    <span>视频已开启</span>
-                  </div>
-                </article>
-                <article class="thumbnail-card" data-feature-description="成员A 当前在共享设计稿，双击后主舞台切换到共享内容，主持人视频缩回右侧。" data-feature-meta="成员A在线 · share on · mic on" data-feature-variant="share" data-feature-name="成员A共享画面" data-feature-title="成员A · 共享屏幕">
-                  <div class="thumbnail-preview share"></div>
-                  <div class="thumbnail-copy">
-                    <strong>成员A</strong>
-                    <span>共享屏幕中</span>
-                  </div>
-                </article>
-                <article class="thumbnail-card" data-feature-description="成员B 已打开摄像头，但没有共享内容。主舞台切换后，画面仍保持黑色系舞台感，不会回退到开发面板布局。" data-feature-meta="成员B在线 · camera on · mic muted" data-feature-variant="participant" data-feature-name="成员B视频画面" data-feature-title="成员B · 视频画面">
-                  <div class="thumbnail-preview participant"></div>
-                  <div class="thumbnail-copy">
-                    <strong>成员B</strong>
-                    <span>视频开启，麦克风关闭</span>
-                  </div>
-                </article>
-              </aside>
-            </div>
-
-            <aside class="side-drawer members">
-              <div class="drawer-header">
-                <div>
-                  <h3>成员</h3>
-                  <p>默认隐藏，打开后从右侧抽出。</p>
+              <article class="participant-card wall" data-participant-id="member-2" data-nickname="匿名用户">
+                <div class="avatar-shell tone-2">
+                  <div class="avatar-portrait" aria-hidden="true"></div>
+                  <span class="role-badge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><use href="#icon-person" /></svg>
+                  </span>
                 </div>
-                <div class="drawer-pill">4 online</div>
-              </div>
-              <ul class="member-list">
-                <li class="member-row">
-                  <strong>主持人</strong>
-                  <div class="member-meta"><span>host</span><span>camera on · mic on</span></div>
-                </li>
-                <li class="member-row">
-                  <strong>成员A</strong>
-                  <div class="member-meta"><span>assistant</span><span>share on · mic on</span></div>
-                </li>
-                <li class="member-row">
-                  <strong>成员B</strong>
-                  <div class="member-meta"><span>participant</span><span>camera on · mic off</span></div>
-                </li>
-                <li class="member-row">
-                  <strong>观察员</strong>
-                  <div class="member-meta"><span>participant</span><span>camera off · mic on</span></div>
-                </li>
-              </ul>
-              <button class="button ghost" data-sidebar-target="none" type="button">收起成员列表</button>
-            </aside>
 
-            <aside class="side-drawer chat">
-              <div class="drawer-header">
-                <div>
-                  <h3>聊天</h3>
-                  <p>默认隐藏，打开后贴在舞台右侧。</p>
+                <div class="participant-meta">
+                  <div class="mic-state" aria-label="发言中">
+                    <svg viewBox="0 0 24 24"><use href="#icon-mic-on" /></svg>
+                  </div>
+
+                  <div class="nickname-shell">
+                    <span class="participant-name" data-nickname-text>匿名用户</span>
+                    <button class="nickname-edit-btn" data-open-rename type="button" aria-label="编辑昵称">
+                      <svg viewBox="0 0 24 24"><use href="#icon-edit" /></svg>
+                    </button>
+                  </div>
                 </div>
-                <div class="drawer-pill">3 new</div>
-              </div>
-              <ul class="chat-list">
-                <li class="chat-row">
-                  <strong>主持人</strong>
-                  <div class="chat-meta"><span>现在切到设计稿页。</span><span>12:03</span></div>
-                </li>
-                <li class="chat-row">
-                  <strong>成员A</strong>
-                  <div class="chat-meta"><span>收到，我来共享屏幕。</span><span>12:04</span></div>
-                </li>
-                <li class="chat-row">
-                  <strong>成员B</strong>
-                  <div class="chat-meta"><span>我这边先静音。</span><span>12:04</span></div>
-                </li>
-              </ul>
-              <div class="chat-composer">
-                <textarea>输入一条聊天消息</textarea>
-                <button class="button secondary" type="button">发送消息</button>
-              </div>
-            </aside>
+              </article>
 
-            <div class="meeting-toolbar">
-              <button class="toolbar-button is-active" type="button">
-                <span class="glyph">MIC</span>
-                <span>麦克风</span>
-              </button>
-              <button class="toolbar-button is-active" type="button">
-                <span class="glyph">CAM</span>
-                <span>视频</span>
-              </button>
-              <button class="toolbar-button" type="button">
-                <span class="glyph">SCR</span>
-                <span>共享屏幕</span>
-              </button>
-              <button class="toolbar-button" data-modal-target="invite" type="button">
-                <span class="glyph">INV</span>
-                <span>邀请</span>
-              </button>
-              <button class="toolbar-button" data-sidebar-target="members" type="button">
-                <span class="glyph">MEM</span>
-                <span>成员</span>
-              </button>
-              <button class="toolbar-button" data-sidebar-target="chat" type="button">
-                <span class="glyph">CHT</span>
-                <span>聊天</span>
-              </button>
-              <button class="toolbar-button warn" data-modal-target="record" type="button">
-                <span class="glyph">REC</span>
-                <span>录制</span>
-              </button>
+              <article class="participant-card wall" data-participant-id="member-3" data-nickname="匿名用户">
+                <div class="avatar-shell tone-3">
+                  <div class="avatar-portrait" aria-hidden="true"></div>
+                  <span class="role-badge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><use href="#icon-person" /></svg>
+                  </span>
+                </div>
+
+                <div class="participant-meta">
+                  <div class="mic-state off" aria-label="静音">
+                    <svg viewBox="0 0 24 24"><use href="#icon-mic-off" /></svg>
+                  </div>
+
+                  <div class="nickname-shell">
+                    <span class="participant-name" data-nickname-text>匿名用户</span>
+                    <button class="nickname-edit-btn" data-open-rename type="button" aria-label="编辑昵称">
+                      <svg viewBox="0 0 24 24"><use href="#icon-edit" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="participant-card wall" data-participant-id="member-4" data-nickname="匿名用户">
+                <div class="avatar-shell tone-4">
+                  <div class="avatar-portrait" aria-hidden="true"></div>
+                  <span class="role-badge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><use href="#icon-person" /></svg>
+                  </span>
+                </div>
+
+                <div class="participant-meta">
+                  <div class="mic-state" aria-label="发言中">
+                    <svg viewBox="0 0 24 24"><use href="#icon-mic-on" /></svg>
+                  </div>
+
+                  <div class="nickname-shell">
+                    <span class="participant-name" data-nickname-text>匿名用户</span>
+                    <button class="nickname-edit-btn" data-open-rename type="button" aria-label="编辑昵称">
+                      <svg viewBox="0 0 24 24"><use href="#icon-edit" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </article>
             </div>
           </section>
 
-          <div class="modal-layer invite">
-            <div class="modal-card">
-              <div>
-                <h3>邀请参会者</h3>
-                <p>邀请窗口展示会议信息，并提供“复制全部信息”和“复制会议号和链接”两个主按钮。</p>
+          <div class="menu-dock" aria-label="菜单面板">
+            <section class="menu-sheet participant-menu">
+              <div class="sheet-head">
+                <div>
+                  <div class="sheet-kicker">Participant Menu</div>
+                  <h3>参会者工具</h3>
+                </div>
+                <span class="sheet-chip">所有参会者可见</span>
               </div>
-              <div class="info-list">
-                <div class="info-row">
-                  <strong>会议主题</strong>
-                  <span>全球产品评审会</span>
+
+              <div class="sheet-actions">
+                <button class="menu-action" data-preview-action="toggle-mic" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-mic-off" /></svg></span>
+                  <span>麦克风</span>
+                </button>
+                <button class="menu-action" data-preview-action="toggle-camera" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-camera-off" /></svg></span>
+                  <span>摄像头</span>
+                </button>
+                <button class="menu-action" data-preview-action="toggle-share" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-share" /></svg></span>
+                  <span>共享屏幕</span>
+                </button>
+                <button class="menu-action" data-preview-action="open-invite" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-invite" /></svg></span>
+                  <span>邀请</span>
+                </button>
+                <button class="menu-action" data-preview-action="open-members" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-members" /></svg></span>
+                  <span>成员</span>
+                </button>
+                <button class="menu-action" data-preview-action="open-chat" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-chat" /></svg></span>
+                  <span>聊天</span>
+                </button>
+                <button class="menu-action" data-preview-action="open-rename" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-edit" /></svg></span>
+                  <span>修改昵称</span>
+                </button>
+                <button class="menu-action danger" data-preview-action="open-leave" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-end" /></svg></span>
+                  <span>离开会议</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="menu-sheet host-menu">
+              <div class="sheet-head">
+                <div>
+                  <div class="sheet-kicker">Host Menu</div>
+                  <h3>主持人工具</h3>
                 </div>
-                <div class="info-row">
-                  <strong>会议号</strong>
-                  <span>82C1F0</span>
+                <span class="sheet-chip host-chip">主持人 / 助理可见</span>
+              </div>
+
+              <div class="sheet-actions">
+                <button class="menu-action" data-preview-action="open-authorize" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-person" /></svg></span>
+                  <span>授权能力</span>
+                </button>
+                <button class="menu-action" data-preview-action="open-record" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-record" /></svg></span>
+                  <span>录制控制</span>
+                </button>
+                <button class="menu-action" data-preview-action="open-ready" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-members" /></svg></span>
+                  <span>就位确认</span>
+                </button>
+                <button class="menu-action" data-preview-action="open-minutes" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-minutes" /></svg></span>
+                  <span>纪要导出</span>
+                </button>
+                <button class="menu-action" data-preview-action="open-whiteboard" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-apps" /></svg></span>
+                  <span>白板管理</span>
+                </button>
+                <button class="menu-action" data-preview-action="open-audit" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-layout" /></svg></span>
+                  <span>审计事件</span>
+                </button>
+                <button class="menu-action danger" data-preview-action="open-end" type="button">
+                  <span class="menu-glyph"><svg viewBox="0 0 24 24"><use href="#icon-end" /></svg></span>
+                  <span>结束会议</span>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div class="side-dock" aria-label="侧边面板">
+            <aside class="side-panel chat-drawer" data-sidepanel-panel="chat" aria-hidden="true">
+              <div class="side-panel-head">
+                <div class="side-panel-copy">
+                  <div class="sheet-kicker">Chat Window</div>
+                  <h3>聊天</h3>
                 </div>
-                <div class="info-row">
-                  <strong>邀请链接</strong>
-                  <span>https://meeting.dev/join/82C1F0</span>
+                <button class="card-close" data-close-sidepanel type="button" aria-label="关闭聊天窗口">
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+
+              <div class="side-panel-stream">
+                <div class="chat-message">
+                  <strong>匿名用户 · 09:18</strong>
+                  <p>我已经进入会议，可以开始共享了。</p>
                 </div>
-                <div class="info-row">
-                  <strong>会议密码</strong>
-                  <span>stage2026</span>
+                <div class="chat-message self">
+                  <strong>主持人 · 09:19</strong>
+                  <p>收到，我先打开主持人工具确认权限。</p>
+                </div>
+                <div class="chat-message">
+                  <strong>匿名用户 · 09:19</strong>
+                  <p>已完成就位确认。</p>
                 </div>
               </div>
-              <div class="button-row">
-                <button class="button primary" type="button">复制全部信息</button>
-                <button class="button secondary" type="button">复制会议号和链接</button>
+
+              <div class="chat-input-shell">
+                <label class="chat-input-field">
+                  <span class="sr-only">发送消息</span>
+                  <input class="chat-input" type="text" value="给所有人发送消息..." readonly />
+                </label>
+                <button class="button secondary chat-send-button" data-preview-action="copy-chat" type="button">发送</button>
               </div>
-              <button class="button ghost" data-modal-target="none" type="button">关闭</button>
+            </aside>
+          </div>
+
+          <div class="network-alert-layer" aria-hidden="true">
+            <div class="network-alert-card" role="alert" aria-live="assertive">
+              <div class="overlay-head">
+                <div class="eyebrow">Network issue</div>
+                <h3>当前网络异常</h3>
+                <p>有参会者的 WSS 连接已中断或异常，会议暂时进入灰色模式，连接恢复后会自动退出该状态。</p>
+              </div>
+              <div class="overlay-info-grid">
+                <div class="overlay-info-row">
+                  <strong>当前状态</strong>
+                  <span>WSS 连接异常</span>
+                </div>
+                <div class="overlay-info-row">
+                  <strong>受影响参会者</strong>
+                  <span>匿名用户</span>
+                </div>
+                <div class="overlay-info-row">
+                  <strong>异常时间</strong>
+                  <span>09:21</span>
+                </div>
+                <div class="overlay-info-row">
+                  <strong>处理方式</strong>
+                  <span>自动重连中</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="modal-layer record">
-            <div class="modal-card">
-              <div>
-                <h3>申请录制权限</h3>
-                <p>当前用户没有录制权限。点击确认后，前端会向主持人发送权限申请，而不是直接开始录制。</p>
+          <section class="overlay-layer invite" data-overlay-panel="invite" aria-hidden="true">
+            <div class="overlay-card invite-card">
+              <button class="card-close" data-close-overlay type="button" aria-label="关闭弹窗">
+                <span aria-hidden="true">×</span>
+              </button>
+              <div class="overlay-head invite-head">
+                <div class="invite-title-row">
+                  <div class="invite-title-copy">
+                    <div class="eyebrow">meeting</div>
+                    <div class="invite-id-row">
+                      <h3>会议号：821 503 974</h3>
+                      <button class="meeting-id-copy" data-preview-action="copy-meeting-id" type="button" aria-label="复制会议 ID">
+                        <svg viewBox="0 0 24 24"><use href="#icon-copy" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="info-list">
-                <div class="info-row">
+
+              <div class="invite-layout">
+                <div class="invite-copy-flow">
+                  <p>陈雷 邀请您参加 meeting 快速会议</p>
+                  <p>会议主题：陈雷的快速会议</p>
+                  <p>会议时间：2026/03/27 22:32–23:02 (GMT+08:00)</p>
+                  <div class="invite-divider" aria-hidden="true"></div>
+                  <p>点击链接直接加入会议：</p>
+                  <p class="invite-link">https://meeting.example.com/dm/DWVIA0cbnsrt</p>
+                  <p>#meeting：821 503 974</p>
+                </div>
+
+                <div class="invite-qr-panel">
+                  <div class="qr-shell">
+                    <div class="qr-grid" aria-hidden="true">
+                      <span></span><span></span><span></span><span></span><span></span><span></span>
+                      <span></span><span class="on"></span><span></span><span></span><span class="on"></span><span></span>
+                      <span></span><span></span><span class="on"></span><span></span><span></span><span></span>
+                      <span></span><span class="on"></span><span></span><span class="on"></span><span></span><span></span>
+                      <span></span><span></span><span></span><span></span><span class="on"></span><span></span>
+                      <span></span><span></span><span class="on"></span><span></span><span></span><span class="on"></span>
+                    </div>
+                  </div>
+                  <div class="qr-caption">会议ID：821 503 974</div>
+                </div>
+              </div>
+
+              <div class="button-row invite-actions">
+                <button class="button secondary" data-preview-action="copy-invite" type="button">复制全部信息</button>
+                <button class="button primary" data-preview-action="copy-invite-qr" type="button">复制会议二维码</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="overlay-layer record" data-overlay-panel="record" aria-hidden="true">
+            <div class="overlay-card">
+              <button class="card-close" data-close-overlay type="button" aria-label="关闭弹窗">
+                <span aria-hidden="true">×</span>
+              </button>
+              <div class="overlay-head">
+                <div class="eyebrow">Recording</div>
+                <h3>申请录制权限</h3>
+                <p>普通参会者点击录制后会进入申请流程，不会直接开始录制。</p>
+              </div>
+              <div class="overlay-info-grid">
+                <div class="overlay-info-row">
                   <strong>当前状态</strong>
                   <span>record capability unavailable</span>
                 </div>
-                <div class="info-row">
+                <div class="overlay-info-row">
                   <strong>发起对象</strong>
                   <span>主持人 / host</span>
                 </div>
               </div>
               <div class="button-row">
-                <button class="button primary" type="button">向主持人申请</button>
-                <button class="button ghost" data-modal-target="none" type="button">取消</button>
+                <button class="button primary" data-preview-action="request-record" type="button">向主持人申请</button>
+                <button class="button ghost" data-close-overlay type="button">取消</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="overlay-layer ready" data-overlay-panel="ready" aria-hidden="true">
+            <div class="overlay-card">
+              <button class="card-close" data-close-overlay type="button" aria-label="关闭弹窗">
+                <span aria-hidden="true">×</span>
+              </button>
+              <div class="overlay-head">
+                <div class="eyebrow">Ready check</div>
+                <h3>就位确认</h3>
+                <p>主持人发起就位确认时，以轻量覆盖层展示，不打断主舞台。</p>
+              </div>
+              <div class="ready-list">
+                <div class="ready-row">
+                  <strong>主持人</strong>
+                  <span>confirmed</span>
+                </div>
+                <div class="ready-row">
+                  <strong>匿名用户</strong>
+                  <span>pending</span>
+                </div>
+                <div class="ready-row">
+                  <strong>匿名用户</strong>
+                  <span>confirmed</span>
+                </div>
+              </div>
+              <div class="button-row">
+                <button class="button primary" data-preview-action="ready-confirm" type="button">确认</button>
+                <button class="button danger" data-close-overlay type="button">取消</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="overlay-layer minutes" data-overlay-panel="minutes" aria-hidden="true">
+            <div class="overlay-card wide">
+              <button class="card-close" data-close-overlay type="button" aria-label="关闭弹窗">
+                <span aria-hidden="true">×</span>
+              </button>
+              <div class="overlay-head">
+                <div class="eyebrow">Minutes</div>
+                <h3>保存当前会议纪要</h3>
+                <p>会议结束时的保存提醒会优先展示导出入口，便于主持人先保存，再返回首页。</p>
+              </div>
+              <div class="overlay-info-grid three-up">
+                <div class="overlay-info-row">
+                  <strong>聊天消息</strong>
+                  <span>18 条</span>
+                </div>
+                <div class="overlay-info-row">
+                  <strong>白板笔迹</strong>
+                  <span>27 条</span>
+                </div>
+                <div class="overlay-info-row">
+                  <strong>就位确认</strong>
+                  <span>2 轮</span>
+                </div>
+              </div>
+              <ul class="minute-list">
+                <li>记录了会中聊天、白板和就位确认结果。</li>
+                <li>当前导出仍然以本地文件为主，不上传服务器。</li>
+                <li>后续可在保持“会后删除运行态”的前提下补更细的结构化内容。</li>
+              </ul>
+              <div class="button-row">
+                <button class="button primary" data-preview-action="save-minutes" type="button">保存当前会议纪要</button>
+                <button class="button secondary" data-close-overlay type="button">返回会议</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="overlay-layer action" data-overlay-panel="action" aria-hidden="true">
+            <div class="overlay-card wide action-card">
+              <button class="card-close" data-close-overlay type="button" aria-label="关闭弹窗">
+                <span aria-hidden="true">×</span>
+              </button>
+              <div class="overlay-head">
+                <div class="eyebrow" data-action-eyebrow>Preview</div>
+                <h3 data-action-title>动作预览</h3>
+                <p data-action-copy>点击任一按钮后，这里会显示对应的预览内容。</p>
+              </div>
+              <div class="action-body" data-action-body></div>
+              <div class="button-row" data-action-buttons></div>
+            </div>
+          </section>
+
+          <div class="rename-modal" data-rename-modal hidden>
+            <div class="rename-backdrop"></div>
+            <div class="rename-card" role="dialog" aria-modal="true" aria-labelledby="rename-title">
+              <button class="card-close" data-close-rename type="button" aria-label="关闭弹窗">
+                <span aria-hidden="true">×</span>
+              </button>
+              <div class="overlay-head">
+                <div class="eyebrow">Nickname</div>
+                <h3 id="rename-title">修改昵称</h3>
+                <p>输入框默认加载当前昵称，保存后会同步更新当前预览中的昵称文本。</p>
+              </div>
+              <label class="field">
+                <span>昵称</span>
+                <input data-rename-input type="text" />
+              </label>
+              <div class="button-row">
+                <button class="button ghost" data-close-rename type="button">取消</button>
+                <button class="button primary" data-save-nickname type="button">保存</button>
               </div>
             </div>
           </div>
         </div>
+
+        <footer class="room-toolbar">
+          <div class="toolbar-center">
+            <div class="tool-rack">
+              <button class="tool-button muted" data-preview-action="toggle-mic" type="button">
+                <span class="tool-icon">
+                  <svg viewBox="0 0 24 24"><use href="#icon-mic-off" /></svg>
+                </span>
+                <span class="tool-label">解除静音</span>
+              </button>
+
+              <button class="tool-button camera-off" data-preview-action="toggle-camera" type="button">
+                <span class="tool-icon">
+                  <svg viewBox="0 0 24 24"><use href="#icon-camera-off" /></svg>
+                </span>
+                <span class="tool-label">开启视频</span>
+              </button>
+
+              <button class="tool-button active" data-preview-action="toggle-share" type="button">
+                <span class="tool-icon">
+                  <svg viewBox="0 0 24 24"><use href="#icon-share" /></svg>
+                </span>
+                <span class="tool-label">共享屏幕</span>
+              </button>
+
+              <button class="tool-button" data-preview-action="open-invite" type="button">
+                <span class="tool-icon">
+                  <svg viewBox="0 0 24 24"><use href="#icon-invite" /></svg>
+                </span>
+                <span class="tool-label">邀请</span>
+              </button>
+
+              <button class="tool-button" data-preview-action="open-members" type="button">
+                <span class="tool-icon">
+                  <svg viewBox="0 0 24 24"><use href="#icon-members" /></svg>
+                </span>
+                <span class="tool-label">成员(1)</span>
+              </button>
+
+              <button class="tool-button chat" data-preview-action="open-chat" type="button">
+                <span class="tool-icon">
+                  <svg viewBox="0 0 24 24"><use href="#icon-chat" /></svg>
+                </span>
+                <span class="tool-label">聊天</span>
+                <span class="indicator-dot"></span>
+              </button>
+
+              <button class="tool-button" data-preview-action="open-record" type="button">
+                <span class="tool-icon">
+                  <svg viewBox="0 0 24 24"><use href="#icon-record" /></svg>
+                </span>
+                <span class="tool-label">录制</span>
+              </button>
+
+              <button class="tool-button apps" data-preview-action="open-apps" type="button">
+                <span class="tool-icon">
+                  <svg viewBox="0 0 24 24"><use href="#icon-apps" /></svg>
+                </span>
+                <span class="tool-label">应用</span>
+                <span class="indicator-dot"></span>
+              </button>
+            </div>
+          </div>
+
+          <button class="end-call-button" data-preview-action="open-end" type="button">
+            <span class="tool-icon">
+              <svg viewBox="0 0 24 24"><use href="#icon-end" /></svg>
+            </span>
+            <span class="tool-label">结束会议</span>
+          </button>
+        </footer>
       </section>
     </main>
 
+    <svg class="icon-sprite" aria-hidden="true" focusable="false">
+      <symbol id="icon-layout" viewBox="0 0 24 24">
+        <rect x="4" y="4" width="7" height="7" rx="1.5" />
+        <rect x="13" y="4" width="7" height="7" rx="1.5" />
+        <rect x="4" y="13" width="7" height="7" rx="1.5" />
+        <rect x="13" y="13" width="7" height="7" rx="1.5" />
+      </symbol>
+      <symbol id="icon-security" viewBox="0 0 24 24">
+        <path d="M12 3 5 6v5c0 4.7 3 8.4 7 10 4-1.6 7-5.3 7-10V6l-7-3Z" />
+        <path d="M9.5 12.5 11 14l3.5-4" />
+      </symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M12 2.8v2.1M12 19.1v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M2.8 12h2.1M19.1 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5" />
+      </symbol>
+      <symbol id="icon-fullscreen" viewBox="0 0 24 24">
+        <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5" />
+      </symbol>
+      <symbol id="icon-fullscreen-exit" viewBox="0 0 24 24">
+        <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5" />
+        <path d="M9 9H5V5M15 9h4V5M9 15H5v4M15 15h4v4" />
+      </symbol>
+      <symbol id="icon-signal" viewBox="0 0 24 24">
+        <path d="M5 18v-4M10 18v-8M15 18v-11M20 18v-14" />
+      </symbol>
+      <symbol id="icon-share" viewBox="0 0 24 24">
+        <rect x="4" y="6" width="14" height="10" rx="1.5" />
+        <path d="M14 5h5v5M19 5 12 12" />
+      </symbol>
+      <symbol id="icon-mic-off" viewBox="0 0 24 24">
+        <path d="M9 11v1a3 3 0 0 0 6 0v-5a3 3 0 0 0-6 0" />
+        <path d="M5 11a7 7 0 0 0 14 0" />
+        <path d="M12 18v3" />
+        <path d="M8 21h8" />
+        <path d="M4 4 20 20" />
+      </symbol>
+      <symbol id="icon-mic-on" viewBox="0 0 24 24">
+        <path d="M9 9.5V11a3 3 0 0 0 6 0V7a3 3 0 0 0-6 0Z" />
+        <path d="M5 11a7 7 0 0 0 14 0" />
+        <path d="M12 18v3" />
+        <path d="M8 21h8" />
+      </symbol>
+      <symbol id="icon-camera-off" viewBox="0 0 24 24">
+        <path d="M4 8h11v8H4z" />
+        <path d="m15 11 5-3v8l-5-3Z" />
+        <path d="M3 3 21 21" />
+      </symbol>
+      <symbol id="icon-camera-on" viewBox="0 0 24 24">
+        <rect x="4" y="8" width="11" height="8" rx="1.5" />
+        <path d="m15 11 5-3v8l-5-3Z" />
+        <circle cx="9.5" cy="12" r="2.2" />
+      </symbol>
+      <symbol id="icon-invite" viewBox="0 0 24 24">
+        <circle cx="10" cy="8" r="3" />
+        <path d="M4.5 20c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+        <path d="M17 8v6M14 11h6" />
+      </symbol>
+      <symbol id="icon-members" viewBox="0 0 24 24">
+        <circle cx="9" cy="8" r="2.4" />
+        <circle cx="16.5" cy="10" r="2" />
+        <path d="M4.5 20a4.5 4.5 0 0 1 9 0" />
+        <path d="M13.5 20a3.5 3.5 0 0 1 7 0" />
+      </symbol>
+      <symbol id="icon-chat" viewBox="0 0 24 24">
+        <path d="M4 5h16v10H9l-5 4z" />
+      </symbol>
+      <symbol id="icon-record" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="5.2" />
+      </symbol>
+      <symbol id="icon-minutes" viewBox="0 0 24 24">
+        <path d="M7 3h7l5 5v13H7z" />
+        <path d="M14 3v5h5" />
+        <path d="M9 12h6M9 16h6" />
+      </symbol>
+      <symbol id="icon-apps" viewBox="0 0 24 24">
+        <rect x="4" y="4" width="6" height="6" rx="1.2" />
+        <rect x="14" y="4" width="6" height="6" rx="1.2" />
+        <rect x="4" y="14" width="6" height="6" rx="1.2" />
+        <rect x="14" y="14" width="6" height="6" rx="1.2" />
+      </symbol>
+      <symbol id="icon-end" viewBox="0 0 24 24">
+        <path d="M5 12a7 7 0 0 1 14 0" />
+        <path d="M8 12h8" />
+        <path d="M12 8v4" />
+        <path d="M9 15.5c1 .7 2.1 1 3 1s2-.3 3-1" />
+      </symbol>
+      <symbol id="icon-person" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="3.2" />
+        <path d="M5 20a7 7 0 0 1 14 0" />
+      </symbol>
+      <symbol id="icon-edit" viewBox="0 0 24 24">
+        <path d="M4 16.5V20h3.5L18.5 9.5 15 6 4 16.5Z" />
+        <path d="m14.5 6.5 3 3" />
+      </symbol>
+      <symbol id="icon-copy" viewBox="0 0 24 24">
+        <rect x="9" y="9" width="10" height="10" rx="2" />
+        <path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1" />
+      </symbol>
+      <symbol id="icon-emoji" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9 10h.01M15 10h.01" />
+        <path d="M9 14a4 4 0 0 0 6 0" />
+      </symbol>
+      <symbol id="icon-hand" viewBox="0 0 24 24">
+        <path d="M8 11V6a1 1 0 0 1 2 0v5" />
+        <path d="M10 11V5a1 1 0 0 1 2 0v6" />
+        <path d="M12 11V6a1 1 0 0 1 2 0v5" />
+        <path d="M14 11V8a1 1 0 0 1 2 0v6a6 6 0 0 1-6 6h-1.5a4 4 0 0 1-3.5-2l-1.8-3a1 1 0 0 1 1.7-1l1 1.6" />
+      </symbol>
+    </svg>
+
     <script>
       (() => {
-        const frame = document.querySelector(".room-frame");
-        const stageSwitches = Array.from(document.querySelectorAll("[data-stage-target]"));
-        const sidebarSwitches = Array.from(document.querySelectorAll("[data-sidebar-target]"));
-        const modalSwitches = Array.from(document.querySelectorAll("[data-modal-target]"));
-        const thumbnails = Array.from(document.querySelectorAll(".thumbnail-card"));
-        const featuredName = document.getElementById("featured-name");
-        const featuredMeta = document.getElementById("featured-meta");
-        const featuredTitle = document.getElementById("featured-title");
-        const featuredDescription = document.getElementById("featured-description");
-        const featuredScene = document.getElementById("featured-scene");
-
-        if (!frame) {
+        const room = document.querySelector(".room-preview");
+        if (!room) {
           return;
         }
 
-        function syncSwitches(selector, datasetKey, currentValue) {
-          for (const button of document.querySelectorAll(selector)) {
-            button.classList.toggle("active", button.dataset[datasetKey] === currentValue);
+        const renameModal = document.querySelector("[data-rename-modal]");
+        const renameInput = document.querySelector("[data-rename-input]");
+        const saveNicknameButton = document.querySelector("[data-save-nickname]");
+        const toast = document.querySelector("[data-room-toast]");
+        const actionOverlay = document.querySelector('[data-overlay-panel="action"]');
+        const actionEyebrow = document.querySelector("[data-action-eyebrow]");
+        const actionTitle = document.querySelector("[data-action-title]");
+        const actionCopy = document.querySelector("[data-action-copy]");
+        const actionBody = document.querySelector("[data-action-body]");
+        const actionButtons = document.querySelector("[data-action-buttons]");
+        const actionCloseButton = actionOverlay?.querySelector(".card-close");
+        const endCallButton = document.querySelector(".end-call-button");
+        const actionCard = document.querySelector(".action-card");
+        const roomTopbar = document.querySelector(".room-topbar");
+        const roomToolbar = document.querySelector(".room-toolbar");
+        const hostMenuSheet = document.querySelector(".menu-sheet.host-menu");
+        const participantMenuSheet = document.querySelector(".menu-sheet.participant-menu");
+        const chatDrawer = document.querySelector('[data-sidepanel-panel="chat"]');
+        const menuButtons = Array.from(document.querySelectorAll("[data-menu-target]"));
+
+        const actionSpecs = {
+          members: {
+            eyebrow: "Members",
+            title: "成员列表",
+            copy: "这里是成员按钮的预览效果，不会影响真实会议状态。",
+            bodyHTML: `
+              <div class="member-preview">
+                <div class="member-row">
+                  <strong>主持人</strong>
+                  <span>主持人 · 共享屏幕中</span>
+                </div>
+                <div class="member-row">
+                  <strong>匿名用户</strong>
+                  <span>参会者 · 麦克风开启</span>
+                </div>
+                <div class="member-row">
+                  <strong>匿名用户</strong>
+                  <span>参会者 · 静音</span>
+                </div>
+                <div class="member-row">
+                  <strong>匿名用户</strong>
+                  <span>助理 · 就位已确认</span>
+                </div>
+              </div>
+            `,
+            buttonsHTML: `
+              <button class="button primary" data-preview-action="raise-hand" type="button">发送提醒</button>
+              <button class="button secondary" data-close-overlay type="button">关闭</button>
+            `
+          },
+          settings: {
+            eyebrow: "Settings",
+            title: "设置",
+            copy: "这里预览当前会议中的会议设置入口，面板会贴着顶部标题栏展开。",
+            bodyHTML: `
+              <div class="capability-grid">
+                <div class="capability-chip">
+                  <strong>布局</strong>
+                  <span>宫格布局 / 宽高比 / 自动适配</span>
+                </div>
+                <div class="capability-chip">
+                  <strong>安全</strong>
+                  <span>会议信息与共享权限</span>
+                </div>
+                <div class="capability-chip">
+                  <strong>通知</strong>
+                  <span>进入会场、离会和消息提醒</span>
+                </div>
+                <div class="capability-chip">
+                  <strong>快捷键</strong>
+                  <span>全屏、静音和窗口管理</span>
+                </div>
+              </div>
+            `,
+            buttonsHTML: `
+              <button class="button primary" data-preview-action="apply-settings" type="button">应用设置</button>
+              <button class="button secondary" data-close-overlay type="button">关闭</button>
+            `
+          },
+          authorize: {
+            eyebrow: "Host",
+            title: "授权能力",
+            copy: "主持人可以在这个示意层里预览授权能力如何分发给参会者。",
+            bodyHTML: `
+              <div class="capability-grid">
+                <div class="capability-chip">
+                  <strong>麦克风</strong>
+                  <span>允许参会者自行解除静音</span>
+                </div>
+                <div class="capability-chip">
+                  <strong>摄像头</strong>
+                  <span>允许参会者打开视频</span>
+                </div>
+                <div class="capability-chip">
+                  <strong>共享屏幕</strong>
+                  <span>允许共享当前桌面或窗口</span>
+                </div>
+                <div class="capability-chip">
+                  <strong>录制</strong>
+                  <span>允许申请或直接开始本地录制</span>
+                </div>
+              </div>
+            `,
+            buttonsHTML: `
+              <button class="button primary" data-preview-action="apply-authorize" type="button">应用授权</button>
+              <button class="button secondary" data-close-overlay type="button">关闭</button>
+            `
+          },
+          whiteboard: {
+            eyebrow: "Board",
+            title: "白板管理",
+            copy: "这里模拟白板的管理面板，方便预览主持人侧的控制能力。",
+            bodyHTML: `
+              <div class="capability-grid">
+                <div class="capability-chip">
+                  <strong>清空白板</strong>
+                  <span>一键清除所有笔迹与临时标注</span>
+                </div>
+                <div class="capability-chip">
+                  <strong>撤销上一步</strong>
+                  <span>回退最近一次编辑操作</span>
+                </div>
+                <div class="capability-chip">
+                  <strong>导出图像</strong>
+                  <span>把当前白板导出为本地图片</span>
+                </div>
+                <div class="capability-chip">
+                  <strong>协作模式</strong>
+                  <span>控制所有人是否可以一起编辑</span>
+                </div>
+              </div>
+            `,
+            buttonsHTML: `
+              <button class="button primary" data-preview-action="whiteboard-clear" type="button">清空白板</button>
+              <button class="button secondary" data-close-overlay type="button">关闭</button>
+            `
+          },
+          audit: {
+            eyebrow: "Audit",
+            title: "审计事件",
+            copy: "审计事件面板用于预览会中操作记录的组织方式。",
+            bodyHTML: `
+              <ul class="timeline-list">
+                <li>09:12 · 主持人进入会议并开启麦克风。</li>
+                <li>09:15 · 匿名用户完成就位确认。</li>
+                <li>09:19 · 匿名用户请求共享屏幕权限。</li>
+              </ul>
+            `,
+            buttonsHTML: `
+              <button class="button primary" data-preview-action="export-audit" type="button">导出事件</button>
+              <button class="button secondary" data-close-overlay type="button">关闭</button>
+            `
+          },
+          apps: {
+            eyebrow: "Apps",
+            title: "应用面板",
+            copy: "底部“应用”按钮会以贴合工具栏的方式展开应用面板，方便预览扩展能力入口。",
+            bodyHTML: `
+              <div class="app-grid">
+                <div class="app-tile">
+                  <strong>白板</strong>
+                  <span>协作绘制与临时批注</span>
+                </div>
+                <div class="app-tile">
+                  <strong>录制</strong>
+                  <span>本地缓存、下载和丢弃</span>
+                </div>
+                <div class="app-tile">
+                  <strong>纪要</strong>
+                  <span>保存会中聊天与事件摘要</span>
+                </div>
+                <div class="app-tile">
+                  <strong>成员</strong>
+                  <span>查看在线成员与角色</span>
+                </div>
+                <div class="app-tile">
+                  <strong>聊天</strong>
+                  <span>打开会中消息抽屉</span>
+                </div>
+                <div class="app-tile">
+                  <strong>审计</strong>
+                  <span>查看会中事件流</span>
+                </div>
+              </div>
+            `,
+            buttonsHTML: `
+              <button class="button primary" data-preview-action="open-whiteboard" type="button">打开白板</button>
+              <button class="button secondary" data-close-overlay type="button">关闭</button>
+            `
+          },
+          leave: {
+            eyebrow: "Leave",
+            title: "离开会议",
+            copy: "这是普通参会者的离会确认预览，点击确认会切换回头像墙。",
+            bodyHTML: `
+              <div class="confirm-stack">
+                <div class="confirm-note">离开后你会返回到房间外的状态，不会影响其他正在开会的参会者。</div>
+                <div class="member-row">
+                  <strong>当前状态</strong>
+                  <span>你仍在会议中</span>
+                </div>
+              </div>
+            `,
+            buttonsHTML: `
+              <button class="button danger" data-preview-action="confirm-leave" type="button">离开会议</button>
+              <button class="button secondary" data-close-overlay type="button">取消</button>
+            `
+          },
+          end: {
+            eyebrow: "End",
+            title: "结束会议",
+            copy: "这是主持人结束会议的操作菜单，卡片会贴近右下角结束会议按钮显示，只保留结束和离开两项操作。",
+            bodyHTML: `
+              <div class="end-menu-stack">
+                <button class="end-menu-action primary" data-preview-action="confirm-end" type="button">全员结束会议</button>
+                <button class="end-menu-action" data-preview-action="open-leave" type="button">离开会议</button>
+              </div>
+            `,
+            buttonsHTML: ""
           }
+        };
+
+        let toastTimer = null;
+        let toastHideTimer = null;
+        let activeNicknameCard = document.querySelector(".participant-card[data-participant-id]");
+
+        function syncSwitchGroup(groupName, nextValue) {
+          document.querySelectorAll(`[data-state-group="${groupName}"]`).forEach((button) => {
+            button.classList.toggle("active", button.dataset.stateValue === nextValue);
+          });
         }
 
-        function setStage(nextStage) {
-          frame.dataset.stage = nextStage;
-          syncSwitches("[data-stage-target]", "stageTarget", nextStage);
+        function syncMenuButtons(nextValue) {
+          menuButtons.forEach((button) => {
+            const isActive = button.dataset.menuTarget === nextValue;
+            button.classList.toggle("active", isActive);
+            button.setAttribute("aria-expanded", String(isActive));
+          });
         }
 
-        function setSidebar(nextSidebar) {
-          frame.dataset.sidebar = nextSidebar;
-          syncSwitches("[data-sidebar-target]", "sidebarTarget", nextSidebar);
+        function getDefaultNickname(participantId) {
+          return participantId === "speaker" ? "主持人" : "匿名用户";
         }
 
-        function setModal(nextModal) {
-          frame.dataset.modal = nextModal;
-          syncSwitches("[data-modal-target]", "modalTarget", nextModal);
+        function getCurrentNickname(card) {
+          const nickname = card?.dataset.nickname?.trim();
+          if (nickname) {
+            return nickname;
+          }
+          return getDefaultNickname(card?.dataset.participantId);
         }
 
-        function setFeatured(card) {
-          if (!card || !featuredName || !featuredMeta || !featuredTitle || !featuredDescription || !featuredScene) {
+        function setNickname(card, nextNickname) {
+          const participantId = card?.dataset.participantId;
+          if (!participantId) {
             return;
           }
 
-          for (const thumbnail of thumbnails) {
-            thumbnail.classList.toggle("active", thumbnail === card);
+          document.querySelectorAll(`[data-participant-id="${participantId}"]`).forEach((item) => {
+            item.dataset.nickname = nextNickname;
+            item.querySelectorAll("[data-nickname-text]").forEach((node) => {
+              node.textContent = nextNickname;
+            });
+          });
+        }
+
+        function findLabelNode(button) {
+          return (
+            button.querySelector(".tool-label") ||
+            Array.from(button.children).find((child) => child.tagName === "SPAN" && !child.classList.contains("tool-icon") && !child.classList.contains("indicator-dot"))
+          );
+        }
+
+        function setButtonIcon(button, iconId) {
+          const useNode = button.querySelector("use");
+          if (useNode) {
+            useNode.setAttribute("href", `#${iconId}`);
+          }
+        }
+
+        function clamp(value, min, max) {
+          return Math.min(Math.max(value, min), max);
+        }
+
+        function clearFloatingPanel(panel) {
+          if (!panel) {
+            return;
           }
 
-          featuredName.textContent = card.dataset.featureName || "";
-          featuredMeta.textContent = card.dataset.featureMeta || "";
-          featuredTitle.textContent = card.dataset.featureTitle || "";
-          featuredDescription.textContent = card.dataset.featureDescription || "";
+          panel.style.position = "";
+          panel.style.left = "";
+          panel.style.top = "";
+          panel.style.right = "";
+          panel.style.bottom = "";
+          panel.style.inset = "";
+          panel.style.transform = "";
+          panel.style.visibility = "";
+          panel.style.maxHeight = "";
+          panel.style.overflow = "";
+        }
 
-          featuredScene.className = "scene-frame";
-          const variant = card.dataset.featureVariant;
-          if (variant === "share") {
-            featuredScene.classList.add("share");
-          } else if (variant === "participant") {
-            featuredScene.classList.add("participant");
+        function syncEndButtonState() {
+          if (!endCallButton) {
+            return;
+          }
+
+          const isEndMenuOpen = room.dataset.overlay === "action" && room.dataset.windowKey === "end";
+          const labelNode = endCallButton.querySelector(".tool-label");
+          const iconNode = endCallButton.querySelector(".tool-icon");
+
+          endCallButton.classList.toggle("cancel-mode", isEndMenuOpen);
+          if (labelNode) {
+            labelNode.textContent = isEndMenuOpen ? "取消" : "结束会议";
+          }
+          if (iconNode) {
+            iconNode.hidden = isEndMenuOpen;
           }
         }
 
-        for (const button of stageSwitches) {
-          button.addEventListener("click", () => {
-            const nextStage = button.dataset.stageTarget;
-            if (nextStage) {
-              setStage(nextStage);
+        function positionAttachedPanel(panel, triggerButton, placement = {}) {
+          if (!panel || !triggerButton) {
+            return false;
+          }
+
+          const anchorElement = placement.anchor === "toolbar" ? roomToolbar : roomTopbar;
+          const anchorRect = anchorElement?.getBoundingClientRect();
+          const triggerRect = triggerButton.getBoundingClientRect();
+          const panelRect = panel.getBoundingClientRect();
+          const panelWidth = panelRect.width || panel.offsetWidth;
+
+          if (!anchorRect || !panelWidth) {
+            return false;
+          }
+
+          const gap = placement.gap ?? 4;
+          const margin = placement.margin ?? 12;
+
+          let left = null;
+          let right = null;
+          if (placement.align === "start") {
+            left = triggerRect.left;
+          } else if (placement.align === "center") {
+            left = triggerRect.left + (triggerRect.width - panelWidth) / 2;
+          } else {
+            right = window.innerWidth - triggerRect.right;
+          }
+
+          if (left !== null) {
+            const maxLeft = Math.max(margin, window.innerWidth - panelWidth - margin);
+            left = clamp(left, margin, maxLeft);
+          }
+
+          if (right !== null) {
+            const maxRight = Math.max(margin, window.innerWidth - panelWidth - margin);
+            right = clamp(right, margin, maxRight);
+          }
+
+          const availableHeight =
+            placement.anchor === "toolbar"
+              ? Math.max(120, anchorRect.top - gap - margin)
+              : Math.max(120, window.innerHeight - anchorRect.bottom - gap - margin);
+          const top = anchorRect.bottom + gap;
+          const bottom = window.innerHeight - anchorRect.top + gap;
+
+          panel.style.position = "fixed";
+          panel.style.left = left === null ? "auto" : `${left}px`;
+          panel.style.right = right === null ? "auto" : `${right}px`;
+          if (placement.anchor === "toolbar") {
+            panel.style.top = "auto";
+            panel.style.bottom = `${bottom}px`;
+          } else {
+            panel.style.top = `${top}px`;
+            panel.style.bottom = "auto";
+          }
+          panel.style.transform = "none";
+          panel.style.maxHeight = `${availableHeight}px`;
+          panel.style.overflow = "auto";
+          return true;
+        }
+
+        function resolveMenuTriggerButton(nextValue, triggerButton) {
+          return document.querySelector(`[data-menu-target="${nextValue}"]`) || triggerButton;
+        }
+
+        function resolveActionTriggerButton(specKey, triggerButton) {
+          if (specKey === "end") {
+            return endCallButton;
+          }
+
+          if (specKey === "apps") {
+            return document.querySelector('[data-preview-action="open-apps"]');
+          }
+
+          if (specKey === "settings") {
+            return document.querySelector('[data-preview-action="open-settings"]');
+          }
+
+          return triggerButton;
+        }
+
+        function positionMenuPanel(nextValue, triggerButton) {
+          const panel = nextValue === "host" ? hostMenuSheet : participantMenuSheet;
+          if (!panel) {
+            return;
+          }
+
+          const anchorButton = resolveMenuTriggerButton(nextValue, triggerButton);
+          if (!anchorButton) {
+            clearFloatingPanel(panel);
+            return;
+          }
+
+          panel.style.visibility = "hidden";
+          requestAnimationFrame(() => {
+            if (room.dataset.menu !== nextValue) {
+              panel.style.visibility = "";
+              return;
+            }
+
+            if (!positionAttachedPanel(panel, anchorButton, { anchor: "topbar", align: "end", gap: 4, margin: 12 })) {
+              panel.style.visibility = "";
+              return;
+            }
+
+            panel.style.visibility = "";
+          });
+        }
+
+        function positionActionPanel(specKey, triggerButton) {
+          if (!actionCard) {
+            return;
+          }
+
+          const placement =
+            specKey === "apps"
+              ? { anchor: "toolbar", align: "end", gap: 4, margin: 12 }
+              : specKey === "end"
+                ? { anchor: "toolbar", align: "end", gap: 4, margin: 12 }
+                : specKey === "settings"
+                  ? { anchor: "topbar", align: "end", gap: 4, margin: 12 }
+                  : null;
+          const anchorButton = resolveActionTriggerButton(specKey, triggerButton);
+
+          if (!placement || !anchorButton) {
+            clearFloatingPanel(actionCard);
+            return;
+          }
+
+          actionCard.style.visibility = "hidden";
+          requestAnimationFrame(() => {
+            if (room.dataset.overlay !== "action" || room.dataset.windowKey !== specKey) {
+              actionCard.style.visibility = "";
+              return;
+            }
+
+            if (!positionAttachedPanel(actionCard, anchorButton, placement)) {
+              actionCard.style.visibility = "";
+              return;
+            }
+
+            actionCard.style.visibility = "";
+          });
+        }
+
+        function showToast(message, tone = "info") {
+          if (!toast) {
+            return;
+          }
+
+          clearTimeout(toastTimer);
+          clearTimeout(toastHideTimer);
+          toast.textContent = message;
+          toast.dataset.tone = tone;
+          toast.hidden = false;
+          requestAnimationFrame(() => {
+            toast.classList.add("visible");
+          });
+
+          toastTimer = window.setTimeout(() => {
+            if (!toast) {
+              return;
+            }
+
+            toast.classList.remove("visible");
+            toastHideTimer = window.setTimeout(() => {
+              if (!toast) {
+                return;
+              }
+              toast.hidden = true;
+            }, 180);
+          }, 1800);
+        }
+
+        function openRename(card, syncOverlayState = true) {
+          if (!card || !renameModal || !renameInput) {
+            return;
+          }
+
+          activeNicknameCard = card;
+          renameInput.value = getCurrentNickname(card);
+          renameModal.hidden = false;
+
+          if (syncOverlayState) {
+            room.dataset.overlay = "rename";
+            room.dataset.windowKey = "rename";
+            syncSwitchGroup("overlay", "rename");
+          }
+
+          requestAnimationFrame(() => {
+            renameInput.focus();
+            renameInput.select();
+          });
+        }
+
+        function closeRename(syncOverlayState = true) {
+          if (!renameModal) {
+            return;
+          }
+
+          renameModal.hidden = true;
+
+          if (syncOverlayState) {
+            room.dataset.overlay = "none";
+            room.dataset.windowKey = "none";
+            syncSwitchGroup("overlay", "none");
+          }
+        }
+
+        function setOverlayState(nextValue, windowKey = nextValue) {
+          room.dataset.overlay = nextValue;
+          syncSwitchGroup("overlay", nextValue);
+          room.dataset.windowKey = windowKey;
+
+          if (nextValue === "rename") {
+            openRename(activeNicknameCard, false);
+          } else {
+            closeRename(false);
+          }
+
+          if (nextValue !== "action") {
+            clearActionWindowKey();
+          }
+
+          syncEndButtonState();
+        }
+
+        function setMenuState(nextValue) {
+          room.dataset.menu = nextValue;
+          syncSwitchGroup("menu", nextValue);
+          syncMenuButtons(nextValue);
+        }
+
+        function setSidePanelState(nextValue) {
+          room.dataset.sidepanel = nextValue;
+          if (chatDrawer) {
+            chatDrawer.setAttribute("aria-hidden", String(nextValue !== "chat"));
+          }
+          if (nextValue === "chat") {
+            room.dataset.chatUnread = "off";
+            syncSwitchGroup("chatUnread", "off");
+          }
+        }
+
+        function getWindowKey() {
+          return room.dataset.windowKey || "none";
+        }
+
+        function clearActionWindowKey() {
+          if (actionOverlay) {
+            actionOverlay.dataset.actionKey = "";
+          }
+        }
+
+        function closeCurrentSubwindow() {
+          setMenuState("none");
+          setSidePanelState("none");
+          setOverlayState("none", "none");
+          clearActionWindowKey();
+          clearFloatingPanel(hostMenuSheet);
+          clearFloatingPanel(participantMenuSheet);
+          clearFloatingPanel(actionCard);
+          room.dataset.windowKey = "none";
+          syncEndButtonState();
+        }
+
+        function openOverlayWindow(nextValue, windowKey = nextValue) {
+          if (getWindowKey() === windowKey && room.dataset.overlay === nextValue) {
+            closeCurrentSubwindow();
+            return false;
+          }
+
+          closeCurrentSubwindow();
+          setOverlayState(nextValue, windowKey);
+          return true;
+        }
+
+        function openSidePanel(nextValue) {
+          const nextKey = `sidepanel:${nextValue}`;
+          if (getWindowKey() === nextKey && room.dataset.sidepanel === nextValue) {
+            closeCurrentSubwindow();
+            return false;
+          }
+
+          closeCurrentSubwindow();
+          setSidePanelState(nextValue);
+          room.dataset.windowKey = nextKey;
+          return true;
+        }
+
+        function openActionWindow(specKey, triggerButton = null) {
+          const spec = actionSpecs[specKey];
+          if (!spec) {
+            return false;
+          }
+
+          if (getWindowKey() === specKey && room.dataset.overlay === "action") {
+            closeCurrentSubwindow();
+            return false;
+          }
+
+          closeCurrentSubwindow();
+          renderActionOverlay(spec, specKey, triggerButton);
+          return true;
+        }
+
+        function setMediaState(actionKey, isOn) {
+          const buttons = Array.from(document.querySelectorAll(`[data-preview-action="${actionKey}"]`));
+
+          buttons.forEach((button) => {
+            const labelNode = findLabelNode(button);
+            const isToolButton = button.classList.contains("tool-button");
+            const useNode = button.querySelector("use");
+
+            if (actionKey === "toggle-mic") {
+              button.classList.toggle("muted", !isOn && isToolButton);
+              if (labelNode && isToolButton) {
+                labelNode.textContent = isOn ? "静音" : "解除静音";
+              }
+              if (useNode) {
+                useNode.setAttribute("href", isOn ? "#icon-mic-on" : "#icon-mic-off");
+              }
+            }
+
+            if (actionKey === "toggle-camera") {
+              button.classList.toggle("camera-off", !isOn && isToolButton);
+              if (labelNode && isToolButton) {
+                labelNode.textContent = isOn ? "关闭视频" : "开启视频";
+              }
+              if (useNode) {
+                useNode.setAttribute("href", isOn ? "#icon-camera-on" : "#icon-camera-off");
+              }
+            }
+
+            if (actionKey === "toggle-share") {
+              button.classList.toggle("active", isOn && isToolButton);
+              if (labelNode && isToolButton) {
+                labelNode.textContent = isOn ? "停止共享" : "共享屏幕";
+              }
+              if (useNode) {
+                useNode.setAttribute("href", "#icon-share");
+              }
+            }
+
+            button.setAttribute("aria-pressed", String(isOn));
+          });
+
+          if (actionKey === "toggle-mic") {
+            room.dataset.mic = isOn ? "live" : "muted";
+            document.querySelectorAll('[data-participant-id="speaker"] .mic-state').forEach((stateNode) => {
+              stateNode.classList.toggle("off", !isOn);
+              stateNode.setAttribute("aria-label", isOn ? "发言中" : "静音");
+              const useNode = stateNode.querySelector("use");
+              if (useNode) {
+                useNode.setAttribute("href", isOn ? "#icon-mic-on" : "#icon-mic-off");
+              }
+            });
+          }
+
+          if (actionKey === "toggle-camera") {
+            room.dataset.camera = isOn ? "on" : "off";
+          }
+
+          if (actionKey === "toggle-share") {
+            room.dataset.share = isOn ? "on" : "off";
+          }
+        }
+
+        function syncFullscreenButtons(isOn) {
+          const tooltip = isOn ? "退出全屏模式" : "进入全屏模式";
+          const iconId = isOn ? "icon-fullscreen-exit" : "icon-fullscreen";
+          document.querySelectorAll('[data-preview-action="toggle-fullscreen"]').forEach((button) => {
+            button.classList.toggle("active", isOn);
+            button.setAttribute("aria-pressed", String(isOn));
+            button.setAttribute("aria-label", tooltip);
+            button.setAttribute("data-tooltip", tooltip);
+            const useNode = button.querySelector("use");
+            if (useNode) {
+              useNode.setAttribute("href", `#${iconId}`);
             }
           });
         }
 
-        for (const button of sidebarSwitches) {
-          button.addEventListener("click", () => {
-            const nextSidebar = button.dataset.sidebarTarget;
-            if (!nextSidebar) {
+        function renderActionOverlay(spec, specKey, triggerButton = null) {
+          if (!spec || !actionOverlay || !actionBody || !actionButtons) {
+            return;
+          }
+
+          room.dataset.menu = "none";
+          syncMenuButtons("none");
+          syncSwitchGroup("menu", "none");
+          room.dataset.overlay = "action";
+          room.dataset.windowKey = specKey || "action";
+          if (specKey) {
+            actionOverlay.dataset.actionKey = specKey;
+          }
+          syncSwitchGroup("overlay", "action");
+          closeRename(false);
+
+          if (actionEyebrow) {
+            actionEyebrow.textContent = spec.eyebrow;
+          }
+          if (actionTitle) {
+            actionTitle.textContent = spec.title;
+          }
+          if (actionCopy) {
+            actionCopy.textContent = spec.copy;
+          }
+          actionBody.innerHTML = spec.bodyHTML;
+          actionButtons.innerHTML = spec.buttonsHTML;
+          actionButtons.hidden = !spec.buttonsHTML || !spec.buttonsHTML.trim();
+          if (actionCloseButton) {
+            actionCloseButton.hidden = false;
+          }
+          syncEndButtonState();
+          positionActionPanel(specKey, triggerButton);
+        }
+
+        function openMenu(nextValue, triggerButton = null) {
+          if (nextValue === "none") {
+            closeCurrentSubwindow();
+            return;
+          }
+
+          const nextKey = `menu:${nextValue}`;
+          if (getWindowKey() === nextKey && room.dataset.menu === nextValue) {
+            closeCurrentSubwindow();
+            showToast(nextValue === "host" ? "已收起主持人工具" : "已收起会议工具");
+            return;
+          }
+
+          closeCurrentSubwindow();
+          setMenuState(nextValue);
+          room.dataset.windowKey = nextKey;
+          positionMenuPanel(nextValue, triggerButton);
+          showToast(nextValue === "host" ? "已展开主持人工具" : "已展开会议工具");
+        }
+
+        function handlePreviewAction(actionKey, triggerButton = null) {
+          switch (actionKey) {
+            case "toggle-mic": {
+              const nextState = room.dataset.mic !== "live";
+              setMediaState("toggle-mic", nextState);
+              showToast(nextState ? "麦克风已开启" : "麦克风已静音", nextState ? "success" : "danger");
+              return;
+            }
+            case "toggle-camera": {
+              const nextState = room.dataset.camera !== "on";
+              setMediaState("toggle-camera", nextState);
+              showToast(nextState ? "摄像头已开启" : "摄像头已关闭", nextState ? "success" : "danger");
+              return;
+            }
+            case "toggle-share": {
+              const nextState = room.dataset.share !== "on";
+              setMediaState("toggle-share", nextState);
+              showToast(nextState ? "正在共享屏幕" : "已停止共享屏幕", nextState ? "success" : "info");
+              return;
+            }
+            case "open-invite":
+              if (openOverlayWindow("invite", "invite")) {
+                showToast("已打开邀请预览");
+              } else {
+                showToast("已关闭邀请预览");
+              }
+              return;
+            case "open-share":
+              if (openOverlayWindow("invite", "share")) {
+                showToast("已打开分享面板");
+              } else {
+                showToast("已关闭分享面板");
+              }
+              return;
+            case "open-record":
+              if (openOverlayWindow("record", "record")) {
+                showToast("已打开录制预览");
+              } else {
+                showToast("已关闭录制预览");
+              }
+              return;
+            case "open-ready":
+              if (openOverlayWindow("ready", "ready")) {
+                showToast("已打开就位确认预览");
+              } else {
+                showToast("已关闭就位确认预览");
+              }
+              return;
+            case "open-minutes":
+              if (openOverlayWindow("minutes", "minutes")) {
+                showToast("已打开纪要预览");
+              } else {
+                showToast("已关闭纪要预览");
+              }
+              return;
+            case "open-rename": {
+              activeNicknameCard = document.querySelector('.participant-card[data-participant-id]') || activeNicknameCard;
+              if (openOverlayWindow("rename", "rename")) {
+                showToast("已打开昵称修改");
+              } else {
+                showToast("已关闭昵称修改");
+              }
+              return;
+            }
+            case "open-members":
+              if (openActionWindow("members")) {
+                showToast("已打开成员预览");
+              } else {
+                showToast("已关闭成员预览");
+              }
+              return;
+            case "open-chat":
+              if (openSidePanel("chat")) {
+                showToast("已打开聊天浮窗");
+              } else {
+                showToast("已关闭聊天浮窗");
+              }
+              return;
+            case "open-settings":
+              if (openActionWindow("settings", triggerButton)) {
+                showToast("已打开设置预览");
+              } else {
+                showToast("已关闭设置预览");
+              }
+              return;
+            case "toggle-fullscreen": {
+              const nextState = room.dataset.fullscreen !== "on";
+              room.dataset.fullscreen = nextState ? "on" : "off";
+              syncFullscreenButtons(nextState);
+              showToast(nextState ? "已进入全屏预览" : "已退出全屏预览");
+              return;
+            }
+            case "open-authorize":
+              if (openActionWindow("authorize")) {
+                showToast("已打开授权能力预览");
+              } else {
+                showToast("已关闭授权能力预览");
+              }
+              return;
+            case "open-whiteboard":
+              if (openActionWindow("whiteboard")) {
+                showToast("已打开白板预览");
+              } else {
+                showToast("已关闭白板预览");
+              }
+              return;
+            case "open-audit":
+              if (openActionWindow("audit")) {
+                showToast("已打开审计预览");
+              } else {
+                showToast("已关闭审计预览");
+              }
+              return;
+            case "open-apps":
+              if (openActionWindow("apps", triggerButton)) {
+                showToast("已打开应用预览");
+              } else {
+                showToast("已关闭应用预览");
+              }
+              return;
+            case "open-leave":
+              if (openActionWindow("leave")) {
+                showToast("已打开离会确认");
+              } else {
+                showToast("已关闭离会确认");
+              }
+              return;
+            case "open-end":
+              if (openActionWindow("end", triggerButton)) {
+                showToast("已打开结束会议菜单");
+              } else {
+                showToast("已关闭结束会议菜单");
+              }
+              return;
+            case "copy-invite":
+              showToast("已复制会议信息（预览）", "success");
+              return;
+            case "copy-invite-qr":
+              showToast("已复制会议二维码（预览）", "success");
+              return;
+            case "copy-meeting-id":
+              showToast("已复制会议 ID 821 503 974（预览）", "success");
+              return;
+            case "request-record":
+              showToast("已向主持人发送录制申请", "info");
+              closeCurrentSubwindow();
+              return;
+            case "ready-confirm":
+              showToast("已完成就位确认", "success");
+              closeCurrentSubwindow();
+              return;
+            case "save-minutes":
+              showToast("已保存当前会议纪要（预览）", "success");
+              closeCurrentSubwindow();
+              return;
+            case "raise-hand":
+              showToast("已举手", "info");
+              return;
+            case "copy-chat":
+              showToast("已发送示例消息（预览）", "success");
+              return;
+            case "apply-settings":
+              showToast("已应用当前设置（预览）", "success");
+              closeCurrentSubwindow();
+              return;
+            case "apply-authorize":
+              showToast("已应用授权能力（预览）", "success");
+              return;
+            case "whiteboard-clear":
+              showToast("白板已清空（预览）", "warning");
+              return;
+            case "export-audit":
+              showToast("已导出审计事件（预览）", "success");
+              return;
+            case "confirm-leave":
+              setRoomState("stage", "idle");
+              closeCurrentSubwindow();
+              showToast("已离开会议，预览切回头像墙", "danger");
+              return;
+            case "confirm-end":
+              setRoomState("stage", "idle");
+              closeCurrentSubwindow();
+              showToast("会议已结束，预览切回头像墙", "danger");
+              return;
+            default:
+              return;
+          }
+        }
+
+        function setRoomState(groupName, nextValue) {
+          if (groupName === "menu") {
+            openMenu(nextValue);
+            return;
+          }
+
+          if (groupName === "overlay") {
+            if (nextValue === "none") {
+              closeCurrentSubwindow();
               return;
             }
 
-            if (button.classList.contains("toolbar-button") && frame.dataset.sidebar === nextSidebar) {
-              setSidebar("none");
+            if (nextValue === "rename") {
+              activeNicknameCard = document.querySelector('.participant-card[data-participant-id]') || activeNicknameCard;
+              if (openOverlayWindow("rename", "rename")) {
+                showToast("已打开昵称修改");
+              } else {
+                showToast("已关闭昵称修改");
+              }
               return;
             }
 
-            setSidebar(nextSidebar);
+            if (nextValue === "invite") {
+              if (openOverlayWindow("invite", "invite")) {
+                showToast("已打开邀请预览");
+              } else {
+                showToast("已关闭邀请预览");
+              }
+              return;
+            }
+
+            if (nextValue === "record") {
+              if (openOverlayWindow("record", "record")) {
+                showToast("已打开录制预览");
+              } else {
+                showToast("已关闭录制预览");
+              }
+              return;
+            }
+
+            if (nextValue === "ready") {
+              if (openOverlayWindow("ready", "ready")) {
+                showToast("已打开就位确认预览");
+              } else {
+                showToast("已关闭就位确认预览");
+              }
+              return;
+            }
+
+            if (nextValue === "minutes") {
+              if (openOverlayWindow("minutes", "minutes")) {
+                showToast("已打开纪要预览");
+              } else {
+                showToast("已关闭纪要预览");
+              }
+              return;
+            }
+          }
+
+          if (groupName === "connection") {
+            room.dataset.connection = nextValue;
+            syncSwitchGroup("connection", nextValue);
+            showToast(nextValue === "degraded" ? "已切换为网络异常态" : "网络状态已恢复正常", nextValue === "degraded" ? "warning" : "success");
+            return;
+          }
+
+          if (groupName === "chatUnread") {
+            room.dataset.chatUnread = nextValue;
+            syncSwitchGroup("chatUnread", nextValue);
+            return;
+          }
+
+          room.dataset[groupName] = nextValue;
+          syncSwitchGroup(groupName, nextValue);
+
+          if (groupName === "overlay") {
+            if (nextValue === "rename") {
+              openRename(activeNicknameCard, false);
+            } else {
+              closeRename(false);
+            }
+          }
+        }
+
+        function applyHashPreviewState() {
+          const hashValue = window.location.hash.replace(/^#/, "");
+          if (hashValue === "end-menu" && endCallButton) {
+            openActionWindow("end", endCallButton);
+          }
+        }
+
+        setMediaState("toggle-mic", false);
+        setMediaState("toggle-camera", false);
+        setMediaState("toggle-share", true);
+        syncFullscreenButtons(room.dataset.fullscreen === "on");
+
+        document.addEventListener("click", (event) => {
+          const menuTarget = event.target.closest("[data-menu-target]");
+          if (menuTarget) {
+            openMenu(menuTarget.dataset.menuTarget, menuTarget);
+            return;
+          }
+
+          const previewAction = event.target.closest("[data-preview-action]");
+          if (previewAction) {
+            handlePreviewAction(previewAction.dataset.previewAction, previewAction);
+            return;
+          }
+
+          const stateButton = event.target.closest("[data-state-group]");
+          if (stateButton) {
+            const groupName = stateButton.dataset.stateGroup;
+            const nextValue = stateButton.dataset.stateValue;
+            if (groupName && nextValue) {
+              setRoomState(groupName, nextValue);
+            }
+            return;
+          }
+
+          const renameButton = event.target.closest("[data-open-rename]");
+          if (renameButton) {
+            activeNicknameCard = renameButton.closest(".participant-card") || activeNicknameCard;
+            openOverlayWindow("rename", "rename");
+            return;
+          }
+
+          const closeOverlayButton = event.target.closest("[data-close-overlay]");
+          if (closeOverlayButton) {
+            closeCurrentSubwindow();
+            showToast("已返回会议画面");
+            return;
+          }
+
+          const closeRenameButton = event.target.closest("[data-close-rename]");
+          if (closeRenameButton) {
+            closeCurrentSubwindow();
+            return;
+          }
+
+          const closeSidepanelButton = event.target.closest("[data-close-sidepanel]");
+          if (closeSidepanelButton) {
+            closeCurrentSubwindow();
+            showToast("已收起聊天浮窗");
+            return;
+          }
+
+          const saveButton = event.target.closest("[data-save-nickname]");
+          if (saveButton) {
+            if (!activeNicknameCard || !renameInput) {
+              return;
+            }
+
+            const nextNickname = renameInput.value.trim();
+            if (!nextNickname) {
+              renameInput.focus();
+              return;
+            }
+
+            setNickname(activeNicknameCard, nextNickname);
+            closeCurrentSubwindow();
+            showToast("昵称已更新", "success");
+            return;
+          }
+
+        });
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") {
+            if (getWindowKey() !== "none") {
+              closeCurrentSubwindow();
+              return;
+            }
+          }
+
+          if (event.key === "Enter" && renameModal && !renameModal.hidden && document.activeElement === renameInput) {
+            event.preventDefault();
+            saveNicknameButton?.click();
+          }
+        });
+
+        if (renameInput) {
+          renameInput.addEventListener("input", () => {
+            renameInput.value = renameInput.value.replace(/\s+/g, " ");
           });
         }
 
-        for (const button of modalSwitches) {
-          button.addEventListener("click", () => {
-            const nextModal = button.dataset.modalTarget;
-            if (!nextModal) {
-              return;
-            }
-
-            if (button.classList.contains("toolbar-button") && frame.dataset.modal === nextModal) {
-              setModal("none");
-              return;
-            }
-
-            setModal(nextModal);
-          });
-        }
-
-        for (const card of thumbnails) {
-          card.addEventListener("dblclick", () => {
-            setStage("active");
-            setFeatured(card);
-          });
-        }
-
-        setStage(frame.dataset.stage || "active");
-        setSidebar(frame.dataset.sidebar || "none");
-        setModal(frame.dataset.modal || "none");
-        setFeatured(thumbnails[0]);
+        syncSwitchGroup("stage", room.dataset.stage || "active");
+        syncSwitchGroup("connection", room.dataset.connection || "normal");
+        syncSwitchGroup("chatUnread", room.dataset.chatUnread || "on");
+        setMenuState(room.dataset.menu || "none");
+        setSidePanelState(room.dataset.sidepanel || "none");
+        setOverlayState(room.dataset.overlay || "none");
+        requestAnimationFrame(() => {
+          applyHashPreviewState();
+        });
       })();
     </script>
   </body>

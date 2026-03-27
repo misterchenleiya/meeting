@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/07c2/projects/meeting/internal/meeting"
-	"github.com/07c2/projects/meeting/internal/signaling"
-	"github.com/07c2/projects/meeting/internal/storage/sqlite"
+	"github.com/misterchenleiya/meeting/internal/meeting"
+	"github.com/misterchenleiya/meeting/internal/signaling"
+	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
 )
 
 type Server struct {

@@ -25,66 +25,42 @@
       <section class="auth-frame" data-auth-view="login">
         <section class="brand-stage">
           <div class="brand-copy">
-            <div class="brand-kicker">meeting stage mode</div>
             <h1 class="wordmark"><span>meeting</span></h1>
-            <p class="brand-description">
-              左侧舞台区保持不变，像主持人走向黑场中央的第一束追光。整个系统以 macOS dark 为基准，
-              后续只替换色板和变量，不推翻布局结构。
-            </p>
-          </div>
-
-          <div class="stage-grid">
-            <article class="stage-card">
-              <strong>Host Entry</strong>
-              <p>登录后直接看到“预定会议 / 快速会议”两种入口，适配正式主持与临时开会两个场景。</p>
-            </article>
-            <article class="stage-card">
-              <strong>Join Flow</strong>
-              <p>加入会议采用二段式输入，先输会议号，再根据会议状态决定是否弹出密码悬浮窗。</p>
-            </article>
-            <article class="stage-card">
-              <strong>Theme System</strong>
-              <p>黑色风格通过 CSS 变量统一，便于后续扩展浅色或品牌主题，不需要重写页面骨架。</p>
-            </article>
           </div>
         </section>
 
         <aside class="auth-panel">
-          <div class="panel-brand">
-            <div>
-              <strong>Meeting</strong>
-              <span>Authentication & entry</span>
-            </div>
-            <span>Desktop / Mobile shared</span>
-          </div>
-
           <section class="auth-card" data-view="login">
-            <div>
-              <div class="eyebrow">Email login</div>
-              <h2>邮箱登录</h2>
+            <div class="login-header-copy">
+              <div class="login-mode-title">邮箱验证码登录</div>
+              <button class="login-switch-link" type="button">使用密码登录 &gt;</button>
             </div>
-            <p>当前只展示邮箱登录入口，密码登录和临时验证码获取保留在同一张卡片中，避免再开分叉页面。</p>
-            <form class="form-grid">
-              <label>
-                邮箱
-                <input type="email" value="owner@meeting.dev" />
-              </label>
-              <label>
-                密码
-                <div class="field-shell">
-                  <input type="password" value="••••••••" />
-                  <button class="field-inline-action" type="button">获取临时验证码</button>
-                </div>
-              </label>
+            <form class="form-grid login-form">
+              <input type="email" placeholder="请输入邮箱" value="" aria-label="邮箱" />
+              <div class="field-shell">
+                <input type="password" placeholder="请输入密码" value="" aria-label="密码" />
+                <button class="field-inline-action" type="button">获取临时验证码</button>
+              </div>
             </form>
-            <div class="button-stack">
-              <button class="button primary" data-auth-target="home" type="button">登录</button>
-              <button class="button secondary" data-auth-target="join" type="button">加入会议</button>
-            </div>
-            <div class="helper-line">
-              <span>默认英文文案可以在正式实现阶段再补语言切换。</span>
+            <div class="login-footer">
               <button type="button">忘记密码</button>
             </div>
+            <div class="button-stack login-actions">
+              <button class="button primary" data-auth-target="home" type="button">登录</button>
+              <button class="button secondary wechat-button" type="button">
+                <svg class="wechat-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <circle cx="9" cy="10" r="6.5" fill="#09b83e" />
+                  <circle cx="15.2" cy="13.6" r="5.4" fill="#09b83e" />
+                  <circle cx="7.3" cy="9.7" r="0.9" fill="#ffffff" />
+                  <circle cx="10.4" cy="9.7" r="0.9" fill="#ffffff" />
+                  <circle cx="13.8" cy="13.2" r="0.75" fill="#ffffff" />
+                  <circle cx="16.6" cy="13.2" r="0.75" fill="#ffffff" />
+                  <path d="M8.3 14.2 7.1 15.4v-1.7" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1" />
+                </svg>
+              </button>
+            </div>
+            <div class="auth-divider" aria-hidden="true"></div>
+            <button class="button secondary join-button" data-auth-target="join" type="button">加入会议</button>
           </section>
 
           <section class="auth-card" data-view="home">

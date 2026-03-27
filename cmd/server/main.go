@@ -8,12 +8,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/07c2/projects/meeting/internal/config"
-	"github.com/07c2/projects/meeting/internal/httpapi"
-	"github.com/07c2/projects/meeting/internal/logging"
-	"github.com/07c2/projects/meeting/internal/meeting"
-	"github.com/07c2/projects/meeting/internal/signaling"
-	"github.com/07c2/projects/meeting/internal/storage/sqlite"
+	"github.com/misterchenleiya/meeting/internal/config"
+	"github.com/misterchenleiya/meeting/internal/httpapi"
+	"github.com/misterchenleiya/meeting/internal/logging"
+	"github.com/misterchenleiya/meeting/internal/meeting"
+	"github.com/misterchenleiya/meeting/internal/signaling"
+	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
 )
 
 func main() {
