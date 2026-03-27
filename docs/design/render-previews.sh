@@ -97,6 +97,10 @@ render_auth_mobile() {
   render_page "meeting-auth-preview.html" "430,2600" "meeting-auth-preview-mobile.png" "meeting-preview-auth-mobile"
 }
 
+render_auth_join_preview() {
+  render_page "meeting-auth-preview.html#join" "1440,1800" "meeting-auth-preview-join.png" "meeting-preview-auth-join"
+}
+
 render_host_login_preview() {
   render_page "meeting-auth-preview.html#login" "1440,1800" "meeting-host-login-preview.png" "meeting-preview-host-login"
 }
@@ -127,6 +131,9 @@ case "${MODE}" in
   auth)
     render_auth_desktop
     render_auth_mobile
+    ;;
+  auth-join)
+    render_auth_join_preview
     ;;
   room)
     render_room_desktop
@@ -163,7 +170,7 @@ case "${MODE}" in
     ;;
   *)
     echo "Unsupported mode: ${MODE}" >&2
-    echo "Supported modes: all, host-flow, host-login, host-create, host-room, auth, room, desktop, mobile, auth-desktop, auth-mobile, room-desktop, room-mobile" >&2
+    echo "Supported modes: all, host-flow, host-login, host-create, host-room, auth, auth-join, room, desktop, mobile, auth-desktop, auth-mobile, room-desktop, room-mobile" >&2
     exit 1
     ;;
 esac

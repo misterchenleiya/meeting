@@ -129,16 +129,16 @@ type PersistedAppState = {
   returnAfterMeetingView: EntryView;
 };
 
-const appStateStorageKey = "meeting:app-state:v1";
+const appStateStorageKey = "meeting:app-state:v2";
 const defaultEntryStatusMessage = "准备开始会议";
 const defaultLoginForm: LoginFormState = {
-  email: "meeting@07c2.com.cn",
-  password: "helloworld"
+  email: "",
+  password: ""
 };
 const defaultJoinForm: JoinFormState = {
   meetingId: "",
   password: "",
-  nickname: "匿名参会者",
+  nickname: "匿名用户",
   requestCameraEnabled: false,
   requestMicrophoneEnabled: false
 };
@@ -1166,17 +1166,18 @@ function App() {
       return;
     }
 
+    const hostIdentity = buildHostIdentity(email);
     setIsAuthenticated(true);
     setEntryView("home");
     setJoinForm((current) => ({
       ...current,
-      nickname: buildHostIdentity(email).nickname
+      nickname: hostIdentity.nickname
     }));
     logger.info("auth.login_succeeded", {
       email,
-      nickname: buildHostIdentity(email).nickname
+      nickname: hostIdentity.nickname
     });
-    setStatusMessage(`欢迎回来，${buildHostIdentity(email).nickname}`);
+    setStatusMessage(`欢迎回来，${hostIdentity.nickname}`);
     setErrorMessage("");
   });
 
@@ -2127,65 +2128,22 @@ function App() {
   const inviteMeetingTimeLabel = meetingSession ? formatInviteMeetingTime(meetingSession.meeting.createdAt) : "";
   const isLoginEntry = entryView === "login";
   const showLoginFeedback = isLoginEntry && (errorMessage || statusMessage !== defaultEntryStatusMessage);
+  const showEntryFeedback =
+    !isLoginEntry && entryView !== "home" && (errorMessage || statusMessage !== defaultEntryStatusMessage);
 
   if (!meetingSession) {
     return (
-      <main className={`page-shell auth-page${isLoginEntry ? " auth-page-login" : ""}`}>
+      <main className="page-shell auth-page auth-page-login">
         <section className="auth-frame" data-auth-view={entryView}>
           <section className="brand-stage">
             <div className="brand-copy">
-              {isLoginEntry ? (
-                <h1 className="wordmark">
-                  <span>meeting</span>
-                </h1>
-              ) : (
-                <>
-                  <div className="brand-kicker">meeting stage mode</div>
-                  <h1 className="wordmark">meeting</h1>
-                  <p className="brand-description">
-                    让主持人像站上舞台一样进入会议。当前前端按照最新 `docs/design` 落地为黑色风格，
-                    登录、创建会议、加入会议和会中主舞台统一收敛到同一套产品化视觉体系。
-                  </p>
-                </>
-              )}
+              <h1 className="wordmark">
+                <span>meeting</span>
+              </h1>
             </div>
-
-            {isLoginEntry ? null : (
-              <div className="stage-grid">
-                <article className="stage-card">
-                  <strong>Host Entry</strong>
-                  <p>登录后优先看到“预定会议 / 快速会议”，把主持人最常用的入口压到一步之内。</p>
-                </article>
-                <article className="stage-card">
-                  <strong>Join Flow</strong>
-                  <p>加入会议改为先输入会议号，再在悬浮窗中输入密码，减少误入和错误密码噪音。</p>
-                </article>
-                <article className="stage-card">
-                  <strong>Stage Feeling</strong>
-                  <p>左侧保持黑色舞台区与聚光光晕，后续即使切换主题，也不推翻当前页面结构。</p>
-                </article>
-              </div>
-            )}
           </section>
 
           <aside className="auth-panel">
-            {isLoginEntry ? null : (
-              <>
-                <div className="panel-brand">
-                  <div>
-                    <strong>Meeting</strong>
-                    <span>Authentication & entry</span>
-                  </div>
-                  <span>PC / Mobile shared</span>
-                </div>
-
-                <div className="status-stack">
-                  <div className="status-pill">{statusMessage}</div>
-                  {errorMessage ? <div className="status-error">{errorMessage}</div> : null}
-                </div>
-              </>
-            )}
-
             {entryView === "login" ? (
               <section className="panel auth-card" data-view="login">
                 <form className="form-grid login-form" onSubmit={handleLoginSubmit}>
@@ -2264,13 +2222,12 @@ function App() {
 
             {entryView === "home" ? (
               <section className="panel auth-card" data-view="home">
-                <div>
-                  <p className="eyebrow">Host actions</p>
-                  <h2>欢迎回来，{buildHostIdentity(loginForm.email).nickname}</h2>
+                <div className="login-header-copy">
+                  <div className="login-mode-title">预定会议 / 快速会议</div>
+                  <button className="login-switch-link" onClick={() => setEntryView("login")} type="button">
+                    返回登录 &gt;
+                  </button>
                 </div>
-                <p className="section-copy">
-                  登录后右侧只保留两个主操作：预定会议和快速会议。加入会议作为次级入口保留在底部。
-                </p>
                 <div className="quick-list">
                   <article className="quick-card">
                     <strong>预定会议</strong>
@@ -2302,6 +2259,14 @@ function App() {
                 <p className="section-copy">
                   当前后端还没有真正的预约会议模型，本轮会按预定表单创建可立即进入的会议，同时保留未来扩展所需字段。
                 </p>
+                {showEntryFeedback ? (
+                  <div className="status-stack compact">
+                    {statusMessage !== defaultEntryStatusMessage ? (
+                      <div className="status-pill">{statusMessage}</div>
+                    ) : null}
+                    {errorMessage ? <div className="status-error">{errorMessage}</div> : null}
+                  </div>
+                ) : null}
                 <form className="form-grid" onSubmit={handleScheduleSubmit}>
                   <label>
                     会议主题
@@ -2364,8 +2329,16 @@ function App() {
                   <h2>加入会议</h2>
                 </div>
                 <p className="section-copy">
-                  先输入会议号和昵称。若会议设置了密码，会在预检通过后再弹出悬浮窗继续输入。
+                  先输入会议号和昵称，确认会议存在且可加入后，再弹出固定悬浮窗继续输入密码。
                 </p>
+                {showEntryFeedback ? (
+                  <div className="status-stack compact">
+                    {statusMessage !== defaultEntryStatusMessage ? (
+                      <div className="status-pill">{statusMessage}</div>
+                    ) : null}
+                    {errorMessage ? <div className="status-error">{errorMessage}</div> : null}
+                  </div>
+                ) : null}
                 <form className="form-grid" onSubmit={handleLookupMeeting}>
                   <label>
                     会议号 / Meeting ID
@@ -2435,22 +2408,6 @@ function App() {
                     </button>
                   </div>
                 </form>
-
-                {joinLookupMeeting ? (
-                  <div className="meeting-preview-card">
-                    <div className="meeting-preview-row">
-                      <strong>会议主题</strong>
-                      <span>{joinLookupMeeting.title}</span>
-                    </div>
-                    <div className="meeting-preview-row">
-                      <strong>状态预检</strong>
-                      <span>
-                        {formatMeetingStatus(joinLookupMeeting.status)}，
-                        {joinLookupMeeting.passwordRequired ? "需要输入会议密码后继续加入。" : "当前无需密码，验证后会直接进入会议。"}
-                      </span>
-                    </div>
-                  </div>
-                ) : null}
 
                 {showJoinPasswordModal ? (
                   <div className="inline-modal-layer">
@@ -3765,10 +3722,9 @@ function buildHostIdentity(email: string) {
     };
   }
 
-  const local = trimmed.split("@")[0] || "host";
   return {
     userId: trimmed.replace(/[^a-z0-9]+/g, "-"),
-    nickname: local.replace(/[-_.]+/g, " ").trim() || "主持人"
+    nickname: "主持人"
   };
 }
 

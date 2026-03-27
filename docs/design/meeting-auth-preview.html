@@ -64,11 +64,10 @@
           </section>
 
           <section class="auth-card" data-view="home">
-            <div>
-              <div class="eyebrow">Host actions</div>
-              <h2>欢迎回来，主持人</h2>
+            <div class="login-header-copy">
+              <div class="login-mode-title">预定会议 / 快速会议</div>
+              <button class="login-switch-link" data-auth-target="login" type="button">返回登录 &gt;</button>
             </div>
-            <p>登录后右侧只保留两个主操作，减少认知分散。加入会议作为次级入口，保留在卡片底部。</p>
             <div class="quick-list">
               <article class="quick-card">
                 <strong>预定会议</strong>
@@ -134,16 +133,6 @@
                 <input value="设计评审嘉宾" />
               </label>
             </form>
-            <div class="meta-list">
-              <div class="meta-row">
-                <strong>会议主题</strong>
-                <span>全球产品评审会</span>
-              </div>
-              <div class="meta-row">
-                <strong>状态预检</strong>
-                <span>会议进行中，需要密码后才能继续加入。</span>
-              </div>
-            </div>
             <div class="button-row">
               <button class="button primary" data-auth-target="join-password" type="button">验证会议号</button>
               <button class="button ghost" data-auth-target="login" type="button">返回</button>
@@ -193,14 +182,10 @@
           return frame.dataset.authView || "login";
         }
 
-        function setView(nextView, syncHash = true) {
+        function setView(nextView) {
           frame.dataset.authView = nextView;
           for (const button of switches) {
             button.classList.toggle("active", button.dataset.authTarget === nextView);
-          }
-
-          if (syncHash) {
-            history.replaceState(null, "", `#${nextView}`);
           }
         }
 
@@ -215,10 +200,10 @@
         }
 
         window.addEventListener("hashchange", () => {
-          setView(resolveView(), false);
+          setView(resolveView());
         });
 
-        setView(resolveView(), false);
+        setView(resolveView());
       })();
     </script>
   </body>
