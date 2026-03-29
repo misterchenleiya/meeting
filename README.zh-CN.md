@@ -115,6 +115,8 @@
 - `PUT /api/users/{userID}/preferences`：保存注册用户默认媒体偏好
 - `GET /ws/meetings/{meetingID}`：WebSocket 信令入口
 
+更完整的接口契约文档见 [docs/api/README.md](docs/api/README.md)。
+
 说明：
 
 - `POST /api/meetings` 返回的会议对象现在同时包含内部 `id` 和公开 `meetingNumber`。

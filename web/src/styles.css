@@ -129,8 +129,6 @@ p {
 .section-copy,
 .empty-copy,
 .brand-description,
-.stage-card p,
-.panel-brand span,
 .meeting-meta p,
 .drawer-header p {
   color: var(--muted);
@@ -309,7 +307,7 @@ p {
   background: rgba(10, 10, 12, 0.92);
 }
 
-.auth-frame[data-auth-view="login"] {
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) {
   width: 100vw;
   min-height: 100vh;
   grid-template-columns: 1fr;
@@ -351,7 +349,7 @@ p {
   filter: blur(18px);
 }
 
-.auth-frame[data-auth-view="login"] .brand-copy {
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .brand-copy {
   justify-items: center;
   padding-left: 0;
   width: 100%;
@@ -359,14 +357,14 @@ p {
   text-align: center;
 }
 
-.auth-frame[data-auth-view="login"] .wordmark {
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .wordmark {
   font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
   font-size: clamp(108px, 14vw, 208px);
   line-height: 0.88;
   text-shadow: none;
 }
 
-.auth-frame[data-auth-view="login"] .brand-stage {
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .brand-stage {
   z-index: 1;
   display: grid;
   place-items: center;
@@ -380,11 +378,11 @@ p {
   transform: translateY(-18px);
 }
 
-.auth-frame[data-auth-view="login"] .brand-stage::before {
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .brand-stage::before {
   content: none;
 }
 
-.auth-frame[data-auth-view="login"] .brand-stage::after {
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .brand-stage::after {
   content: "";
   position: absolute;
   left: 50%;
@@ -414,57 +412,11 @@ p {
   max-width: 760px;
 }
 
-.brand-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  width: fit-content;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  color: #d7d7db;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-size: 12px;
-}
-
-.brand-kicker::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 18px rgba(10, 132, 255, 0.9);
-}
-
 .wordmark {
   font-size: clamp(76px, 12vw, 160px);
   line-height: 0.9;
   letter-spacing: -0.06em;
   font-weight: 700;
-}
-
-.stage-grid {
-  position: absolute;
-  left: 56px;
-  right: 56px;
-  bottom: 52px;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.stage-card {
-  padding: 18px 18px 20px;
-  border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(22, 22, 24, 0.76);
-}
-
-.stage-card strong {
-  display: block;
-  margin-bottom: 10px;
 }
 
 .auth-panel {
@@ -476,7 +428,7 @@ p {
   background: linear-gradient(180deg, rgba(22, 22, 24, 0.96) 0%, rgba(15, 15, 17, 0.98) 100%);
 }
 
-.auth-frame[data-auth-view="login"] .auth-panel {
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-panel {
   position: relative;
   z-index: 3;
   width: min(100%, 1040px);
@@ -488,26 +440,19 @@ p {
   background: transparent;
 }
 
-.panel-brand {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
 .auth-card {
   position: relative;
 }
 
-.auth-frame[data-auth-view="login"] .panel-brand {
-  display: none;
-}
-
-.auth-frame[data-auth-view="login"] .auth-card[data-view="login"] {
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="login"],
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="home"],
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="schedule"],
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="join"] {
   width: min(460px, calc(100vw - 48px));
   display: grid;
   gap: 16px;
   padding: 28px;
+  min-height: 416px;
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(18, 18, 20, 0.86);
@@ -517,8 +462,34 @@ p {
   backdrop-filter: blur(18px);
 }
 
-.auth-frame[data-auth-view="login"] .login-form {
+.auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .login-form {
   gap: 12px;
+}
+
+.auth-frame[data-auth-view="home"] .quick-list {
+  gap: 8px;
+}
+
+.auth-frame[data-auth-view="home"] .quick-card {
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.auth-frame[data-auth-view="home"] .quick-card strong {
+  font-size: 14px;
+}
+
+.auth-frame[data-auth-view="home"] .quick-card span {
+  font-size: 13px;
+}
+
+.auth-frame[data-auth-view="home"] .quick-card .button,
+.auth-frame[data-auth-view="home"] .quick-card .action-link {
+  min-height: 44px;
+}
+
+.auth-frame[data-auth-view="home"] .auth-card[data-view="home"] {
+  align-content: start;
 }
 
 .login-header-copy {
@@ -607,25 +578,13 @@ p {
   gap: 12px;
 }
 
-.quick-card,
-.meeting-preview-card {
+.quick-card {
   display: grid;
   gap: 8px;
   padding: 18px;
   border-radius: 18px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
-}
-
-.meeting-preview-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.meeting-preview-row span {
-  color: var(--muted);
-  text-align: right;
 }
 
 .inline-modal-layer {
@@ -1273,25 +1232,21 @@ p {
     padding-bottom: 240px;
   }
 
-  .stage-grid {
-    grid-template-columns: 1fr;
-  }
-
   .auth-panel {
     border-left: 0;
     border-top: 1px solid var(--line);
   }
 
-  .auth-frame[data-auth-view="login"] {
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) {
     min-height: 100vh;
   }
 
-  .auth-frame[data-auth-view="login"] .auth-panel {
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-panel {
     padding: 0;
     border-top: 0;
   }
 
-  .auth-frame[data-auth-view="login"] .brand-stage {
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .brand-stage {
     min-height: auto;
   }
 
@@ -1355,12 +1310,6 @@ p {
     padding: 32px 24px 260px;
   }
 
-  .stage-grid {
-    left: 24px;
-    right: 24px;
-    bottom: 24px;
-  }
-
   .auth-panel,
   .room-body,
   .panel {
@@ -1371,27 +1320,30 @@ p {
     font-size: 72px;
   }
 
-  .auth-frame[data-auth-view="login"] {
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) {
     row-gap: 64px;
     padding: 44px 16px 36px;
   }
 
-  .auth-frame[data-auth-view="login"] .brand-stage {
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .brand-stage {
     min-height: auto;
     padding: 0;
     transform: translateY(-10px);
   }
 
-  .auth-frame[data-auth-view="login"] .wordmark {
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .wordmark {
     font-size: clamp(88px, 22vw, 132px);
   }
 
-  .auth-frame[data-auth-view="login"] .auth-card[data-view="login"] {
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="login"],
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="home"],
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="schedule"],
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="join"] {
     width: min(440px, calc(100vw - 32px));
     padding: 22px;
   }
 
-  .auth-frame[data-auth-view="login"] .auth-panel {
+  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-panel {
     padding: 0;
   }
 

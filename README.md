@@ -114,6 +114,8 @@ Key endpoints that are already available:
 - `PUT /api/users/{userID}/preferences`
 - `GET /ws/meetings/{meetingID}`
 
+Detailed contract docs live in [docs/api/README.md](docs/api/README.md).
+
 Notes:
 
 - `POST /api/meetings` now returns both the internal `id` and the public `meetingNumber`.
