@@ -1,0 +1,737 @@
+openapi: 3.1.0
+info:
+  title: Meeting Backend API
+  version: 0.1.0
+  description: REST contract for the Meeting backend. WebSocket signaling is documented separately in websocket-signaling.md.
+servers:
+  - url: http://localhost:5180
+tags:
+  - name: Health
+  - name: Logs
+  - name: Meetings
+  - name: Preferences
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /api/client-logs:
+    post:
+      tags: [Logs]
+      summary: Upload frontend logs
+      description: Accepts a batch of structured browser logs. Each log must contain level, message, and time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientLogsRequest"
+      responses:
+        "202":
+          description: Logs accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientLogsResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings:
+    post:
+      tags: [Meetings]
+      summary: Create a meeting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMeetingRequest"
+      responses:
+        "201":
+          description: Meeting created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateMeetingResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingID}:
+    get:
+      tags: [Meetings]
+      summary: Get a meeting snapshot
+      parameters:
+        - $ref: "#/components/parameters/MeetingID"
+      responses:
+        "200":
+          description: Meeting snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetMeetingResponse"
+        "404":
+          description: Meeting not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingID}/minutes:
+    get:
+      tags: [Meetings]
+      summary: Get the temporary minutes snapshot
+      parameters:
+        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/ParticipantIDQuery"
+      responses:
+        "200":
+          description: Minutes snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeetingMinutesResponse"
+        "400":
+          description: Missing participantId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Meeting or participant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingID}/join:
+    post:
+      tags: [Meetings]
+      summary: Join a meeting
+      parameters:
+        - $ref: "#/components/parameters/MeetingID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinMeetingRequest"
+      responses:
+        "201":
+          description: Joined successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinMeetingResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Meeting password is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Meeting not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingID}/participants/{participantID}/leave:
+    post:
+      tags: [Meetings]
+      summary: Leave a meeting
+      parameters:
+        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/ParticipantID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaveMeetingRequest"
+      responses:
+        "200":
+          description: Participant left
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "403":
+          description: Host cannot leave while other participants remain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Meeting or participant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingID}/participants/{participantID}/nickname:
+    post:
+      tags: [Meetings]
+      summary: Update participant nickname
+      parameters:
+        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/ParticipantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNicknameRequest"
+      responses:
+        "200":
+          description: Nickname updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateNicknameResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Meeting or participant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant:
+    post:
+      tags: [Meetings]
+      summary: Grant a capability to a participant
+      parameters:
+        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/ParticipantID"
+        - $ref: "#/components/parameters/Capability"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantCapabilityRequest"
+      responses:
+        "200":
+          description: Capability granted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantCapabilityResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Meeting or participant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingID}/participants/{participantID}/audit:
+    post:
+      tags: [Meetings]
+      summary: Upload a media audit report
+      parameters:
+        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/ParticipantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuditReportRequest"
+      responses:
+        "202":
+          description: Audit report accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Meeting or participant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingID}/end:
+    post:
+      tags: [Meetings]
+      summary: End a meeting as the host
+      parameters:
+        - $ref: "#/components/parameters/MeetingID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EndMeetingRequest"
+      responses:
+        "200":
+          description: Meeting ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Meeting not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/users/{userID}/preferences:
+    put:
+      tags: [Preferences]
+      summary: Save default media preferences for a registered user
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserPreferenceRequest"
+      responses:
+        "200":
+          description: Preferences saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal persistence error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  parameters:
+    MeetingID:
+      name: meetingID
+      in: path
+      required: true
+      description: Internal runtime meeting id or public 9-digit meeting number. REST handlers accept either.
+      schema:
+        type: string
+    ParticipantID:
+      name: participantID
+      in: path
+      required: true
+      schema:
+        type: string
+    UserID:
+      name: userID
+      in: path
+      required: true
+      schema:
+        type: string
+    Capability:
+      name: capability
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+          - chat
+          - microphone
+          - camera
+          - whiteboard
+          - screen_share
+          - record
+          - ready_check
+    ParticipantIDQuery:
+      name: participantId
+      in: query
+      required: true
+      schema:
+        type: string
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    StatusResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+    HealthResponse:
+      type: object
+      required: [status, service]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: meeting-api
+    ClientLogsRequest:
+      type: object
+      required: [logs]
+      properties:
+        logs:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/ClientLogEntry"
+    ClientLogEntry:
+      type: object
+      required: [level, message, time]
+      properties:
+        level:
+          type: string
+          enum: [debug, info, warn, error]
+        message:
+          type: string
+        time:
+          type: string
+          format: date-time
+          description: RFC3339Nano timestamp
+      additionalProperties: true
+    ClientLogsResponse:
+      type: object
+      required: [status, accepted]
+      properties:
+        status:
+          type: string
+          example: accepted
+        accepted:
+          type: integer
+          minimum: 1
+    CreateMeetingRequest:
+      type: object
+      required: [title, hostUserId, hostNickname]
+      properties:
+        title:
+          type: string
+        password:
+          type: string
+          description: Optional meeting password. Empty string means no password.
+        hostUserId:
+          type: string
+        hostNickname:
+          type: string
+        deviceType:
+          type: string
+          description: Browser or client label. The backend stores it as-is.
+    CreateMeetingResponse:
+      type: object
+      required: [meeting, host]
+      properties:
+        meeting:
+          $ref: "#/components/schemas/Meeting"
+        host:
+          $ref: "#/components/schemas/Participant"
+    GetMeetingResponse:
+      type: object
+      required: [meeting]
+      properties:
+        meeting:
+          $ref: "#/components/schemas/Meeting"
+    MeetingMinutesResponse:
+      type: object
+      required: [meetingId, title, chatMessages, whiteboardActions, temporaryMinutes]
+      properties:
+        meetingId:
+          type: string
+        title:
+          type: string
+        chatMessages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        whiteboardActions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhiteboardAction"
+        temporaryMinutes:
+          type: array
+          items:
+            type: string
+        activeReadyCheck:
+          $ref: "#/components/schemas/ReadyCheckRound"
+    JoinMeetingRequest:
+      type: object
+      required: [nickname]
+      properties:
+        password:
+          type: string
+          description: Optional meeting password.
+        userId:
+          type: string
+          description: Registered user id. Empty string means anonymous mode.
+        nickname:
+          type: string
+        deviceType:
+          type: string
+        isAnonymous:
+          type: boolean
+          description: Whether the joiner is anonymous. When false and userId is provided, saved preferences may be used.
+        requestCameraEnabled:
+          type: boolean
+          description: Optional initial camera preference override.
+        requestMicrophoneEnabled:
+          type: boolean
+          description: Optional initial microphone preference override.
+    JoinMeetingResponse:
+      type: object
+      required: [meeting, participant]
+      properties:
+        meeting:
+          $ref: "#/components/schemas/Meeting"
+        participant:
+          $ref: "#/components/schemas/Participant"
+    LeaveMeetingRequest:
+      type: object
+      properties:
+        deviceType:
+          type: string
+          description: Optional client label.
+    UpdateNicknameRequest:
+      type: object
+      required: [nickname]
+      properties:
+        nickname:
+          type: string
+    UpdateNicknameResponse:
+      type: object
+      required: [participant, previousNickname]
+      properties:
+        participant:
+          $ref: "#/components/schemas/Participant"
+        previousNickname:
+          type: string
+        systemMessage:
+          $ref: "#/components/schemas/ChatMessage"
+    GrantCapabilityRequest:
+      type: object
+      required: [hostParticipantId]
+      properties:
+        hostParticipantId:
+          type: string
+    GrantCapabilityResponse:
+      type: object
+      required: [status, capability]
+      properties:
+        status:
+          type: string
+          example: granted
+        capability:
+          type: string
+    AuditReportRequest:
+      type: object
+      required: [participantRole, deviceType, latencyMs, packetLossRate, averageFps, averageBitrateKbps, details]
+      properties:
+        userId:
+          type: string
+        participantRole:
+          type: string
+          enum: [host, assistant, participant]
+        deviceType:
+          type: string
+        latencyMs:
+          type: integer
+        packetLossRate:
+          type: number
+        averageFps:
+          type: number
+        averageBitrateKbps:
+          type: integer
+        details:
+          type: object
+          additionalProperties: true
+    EndMeetingRequest:
+      type: object
+      required: [hostParticipantId]
+      properties:
+        hostParticipantId:
+          type: string
+        deviceType:
+          type: string
+    UserPreferenceRequest:
+      type: object
+      required: [defaultCameraEnabled, defaultMicrophoneEnabled]
+      properties:
+        defaultCameraEnabled:
+          type: boolean
+        defaultMicrophoneEnabled:
+          type: boolean
+    Participant:
+      type: object
+      required:
+        - id
+        - nickname
+        - role
+        - isAnonymous
+        - joinedAt
+        - requestedMediaPreference
+        - effectiveMediaState
+        - grantedCapabilities
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+          description: Empty for anonymous participants.
+        nickname:
+          type: string
+        role:
+          type: string
+          enum: [host, assistant, participant]
+        isAnonymous:
+          type: boolean
+        joinedAt:
+          type: string
+          format: date-time
+        leftAt:
+          type: string
+          format: date-time
+        requestedMediaPreference:
+          $ref: "#/components/schemas/MediaPreference"
+        effectiveMediaState:
+          $ref: "#/components/schemas/MediaPreference"
+        grantedCapabilities:
+          type: object
+          additionalProperties:
+            type: object
+    MediaPreference:
+      type: object
+      required: [cameraEnabled, microphoneEnabled]
+      properties:
+        cameraEnabled:
+          type: boolean
+        microphoneEnabled:
+          type: boolean
+    ChatMessage:
+      type: object
+      required: [id, participantId, nickname, message, sentAt]
+      properties:
+        id:
+          type: string
+        participantId:
+          type: string
+        nickname:
+          type: string
+        message:
+          type: string
+        sentAt:
+          type: string
+          format: date-time
+    WhiteboardPoint:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+    WhiteboardAction:
+      type: object
+      required: [id, kind, color, strokeWidth, points, createdBy, createdAt]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        color:
+          type: string
+        strokeWidth:
+          type: number
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhiteboardPoint"
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ReadyCheckResult:
+      type: object
+      required: [participantId, status]
+      properties:
+        participantId:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, timeout]
+        updatedAt:
+          type: string
+          format: date-time
+    ReadyCheckRound:
+      type: object
+      required: [id, startedBy, timeoutSeconds, startedAt, deadlineAt, status, results]
+      properties:
+        id:
+          type: string
+        startedBy:
+          type: string
+        timeoutSeconds:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        deadlineAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, completed]
+        results:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ReadyCheckResult"

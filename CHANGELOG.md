@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增会议信息分享二维码和加入会议扫码按钮，支持通过二维码快速回填会议号和密码，提升局域网联调效率。
 - 新增前端结构化调试日志：浏览器控制台输出 JSON 日志，并在会中页提供“复制前端日志”入口，便于排查创建会议、入会、信令、结束会议和扫码问题。
 - 新增前端日志接收接口 `POST /api/client-logs`，用于接收浏览器侧关键 JSON 日志并写入现有后端日志体系。
+- 新增 `docs/api/` 接口文档目录，使用 OpenAPI 和 WebSocket 协议文档补齐 REST 与信令接口契约说明。
 
 ### Changed
 
