@@ -13,7 +13,7 @@ import (
 
 func TestHandleClientLogsAccepted(t *testing.T) {
 	var logBuffer bytes.Buffer
-	server := NewServer(logging.NewBootstrapLogger(&logBuffer), nil, nil, nil)
+	server := NewServer(logging.NewBootstrapLogger(&logBuffer), nil, nil, nil, nil)
 
 	requestBody := `{"logs":[{"level":"warn","time":"2026-03-25T12:00:00.000Z","message":"meeting.end_request_failed","scope":"frontend.app","meetingId":"mtg-001","detail":"timeout"}]}`
 	request := httptest.NewRequest(http.MethodPost, "/api/client-logs", strings.NewReader(requestBody))
@@ -64,7 +64,7 @@ func TestHandleClientLogsAccepted(t *testing.T) {
 }
 
 func TestHandleClientLogsRejectsInvalidLog(t *testing.T) {
-	server := NewServer(logging.NewBootstrapLogger(&bytes.Buffer{}), nil, nil, nil)
+	server := NewServer(logging.NewBootstrapLogger(&bytes.Buffer{}), nil, nil, nil, nil)
 
 	requestBody := `{"logs":[{"level":"info","message":"missing_time"}]}`
 	request := httptest.NewRequest(http.MethodPost, "/api/client-logs", strings.NewReader(requestBody))

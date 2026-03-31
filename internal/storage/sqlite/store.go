@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -80,7 +81,57 @@ func (s *Store) migrate(ctx context.Context) error {
 		return fmt.Errorf("apply schema: %w", err)
 	}
 
+	if err := s.ensureColumn(ctx, "users", "email_verified_at", "TEXT"); err != nil {
+		return err
+	}
+
+	if err := s.ensureColumn(ctx, "auth_verification_codes", "nickname", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func (s *Store) ensureColumn(ctx context.Context, tableName string, columnName string, definition string) error {
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", quoteIdentifier(tableName)))
+	if err != nil {
+		return fmt.Errorf("inspect table %s: %w", tableName, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid         int
+			name        string
+			columnType  string
+			notNull     int
+			defaultValue sql.NullString
+			pk          int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("inspect table %s: %w", tableName, err)
+		}
+		if strings.EqualFold(name, columnName) {
+			return nil
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("inspect table %s: %w", tableName, err)
+	}
+
+	if _, err := s.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", quoteIdentifier(tableName), quoteIdentifier(columnName), definition)); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil
+		}
+		return fmt.Errorf("add column %s.%s: %w", tableName, columnName, err)
+	}
+
+	return nil
+}
+
+func quoteIdentifier(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
 
 func (s *Store) Close() error {

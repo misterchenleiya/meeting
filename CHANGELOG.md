@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增前端结构化调试日志：浏览器控制台输出 JSON 日志，并在会中页提供“复制前端日志”入口，便于排查创建会议、入会、信令、结束会议和扫码问题。
 - 新增前端日志接收接口 `POST /api/client-logs`，用于接收浏览器侧关键 JSON 日志并写入现有后端日志体系。
 - 新增 `docs/api/` 接口文档目录，使用 OpenAPI 和 WebSocket 协议文档补齐 REST 与信令接口契约说明。
+- 新增 `docs/proposals/20260331-media-reliability-and-identity-plan.md`，整理媒体可靠性与身份体系两条主线的实施计划、范围、风险与验证思路。
+- 新增 `docs/issues/README.md` 的 20260331 方案执行拆解，补充媒体可靠性与身份体系两条主线的可执行 issue 列表。
+- 新增 `docs/deploy/coturn.md` 和 `web/.env.example`，补齐 TURN / coturn 的部署样例和前端环境配置示例。
 
 ### Changed
 
@@ -102,6 +105,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make build` 的产物路径调整为：后端输出到 `build/backend/meeting`，前端输出到 `build/frontend/`，便于区分前后端构建结果。
 - 前端结构化日志改为仅保留浏览器控制台输出和当前页面内存中的最近日志，不再写入浏览器 `sessionStorage`；`warn`/`error` 和关键 `info` 事件会按批次上报到后端日志。
 - 前端开发态 `WebSocket` 信令改为直接连接后端 `:5180`，不再经过 Vite 的 `/ws` 代理；主舞台头像墙仅展示自己和当前在线的参会者，减少断线残留对会中视图的干扰。
+- 前端 RTC 链路改为可配置的 ICE / STUN / TURN 目标，并在信令断开后支持指数退避自动重连，减少弱网下手动刷新页面的需求。
+- 前端审计统计开始驱动媒体质量档位，会根据延迟、丢包、码率和 peer 数自动调整视频上限，并在审计面板中展示当前档位和视频限制。
+- 前端 Mesh 连接在 ICE 失败或断开时会自动触发重协商恢复，减少多人房间里个别 peer 短暂掉线后的人工介入。
+- 登录入口拆分为独立的注册和登录路径，注册完成后会返回登录页并要求重新用验证码登录。
 
 ### Fixed
 

@@ -1,3 +1,5 @@
+import { resolveSignalUrl } from "./runtime-config";
+
 export type SignalEnvelope = {
   type: string;
   payload?: unknown;
@@ -16,11 +18,10 @@ export class SignalClient {
   connect(meetingId: string, participantId: string, options: SignalClientOptions): void {
     this.close();
 
-    const url = new URL(`/ws/meetings/${meetingId}`, resolveSignalServerOrigin());
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    const url = resolveSignalUrl(`/ws/meetings/${meetingId}`);
     url.searchParams.set("participantId", participantId);
 
-    const socket = new WebSocket(url);
+    const socket = new WebSocket(url.toString());
     this.socket = socket;
 
     socket.addEventListener("open", () => {
@@ -73,12 +74,4 @@ export class SignalClient {
       socket.close();
     }
   }
-}
-
-function resolveSignalServerOrigin() {
-  const currentOrigin = new URL(window.location.origin);
-  if (currentOrigin.port === "5188") {
-    currentOrigin.port = "5180";
-  }
-  return currentOrigin.toString();
 }

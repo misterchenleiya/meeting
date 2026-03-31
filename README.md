@@ -82,17 +82,18 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 
 ### Not Yet Implemented
 
-- [ ] Real `TURN` integration and automatic fallback for peers that fail NAT traversal
+- [ ] TURN / coturn deployment and production validation for peers that fail NAT traversal
 - [ ] Dynamic multi-peer mesh management and performance optimization
 - [ ] WeChat registration and QR-code login
-- [ ] Email verification code registration/login
+- [ ] Real email delivery backend for verification-code registration/login
 - [ ] Auto-fill the join form when opening an invite link directly
 - [ ] Host reminder to save meeting minutes at meeting end
 
 ## Current UI Flow
 
 - Before joining a meeting, the login view now uses a full-screen single-card layout with a large `meeting` wordmark, a focused spotlight below it, and a centered auth card in the same macOS-dark visual system as the room UI.
-- Host flow: after sign-in, the app returns to the dark entry shell for quick meeting or scheduled meeting entry. In the current test mode, any non-empty email and password can sign in, and the page pre-fills `meeting@07c2.com.cn / helloworld`. The scheduled form currently reuses the existing create-meeting API and enters the room immediately.
+- Auth flow: login and registration are separate entry points. Registration verifies the email code and then returns to the login card; login uses an email code to create a session and then returns to the home card after success. Development builds may auto-fill the verification code for convenience.
+- Host flow: after sign-in, the app returns to the dark entry shell for quick meeting or scheduled meeting entry. The scheduled form currently reuses the existing create-meeting API and enters the room immediately.
 - Join flow: enter the public 9-digit meeting number, run a preflight lookup, and then enter the password in a modal only if the meeting requires one. Grouped `3-3-3` meeting numbers with spaces are normalized automatically.
 - In-room flow: the room now uses a single-screen full-stage layout with a top title bar, a bottom dock toolbar, attached host / meeting / settings / apps / end panels, and right-side drawers for members and chat. Idle meetings show an avatar wall; active media switches to a featured stage with a thumbnail rail.
 - The share window now shows the public 9-digit meeting number, a QR code, and copy actions; the internal room id is no longer shown directly in user-facing UI.
@@ -102,6 +103,12 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 
 Key endpoints that are already available:
 
+- `POST /api/auth/register/code`
+- `POST /api/auth/register/verify`
+- `POST /api/auth/login/code`
+- `POST /api/auth/login/verify`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
 - `POST /api/meetings`
 - `GET /api/meetings/{meetingID}`
 - `GET /api/meetings/{meetingID}/minutes`
@@ -186,5 +193,6 @@ This project is released under the MIT License. See [LICENSE](LICENSE).
 
 - Architecture ADR: `docs/adr/ADR-0001-20260325-meeting-architecture.md`
 - Open issues: `docs/issues/README.md`
+- TURN deployment notes: `docs/deploy/coturn.md`
 - Design assets: `docs/design/`
 - UI rollout record: `docs/design/20260325-product-ui-rollout.md`

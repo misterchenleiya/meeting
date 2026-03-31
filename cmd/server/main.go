@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/misterchenleiya/meeting/internal/auth"
 	"github.com/misterchenleiya/meeting/internal/config"
 	"github.com/misterchenleiya/meeting/internal/httpapi"
 	"github.com/misterchenleiya/meeting/internal/logging"
@@ -40,11 +41,12 @@ func main() {
 		}
 	}()
 
+	authService := auth.NewService(store)
 	meetingService := meeting.NewService(logger, store)
 	signalingHub := signaling.NewHub(logger, meetingService)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewServer(logger, meetingService, store, signalingHub).Routes(),
+		Handler:           httpapi.NewServer(logger, authService, meetingService, store, signalingHub).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

@@ -3,12 +3,18 @@ import jsQR from "jsqr";
 import QRCode from "qrcode";
 import { createClientLogger, formatClientLogs } from "./logger";
 import {
+  completeLogin,
+  completeRegister,
   createMeeting,
   endMeeting,
+  fetchCurrentUser,
   getMeeting,
   joinMeeting,
   leaveMeeting,
+  logout as logoutUser,
   reportAudit,
+  requestLoginCode,
+  requestRegisterCode,
   updateNickname
 } from "./api";
 import {
@@ -19,9 +25,10 @@ import {
   type RecordingKind,
   startLocalRecording
 } from "./recording";
-import { PeerMesh, type PeerStatsSnapshot } from "./rtc";
+import { PeerMesh, type MediaQualityPolicy, type MediaQualityProfile, type PeerStatsSnapshot } from "./rtc";
 import { SignalClient, type SignalEnvelope } from "./signaling";
 import type {
+  AuthUser,
   Capability,
   ChatMessage,
   EventRecord,
@@ -67,10 +74,14 @@ type AuditSummary = {
   averageFps: number;
   averageBitrateKbps: number;
   peerCount: number;
+  qualityProfile: MediaQualityProfile;
+  qualityLabel: string;
+  maxVideoBitrateKbps: number;
+  maxVideoFramerate: number;
   updatedAt: string;
 };
 
-type EntryView = "login" | "home" | "schedule" | "join";
+type EntryView = "login" | "register" | "home" | "schedule" | "join";
 type SidebarView = "none" | "members" | "chat";
 type MenuView = "none" | "host" | "participant";
 type AttachedPanelView = "none" | "settings" | "apps" | "end";
@@ -100,7 +111,13 @@ type StageItem = {
 
 type LoginFormState = {
   email: string;
-  password: string;
+  code: string;
+};
+
+type RegisterFormState = {
+  email: string;
+  nickname: string;
+  code: string;
 };
 
 type ScheduleFormState = {
@@ -120,8 +137,10 @@ type JoinFormState = {
 
 type PersistedAppState = {
   isAuthenticated: boolean;
+  currentUser: AuthUser | null;
   entryView: EntryView;
   loginForm: LoginFormState;
+  registerForm: RegisterFormState;
   scheduleForm: ScheduleFormState;
   joinForm: JoinFormState;
   meetingAccessPassword: string;
@@ -129,11 +148,16 @@ type PersistedAppState = {
   returnAfterMeetingView: EntryView;
 };
 
-const appStateStorageKey = "meeting:app-state:v2";
+const appStateStorageKey = "meeting:app-state:v3";
 const defaultEntryStatusMessage = "准备开始会议";
 const defaultLoginForm: LoginFormState = {
   email: "",
-  password: ""
+  code: ""
+};
+const defaultRegisterForm: RegisterFormState = {
+  email: "",
+  nickname: "",
+  code: ""
 };
 const defaultJoinForm: JoinFormState = {
   meetingId: "",
@@ -154,6 +178,11 @@ function App() {
   const screenShareStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<LocalRecordingSession | null>(null);
   const auditBaselineRef = useRef<Map<string, AuditCounter>>(new Map());
+  const lastAppliedQualityPolicyRef = useRef<MediaQualityPolicy | null>(null);
+  const signalReconnectTimerRef = useRef<number | null>(null);
+  const signalReconnectAttemptRef = useRef(0);
+  const signalReconnectDisabledRef = useRef(false);
+  const signalConnectionGenerationRef = useRef(0);
   const joinScannerVideoRef = useRef<HTMLVideoElement | null>(null);
   const joinScannerCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const joinScannerFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -202,10 +231,16 @@ function App() {
     camera: false,
     microphone: false
   });
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(
+    initialPersistedState?.currentUser ?? null
+  );
   const [isAuthenticated, setIsAuthenticated] = useState(initialPersistedState?.isAuthenticated ?? false);
   const [entryView, setEntryView] = useState<EntryView>(initialPersistedState?.entryView ?? "login");
   const [loginForm, setLoginForm] = useState<LoginFormState>(
     initialPersistedState?.loginForm ?? defaultLoginForm
+  );
+  const [registerForm, setRegisterForm] = useState<RegisterFormState>(
+    initialPersistedState?.registerForm ?? defaultRegisterForm
   );
   const [scheduleForm, setScheduleForm] = useState<ScheduleFormState>(
     initialPersistedState?.scheduleForm ?? buildDefaultScheduleForm()
@@ -261,6 +296,52 @@ function App() {
   useEffect(() => {
     recordingAssetRef.current = recordingAsset;
   }, [recordingAsset]);
+
+  const syncAuthenticatedUser = useEffectEvent((user: AuthUser | null) => {
+    setCurrentUser(user);
+    setIsAuthenticated(Boolean(user));
+    if (user) {
+      setJoinForm((current) => ({
+        ...current,
+        nickname: user.nickname || current.nickname || defaultJoinForm.nickname
+      }));
+      return;
+    }
+
+    setJoinForm((current) => ({
+      ...current,
+      nickname: defaultJoinForm.nickname
+    }));
+  });
+
+  useEffect(() => {
+    if (meetingSession) {
+      return;
+    }
+
+    let cancelled = false;
+    void fetchCurrentUser()
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        syncAuthenticatedUser(response.user);
+        setEntryView("home");
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        syncAuthenticatedUser(null);
+        setEntryView((current) => (current === "register" ? "register" : "login"));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [meetingSession, syncAuthenticatedUser]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -340,11 +421,59 @@ function App() {
     setShowJoinScanModal(true);
   }
 
+  const clearSignalReconnectTimer = useEffectEvent(() => {
+    if (signalReconnectTimerRef.current !== null) {
+      window.clearTimeout(signalReconnectTimerRef.current);
+      signalReconnectTimerRef.current = null;
+    }
+  });
+
+  const terminateSignalSession = useEffectEvent(() => {
+    signalReconnectDisabledRef.current = true;
+    signalConnectionGenerationRef.current += 1;
+    signalReconnectAttemptRef.current = 0;
+    clearSignalReconnectTimer();
+    signalClientRef.current?.close();
+    signalClientRef.current = null;
+  });
+
+  const scheduleSignalReconnect = useEffectEvent((session: SessionState) => {
+    if (signalReconnectDisabledRef.current || signalReconnectTimerRef.current !== null) {
+      return;
+    }
+
+    const delayMs = Math.min(15000, 1000 * 2 ** signalReconnectAttemptRef.current);
+    signalReconnectAttemptRef.current += 1;
+    setStatusMessage(`WSS 信令已断开，${Math.max(1, Math.round(delayMs / 1000))} 秒后自动重连`);
+
+    signalReconnectTimerRef.current = window.setTimeout(() => {
+      signalReconnectTimerRef.current = null;
+      if (signalReconnectDisabledRef.current) {
+        return;
+      }
+
+      const currentSession = sessionRef.current;
+      if (
+        !currentSession ||
+        currentSession.meeting.id !== session.meeting.id ||
+        currentSession.participant.id !== session.participant.id ||
+        signalClientRef.current !== null
+      ) {
+        return;
+      }
+
+      setStatusMessage("正在重连 WSS 信令...");
+      connectSignalForSession(currentSession);
+    }, delayMs);
+  });
+
   useEffect(() => {
     writePersistedAppState({
       isAuthenticated,
+      currentUser,
       entryView,
       loginForm,
+      registerForm,
       scheduleForm,
       joinForm,
       meetingAccessPassword,
@@ -355,10 +484,12 @@ function App() {
     currentModal,
     entryView,
     isAuthenticated,
+    currentUser,
     joinForm,
     loginForm,
     meetingAccessPassword,
     meetingSession,
+    registerForm,
     returnAfterMeetingView,
     scheduleForm
   ]);
@@ -567,9 +698,18 @@ function App() {
     );
 
     meshRef.current = mesh;
-    mesh.setLocalStream(localStreamRef.current).catch((error) => {
-      setErrorMessage(asMessage(error));
-    });
+    const cachedPolicy = lastAppliedQualityPolicyRef.current;
+    mesh
+      .setLocalStream(localStreamRef.current)
+      .then(async () => {
+        if (!cachedPolicy) {
+          return;
+        }
+        await mesh.applyMediaPolicy(cachedPolicy);
+      })
+      .catch((error) => {
+        setErrorMessage(asMessage(error));
+      });
     return mesh;
   });
 
@@ -579,6 +719,7 @@ function App() {
     setRemoteTiles([]);
 
     if (stopLocalTracks) {
+      lastAppliedQualityPolicyRef.current = null;
       baseMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
       screenShareStreamRef.current?.getTracks().forEach((track) => track.stop());
       recorderRef.current?.cancel();
@@ -602,8 +743,7 @@ function App() {
     meetingEndSummaryPreparedRef.current = false;
     setEndingMeetingPending(false);
     setPendingSignalSession(null);
-    signalClientRef.current?.close();
-    signalClientRef.current = null;
+    terminateSignalSession();
     disposeRtc(true);
     setMeetingSession(null);
     setChatMessages([]);
@@ -626,7 +766,7 @@ function App() {
     }));
     setStatusMessage(nextStatus);
     setErrorMessage("");
-    setEntryView(nextEntryView ?? (isAuthenticated ? "home" : "login"));
+    setEntryView(nextEntryView ?? (currentUser ? "home" : "login"));
     scrollViewportToTop();
   });
 
@@ -647,8 +787,7 @@ function App() {
     setEndingMeetingPending(false);
     sessionRef.current = null;
     setPendingSignalSession(null);
-    signalClientRef.current?.close();
-    signalClientRef.current = null;
+    terminateSignalSession();
     disposeRtc(true);
     setMeetingSession((current) =>
       current
@@ -882,7 +1021,7 @@ function App() {
   useEffect(() => {
     return () => {
       stopJoinScanner();
-      signalClientRef.current?.close();
+      terminateSignalSession();
       disposeRtc(true);
       discardRecording(recordingAssetRef.current);
     };
@@ -896,6 +1035,17 @@ function App() {
 
     const snapshots = (await meshRef.current?.collectStats()) ?? [];
     const aggregated = aggregatePeerStats(snapshots, auditBaselineRef.current);
+    const policy = selectMediaQualityPolicy(aggregated);
+    const qualityLabel = formatMediaQualityLabel(policy.profile);
+
+    if (lastAppliedQualityPolicyRef.current?.profile !== policy.profile) {
+      await meshRef.current?.applyMediaPolicy(policy);
+      lastAppliedQualityPolicyRef.current = policy;
+      appendEvent(
+        "rtc.quality_policy",
+        `媒体档位已切换为 ${qualityLabel}（${policy.maxVideoBitrateKbps} kbps / ${policy.maxVideoFramerate} fps）`
+      );
+    }
 
     setAuditSummary({
       latencyMs: aggregated.latencyMs,
@@ -903,6 +1053,10 @@ function App() {
       averageFps: aggregated.averageFps,
       averageBitrateKbps: aggregated.averageBitrateKbps,
       peerCount: aggregated.peerCount,
+      qualityProfile: policy.profile,
+      qualityLabel,
+      maxVideoBitrateKbps: policy.maxVideoBitrateKbps,
+      maxVideoFramerate: policy.maxVideoFramerate,
       updatedAt: new Date().toLocaleTimeString("zh-CN", { hour12: false })
     });
 
@@ -921,6 +1075,10 @@ function App() {
         screenSharing,
         localVideoTracks: localStreamRef.current?.getVideoTracks().length ?? 0,
         localAudioTracks: localStreamRef.current?.getAudioTracks().length ?? 0,
+        qualityProfile: policy.profile,
+        qualityLabel,
+        maxVideoBitrateKbps: policy.maxVideoBitrateKbps,
+        maxVideoFramerate: policy.maxVideoFramerate,
         peers: aggregated.perPeer
       }
     });
@@ -995,25 +1153,34 @@ function App() {
   });
 
   const connectSignalForSession = useEffectEvent((session: SessionState) => {
+    clearSignalReconnectTimer();
+    const connectionGeneration = signalConnectionGenerationRef.current + 1;
+    signalConnectionGenerationRef.current = connectionGeneration;
+
     signalClientRef.current?.close();
 
     const client = new SignalClient();
     signalClientRef.current = client;
     ensurePeerMesh(session);
+    const isCurrentConnection = () =>
+      signalConnectionGenerationRef.current === connectionGeneration && signalClientRef.current === client;
     client.connect(session.meeting.id, session.participant.id, {
       onOpen: () => {
-        if (signalClientRef.current !== client) {
+        if (!isCurrentConnection()) {
           return;
         }
+        clearSignalReconnectTimer();
+        signalReconnectAttemptRef.current = 0;
         logger.info("signal.connected", {
           meetingId: session.meeting.id,
           participantId: session.participant.id
         });
+        setErrorMessage("");
         setWsConnected(true);
         setStatusMessage("WSS 信令已连接");
       },
       onClose: () => {
-        if (signalClientRef.current !== client) {
+        if (!isCurrentConnection()) {
           return;
         }
         logger.warn("signal.closed", {
@@ -1024,6 +1191,10 @@ function App() {
         });
         signalClientRef.current = null;
         setWsConnected(false);
+        if (signalReconnectDisabledRef.current || !sessionRef.current) {
+          disposeRtc(false);
+          return;
+        }
         if (
           endingMeetingRef.current &&
           session.participant.role === "host" &&
@@ -1034,12 +1205,13 @@ function App() {
           return;
         }
         if (sessionRef.current) {
-          setStatusMessage("WSS 信令已断开");
+          setStatusMessage("WSS 信令已断开，正在准备自动重连");
         }
         disposeRtc(false);
+        scheduleSignalReconnect(session);
       },
       onError: (message) => {
-        if (signalClientRef.current !== client) {
+        if (!isCurrentConnection()) {
           return;
         }
         logger.error("signal.error", {
@@ -1050,7 +1222,7 @@ function App() {
         setErrorMessage(message);
       },
       onMessage: (event) => {
-        if (signalClientRef.current !== client) {
+        if (!isCurrentConnection()) {
           return;
         }
         onSignalMessage(event);
@@ -1077,6 +1249,10 @@ function App() {
   const enterMeetingSession = useEffectEvent((meeting: Meeting, participant: Participant, nextStatus: string) => {
     const nextSession = { meeting, participant };
     sessionRef.current = nextSession;
+    signalReconnectDisabledRef.current = false;
+    signalReconnectAttemptRef.current = 0;
+    clearSignalReconnectTimer();
+    lastAppliedQualityPolicyRef.current = null;
     setMeetingSession(nextSession);
     setPendingSignalSession(nextSession);
     setChatMessages(meeting.chatMessages ?? []);
@@ -1155,44 +1331,82 @@ function App() {
   const handleLoginSubmit = useEffectEvent((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const email = loginForm.email.trim();
-    const password = loginForm.password.trim();
+    const code = loginForm.code.trim();
     if (!email) {
       setErrorMessage("请输入邮箱");
       return;
     }
 
-    if (!password) {
-      setErrorMessage("请输入密码");
+    if (!code) {
+      setErrorMessage("请输入验证码");
       return;
     }
 
-    const hostIdentity = buildHostIdentity(email);
-    setIsAuthenticated(true);
-    setEntryView("home");
-    setJoinForm((current) => ({
+    void completeLogin({ email, code })
+      .then((response) => {
+        syncAuthenticatedUser(response.user);
+        setEntryView("home");
+        setLoginForm((current) => ({
+          ...current,
+          code: ""
+        }));
+        logger.info("auth.login_succeeded", {
+          email,
+          userId: response.user.id,
+          nickname: response.user.nickname
+        });
+        setStatusMessage(`欢迎回来，${response.user.nickname || response.user.email}`);
+        setErrorMessage("");
+      })
+      .catch((error: unknown) => {
+        setErrorMessage(asMessage(error));
+      });
+  });
+
+  const handleRequestLoginCode = useEffectEvent(() => {
+    const email = loginForm.email.trim();
+    if (!email) {
+      setErrorMessage("请先输入邮箱后再获取验证码");
+      return;
+    }
+
+    void requestLoginCode({ email })
+      .then((response) => {
+        setLoginForm((current) => ({
+          ...current,
+          code: response.debugCode ?? current.code
+        }));
+        setStatusMessage(
+          response.debugCode
+            ? `验证码已发送，开发模式下已自动填入 ${response.debugCode}`
+            : "验证码已发送"
+        );
+        setErrorMessage("");
+      })
+      .catch((error: unknown) => {
+        setErrorMessage(asMessage(error));
+      });
+  });
+
+  const handleSwitchToRegister = useEffectEvent(() => {
+    setRegisterForm((current) => ({
       ...current,
-      nickname: hostIdentity.nickname
+      email: loginForm.email.trim() || current.email,
+      code: ""
     }));
-    logger.info("auth.login_succeeded", {
-      email,
-      nickname: hostIdentity.nickname
-    });
-    setStatusMessage(`欢迎回来，${hostIdentity.nickname}`);
+    setEntryView("register");
+    setStatusMessage(defaultEntryStatusMessage);
     setErrorMessage("");
   });
 
-  const handleRequestTemporaryCode = useEffectEvent(() => {
-    if (!loginForm.email.trim()) {
-      setErrorMessage("请先输入邮箱后再获取临时验证码");
-      return;
-    }
-
-    setStatusMessage("当前版本尚未接入真实验证码服务，已保留交互入口");
-    setErrorMessage("");
-  });
-
-  const handlePasswordLoginModeHint = useEffectEvent(() => {
-    setStatusMessage("当前仍为测试密码登录，验证码入口已保留");
+  const handleSwitchToLogin = useEffectEvent(() => {
+    setLoginForm((current) => ({
+      ...current,
+      email: registerForm.email.trim() || current.email,
+      code: ""
+    }));
+    setEntryView("login");
+    setStatusMessage(defaultEntryStatusMessage);
     setErrorMessage("");
   });
 
@@ -1201,21 +1415,109 @@ function App() {
     setErrorMessage("");
   });
 
+  const handleLogoutAndReturnToLogin = useEffectEvent(() => {
+    void logoutUser()
+      .catch((error: unknown) => {
+        logger.warn("auth.logout_failed", {
+          error: asMessage(error)
+        });
+      })
+      .finally(() => {
+        syncAuthenticatedUser(null);
+        setEntryView("login");
+        setStatusMessage("已退出登录");
+        setErrorMessage("");
+      });
+  });
+
   const handleForgotPasswordHint = useEffectEvent(() => {
     setStatusMessage("忘记密码入口已保留，后续可接真实身份体系");
     setErrorMessage("");
   });
 
+  const handleRegisterSubmit = useEffectEvent((event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const email = registerForm.email.trim();
+    const nickname = registerForm.nickname.trim();
+    const code = registerForm.code.trim();
+    if (!email) {
+      setErrorMessage("请输入邮箱");
+      return;
+    }
+    if (!nickname) {
+      setErrorMessage("请输入昵称");
+      return;
+    }
+    if (!code) {
+      setErrorMessage("请输入验证码");
+      return;
+    }
+
+    void completeRegister({ email, code })
+      .then((response) => {
+        syncAuthenticatedUser(null);
+        setLoginForm((current) => ({
+          ...current,
+          email,
+          code: ""
+        }));
+        setRegisterForm((current) => ({
+          ...current,
+          code: ""
+        }));
+        setEntryView("login");
+        logger.info("auth.register_succeeded", {
+          email,
+          userId: response.user.id,
+          nickname: response.user.nickname
+        });
+        setStatusMessage("注册成功，请使用验证码登录");
+        setErrorMessage("");
+      })
+      .catch((error: unknown) => {
+        setErrorMessage(asMessage(error));
+      });
+  });
+
+  const handleRequestRegisterCode = useEffectEvent(() => {
+    const email = registerForm.email.trim();
+    const nickname = registerForm.nickname.trim();
+    if (!email) {
+      setErrorMessage("请先输入邮箱后再获取验证码");
+      return;
+    }
+    if (!nickname) {
+      setErrorMessage("请先输入昵称后再获取验证码");
+      return;
+    }
+
+    void requestRegisterCode({ email, nickname })
+      .then((response) => {
+        setRegisterForm((current) => ({
+          ...current,
+          code: response.debugCode ?? current.code
+        }));
+        setStatusMessage(
+          response.debugCode
+            ? `注册验证码已发送，开发模式下已自动填入 ${response.debugCode}`
+            : "注册验证码已发送"
+        );
+        setErrorMessage("");
+      })
+      .catch((error: unknown) => {
+        setErrorMessage(asMessage(error));
+      });
+  });
+
   const handleScheduleSubmit = useEffectEvent(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const hostIdentity = buildHostIdentity(loginForm.email);
     const title = scheduleForm.title.trim();
     if (!title) {
       setErrorMessage("请输入会议主题");
       return;
     }
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !currentUser) {
       setErrorMessage("请先登录后再创建会议");
       return;
     }
@@ -1226,13 +1528,13 @@ function App() {
       logger.info("meeting.schedule_create_requested", {
         title,
         passwordRequired: password !== "",
-        hostUserId: hostIdentity.userId
+        hostUserId: currentUser.id
       });
       const response = await createMeeting({
         title,
         password,
-        hostUserId: hostIdentity.userId,
-        hostNickname: hostIdentity.nickname,
+        hostUserId: currentUser.id,
+        hostNickname: currentUser.nickname || "主持人",
         deviceType
       });
       setReturnAfterMeetingView("schedule");
@@ -1258,25 +1560,24 @@ function App() {
   });
 
   const handleStartQuickMeeting = useEffectEvent(async () => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !currentUser) {
       setErrorMessage("请先登录后再发起快速会议");
       return;
     }
 
-    const hostIdentity = buildHostIdentity(loginForm.email);
-    const title = `${hostIdentity.nickname} 的快速会议`;
+    const title = `${currentUser.nickname || "主持人"} 的快速会议`;
     const password = "";
 
     try {
       logger.info("meeting.quick_create_requested", {
         title,
-        hostUserId: hostIdentity.userId
+        hostUserId: currentUser.id
       });
       const response = await createMeeting({
         title,
         password,
-        hostUserId: hostIdentity.userId,
-        hostNickname: hostIdentity.nickname,
+        hostUserId: currentUser.id,
+        hostNickname: currentUser.nickname || "主持人",
         deviceType
       });
       setReturnAfterMeetingView("home");
@@ -1310,7 +1611,7 @@ function App() {
     const response = await joinMeeting({
       meetingId: meeting.id,
       password,
-      userId: isAuthenticated ? buildHostIdentity(loginForm.email).userId : "",
+      userId: isAuthenticated && currentUser ? currentUser.id : "",
       nickname: joinForm.nickname.trim(),
       deviceType,
       isAnonymous: !isAuthenticated,
@@ -1558,13 +1859,15 @@ function App() {
       return;
     }
 
+    signalReconnectDisabledRef.current = false;
+    signalReconnectAttemptRef.current = 0;
+    clearSignalReconnectTimer();
     connectSignalForSession(meetingSession);
   }
 
   function handleDisconnectSignal() {
     sessionRef.current = meetingSession;
-    signalClientRef.current?.close();
-    signalClientRef.current = null;
+    terminateSignalSession();
     setWsConnected(false);
     setStatusMessage("WSS 信令已手动断开");
     disposeRtc(false);
@@ -2115,7 +2418,9 @@ function App() {
   const roomClockLabel = meetingSession ? formatElapsedClock(meetingSession.meeting.createdAt) : "00:00";
   const connectionLabel = wsConnected ? "WSS 已连接" : "WSS 已断开";
   const networkStatusLabel = errorMessage ? "异常" : wsConnected ? "正常" : "断开";
-  const networkSummaryLabel = `${networkStatusLabel} · ${connectionLabel}`;
+  const networkSummaryLabel = `${networkStatusLabel} · ${connectionLabel}${
+    auditSummary ? ` · ${auditSummary.qualityLabel}` : ""
+  }`;
   const networkLatencyLabel = auditSummary ? `${auditSummary.latencyMs.toFixed(0)} ms` : "--";
   const networkPacketLossLabel = auditSummary ? `${(auditSummary.packetLossRate * 100).toFixed(2)}%` : "--";
   const networkThroughputLabel = auditSummary
@@ -2127,9 +2432,15 @@ function App() {
   const inviteJoinURL = meetingSession ? buildMeetingJoinURL(meetingSession.meeting).toString() : "";
   const inviteMeetingTimeLabel = meetingSession ? formatInviteMeetingTime(meetingSession.meeting.createdAt) : "";
   const isLoginEntry = entryView === "login";
+  const isRegisterEntry = entryView === "register";
   const showLoginFeedback = isLoginEntry && (errorMessage || statusMessage !== defaultEntryStatusMessage);
+  const showRegisterFeedback =
+    isRegisterEntry && (errorMessage || statusMessage !== defaultEntryStatusMessage);
   const showEntryFeedback =
-    !isLoginEntry && entryView !== "home" && (errorMessage || statusMessage !== defaultEntryStatusMessage);
+    !isLoginEntry &&
+    !isRegisterEntry &&
+    entryView !== "home" &&
+    (errorMessage || statusMessage !== defaultEntryStatusMessage);
 
   if (!meetingSession) {
     return (
@@ -2149,8 +2460,8 @@ function App() {
                 <form className="form-grid login-form" onSubmit={handleLoginSubmit}>
                   <div className="login-header-copy">
                     <div className="login-mode-title">邮箱验证码登录</div>
-                    <button className="login-switch-link" onClick={handlePasswordLoginModeHint} type="button">
-                      使用密码登录 &gt;
+                    <button className="login-switch-link" onClick={handleSwitchToRegister} type="button">
+                      没有账号？去注册 &gt;
                     </button>
                   </div>
                   <input
@@ -2164,16 +2475,17 @@ function App() {
                   />
                   <div className="field-shell">
                     <input
-                      aria-label="密码"
+                      aria-label="验证码"
+                      inputMode="numeric"
                       onChange={(event) =>
-                        setLoginForm((current) => ({ ...current, password: event.target.value }))
+                        setLoginForm((current) => ({ ...current, code: event.target.value }))
                       }
-                      placeholder="请输入密码"
-                      type="password"
-                      value={loginForm.password}
+                      placeholder="请输入验证码"
+                      type="text"
+                      value={loginForm.code}
                     />
-                    <button className="field-inline-action" onClick={handleRequestTemporaryCode} type="button">
-                      获取临时验证码
+                    <button className="field-inline-action" onClick={handleRequestLoginCode} type="button">
+                      获取验证码
                     </button>
                   </div>
                   <div className="login-footer">
@@ -2220,12 +2532,75 @@ function App() {
               </section>
             ) : null}
 
+            {entryView === "register" ? (
+              <section className="panel auth-card" data-view="register">
+                <form className="form-grid login-form" onSubmit={handleRegisterSubmit}>
+                  <div className="login-header-copy">
+                    <div className="login-mode-title">邮箱注册</div>
+                    <button className="login-switch-link" onClick={handleSwitchToLogin} type="button">
+                      已有账号？去登录 &gt;
+                    </button>
+                  </div>
+                  <input
+                    aria-label="邮箱"
+                    onChange={(event) =>
+                      setRegisterForm((current) => ({ ...current, email: event.target.value }))
+                    }
+                    placeholder="请输入邮箱"
+                    type="email"
+                    value={registerForm.email}
+                  />
+                  <input
+                    aria-label="昵称"
+                    onChange={(event) =>
+                      setRegisterForm((current) => ({ ...current, nickname: event.target.value }))
+                    }
+                    placeholder="请输入昵称"
+                    type="text"
+                    value={registerForm.nickname}
+                  />
+                  <div className="field-shell">
+                    <input
+                      aria-label="验证码"
+                      inputMode="numeric"
+                      onChange={(event) =>
+                        setRegisterForm((current) => ({ ...current, code: event.target.value }))
+                      }
+                      placeholder="请输入验证码"
+                      type="text"
+                      value={registerForm.code}
+                    />
+                    <button className="field-inline-action" onClick={handleRequestRegisterCode} type="button">
+                      获取验证码
+                    </button>
+                  </div>
+                  {showRegisterFeedback ? (
+                    <div className="status-stack compact">
+                      {statusMessage !== defaultEntryStatusMessage ? (
+                        <div className="status-pill">{statusMessage}</div>
+                      ) : null}
+                      {errorMessage ? <div className="status-error">{errorMessage}</div> : null}
+                    </div>
+                  ) : null}
+                  <div className="button-stack login-actions">
+                    <button className="primary-button" type="submit">
+                      注册
+                    </button>
+                  </div>
+                  <div className="auth-divider" aria-hidden="true" />
+                  <button className="secondary-button join-button" onClick={() => setEntryView("join")} type="button">
+                    加入会议
+                  </button>
+                </form>
+              </section>
+            ) : null}
+
             {entryView === "home" ? (
               <section className="panel auth-card" data-view="home">
                 <div className="login-header-copy">
                   <div className="login-mode-title">预定会议 / 快速会议</div>
-                  <button className="login-switch-link" onClick={() => setEntryView("login")} type="button">
-                    返回登录 &gt;
+                  <button className="login-switch-link" onClick={handleLogoutAndReturnToLogin} type="button">
+                    退出登录 &gt;
                   </button>
                 </div>
                 <div className="quick-list">
@@ -2401,7 +2776,7 @@ function App() {
                     </button>
                     <button
                       className="ghost-button"
-                      onClick={() => setEntryView(isAuthenticated ? "home" : "login")}
+                      onClick={() => setEntryView(currentUser ? "home" : "login")}
                       type="button"
                     >
                       返回
@@ -3226,6 +3601,16 @@ function App() {
                       <span>{auditSummary.peerCount}</span>
                     </div>
                     <div>
+                      <strong>媒体档位</strong>
+                      <span>{auditSummary.qualityLabel}</span>
+                    </div>
+                    <div>
+                      <strong>视频上限</strong>
+                      <span>
+                        {auditSummary.maxVideoBitrateKbps.toFixed(0)} kbps / {auditSummary.maxVideoFramerate} fps
+                      </span>
+                    </div>
+                    <div>
                       <strong>最近上报</strong>
                       <span>{auditSummary.updatedAt}</span>
                     </div>
@@ -3711,21 +4096,6 @@ function toDatetimeLocalValue(date: Date): string {
   const hour = `${date.getHours()}`.padStart(2, "0");
   const minute = `${date.getMinutes()}`.padStart(2, "0");
   return `${year}-${month}-${day}T${hour}:${minute}`;
-}
-
-function buildHostIdentity(email: string) {
-  const trimmed = email.trim().toLowerCase();
-  if (!trimmed) {
-    return {
-      userId: "host-demo",
-      nickname: "主持人"
-    };
-  }
-
-  return {
-    userId: trimmed.replace(/[^a-z0-9]+/g, "-"),
-    nickname: "主持人"
-  };
 }
 
 function sortParticipantsByJoinOrder(participants: Participant[]) {
@@ -4312,6 +4682,61 @@ function aggregatePeerStats(snapshots: PeerStatsSnapshot[], baseline: Map<string
   };
 }
 
+function selectMediaQualityPolicy(aggregated: ReturnType<typeof aggregatePeerStats>): MediaQualityPolicy {
+  if (aggregated.peerCount === 0) {
+    return {
+      profile: "stable",
+      maxVideoBitrateKbps: 2400,
+      maxVideoFramerate: 30
+    };
+  }
+
+  if (
+    aggregated.peerCount >= 5 ||
+    aggregated.latencyMs >= 280 ||
+    aggregated.packetLossRate >= 0.06 ||
+    aggregated.averageBitrateKbps < 900
+  ) {
+    return {
+      profile: "conservative",
+      maxVideoBitrateKbps: 800,
+      maxVideoFramerate: 15
+    };
+  }
+
+  if (
+    aggregated.peerCount >= 3 ||
+    aggregated.latencyMs >= 160 ||
+    aggregated.packetLossRate >= 0.025 ||
+    aggregated.averageBitrateKbps < 1800
+  ) {
+    return {
+      profile: "balanced",
+      maxVideoBitrateKbps: 1400,
+      maxVideoFramerate: 24
+    };
+  }
+
+  return {
+    profile: "stable",
+    maxVideoBitrateKbps: 2400,
+    maxVideoFramerate: 30
+  };
+}
+
+function formatMediaQualityLabel(profile: MediaQualityProfile): string {
+  switch (profile) {
+    case "stable":
+      return "稳定";
+    case "balanced":
+      return "平衡";
+    case "conservative":
+      return "保守";
+    default:
+      return profile;
+  }
+}
+
 function asMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -4332,12 +4757,22 @@ function readPersistedAppState(): PersistedAppState | null {
 
     const parsed = JSON.parse(raw) as Partial<PersistedAppState>;
     const defaultScheduleForm = buildDefaultScheduleForm();
+    const currentUser = isPersistedAuthUser(parsed.currentUser) ? parsed.currentUser : null;
     return {
-      isAuthenticated: parsed.isAuthenticated === true,
-      entryView: normalizeEntryView(parsed.entryView, parsed.isAuthenticated ? "home" : "login"),
+      isAuthenticated: parsed.isAuthenticated === true || Boolean(currentUser),
+      currentUser,
+      entryView: normalizeEntryView(
+        parsed.entryView,
+        parsed.isAuthenticated === true || Boolean(currentUser) ? "home" : "login"
+      ),
       loginForm: {
         email: parsed.loginForm?.email ?? defaultLoginForm.email,
-        password: parsed.loginForm?.password ?? defaultLoginForm.password
+        code: parsed.loginForm?.code ?? defaultLoginForm.code
+      },
+      registerForm: {
+        email: parsed.registerForm?.email ?? defaultRegisterForm.email,
+        nickname: parsed.registerForm?.nickname ?? defaultRegisterForm.nickname,
+        code: parsed.registerForm?.code ?? defaultRegisterForm.code
       },
       scheduleForm: {
         title: parsed.scheduleForm?.title ?? defaultScheduleForm.title,
@@ -4376,10 +4811,31 @@ function writePersistedAppState(state: PersistedAppState) {
 }
 
 function normalizeEntryView(value: EntryView | undefined, fallback: EntryView): EntryView {
-  if (value === "login" || value === "home" || value === "schedule" || value === "join") {
+  if (
+    value === "login" ||
+    value === "register" ||
+    value === "home" ||
+    value === "schedule" ||
+    value === "join"
+  ) {
     return value;
   }
   return fallback;
+}
+
+function isPersistedAuthUser(value: unknown): value is AuthUser {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<AuthUser>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.email === "string" &&
+    typeof candidate.nickname === "string" &&
+    typeof candidate.createdAt === "string" &&
+    typeof candidate.updatedAt === "string"
+  );
 }
 
 function isPersistedSessionState(value: unknown): value is SessionState {
