@@ -327,7 +327,13 @@ function App() {
         }
 
         syncAuthenticatedUser(response.user);
-        setEntryView("home");
+        setEntryView((current) => {
+          if (current === "join") {
+            return current;
+          }
+
+          return "home";
+        });
       })
       .catch(() => {
         if (cancelled) {
@@ -335,7 +341,13 @@ function App() {
         }
 
         syncAuthenticatedUser(null);
-        setEntryView((current) => (current === "register" ? "register" : "login"));
+        setEntryView((current) => {
+          if (current === "register" || current === "join") {
+            return current;
+          }
+
+          return "login";
+        });
       });
 
     return () => {
