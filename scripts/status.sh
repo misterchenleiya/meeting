@@ -6,7 +6,22 @@ log() { echo "[INFO][$(_now)] $*"; }
 fail() { echo "[ERROR][$(_now)] $*" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-SERVICE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
+resolve_service_dir() {
+  if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
+    printf '%s\n' "${SCRIPT_DIR}"
+    return
+  fi
+
+  if [[ -f "${SCRIPT_DIR}/../docker-compose.yml" ]]; then
+    cd "${SCRIPT_DIR}/.." && pwd -P
+    return
+  fi
+
+  printf '%s\n' "${SCRIPT_DIR}"
+}
+
+SERVICE_DIR="${SERVICE_DIR:-$(resolve_service_dir)}"
+SERVICE_DIR="$(cd "${SERVICE_DIR}" && pwd -P)"
 LOG_DIR="${LOG_DIR:-${SERVICE_DIR}/logs}"
 LOG_FILE="${LOG_FILE:-}"
 
@@ -21,4 +36,3 @@ fi
 
 log "following backend log: ${LOG_FILE}"
 tail -F "${LOG_FILE}"
-

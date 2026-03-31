@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-SERVICE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
+SERVICE_DIR="${SERVICE_DIR:-$(pwd -P)}"
 SERVICE_NAME="${SERVICE_NAME:-$(basename "${SERVICE_DIR}")}"
-UPDATE_SCRIPT="${UPDATE_SCRIPT:-${SERVICE_DIR}/scripts/update.sh}"
+UPDATE_SCRIPT="${UPDATE_SCRIPT:-${SERVICE_DIR}/update.sh}"
 LOG_DIR="${LOG_DIR:-${SERVICE_DIR}/logs}"
 LOG_SYMLINK="${LOG_DIR}/crontab.log"
 LATEST_URL="${LATEST_URL:-https://download.07c2.com/${SERVICE_NAME}/latest.txt}"
@@ -109,8 +108,7 @@ latest_log_file() {
 rotate_logs() {
   local keep_days day log_file
   keep_days="$(
-    find "${LOG_DIR}" -maxdepth 1 -type f -name '*_crontab.log' 2>/dev/null | \
-      sed 's#.*/##' | \
+    find "${LOG_DIR}" -maxdepth 1 -type f -name '*_crontab.log' -printf '%f\n' 2>/dev/null | \
       awk -F_ '{print $1}' | sort -r | uniq | head -n 3
   )"
 
@@ -120,7 +118,7 @@ rotate_logs() {
     if ! printf '%s\n' "${keep_days}" | grep -Fxq "${day}"; then
       rm -f "${LOG_DIR}/${log_file}"
     fi
-  done < <(find "${LOG_DIR}" -maxdepth 1 -type f -name '*_crontab.log' 2>/dev/null | sed 's#.*/##' | sort)
+  done < <(find "${LOG_DIR}" -maxdepth 1 -type f -name '*_crontab.log' -printf '%f\n' 2>/dev/null | sort)
 }
 
 setup_logging() {
@@ -136,7 +134,7 @@ build_cron_command() {
   local schedule="$1"
   local escaped_service_dir
   escaped_service_dir="$(escape_single_quotes "${SERVICE_DIR}")"
-  printf "%s /bin/bash -lc 'cd '\''%s'\'' && ./scripts/update.sh >/dev/null 2>&1'" "${schedule}" "${escaped_service_dir}"
+  printf "%s /bin/bash -lc 'cd '\''%s'\'' && ./update.sh >/dev/null 2>&1'" "${schedule}" "${escaped_service_dir}"
 }
 
 cmd_add() {

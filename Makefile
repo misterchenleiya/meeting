@@ -11,7 +11,6 @@ RELEASE_ROOT := $(BUILD_DIR)/release/$(PROJECT_NAME)
 RELEASE_BACKEND_DIR := $(RELEASE_ROOT)/backend
 RELEASE_FRONTEND_DIR := $(RELEASE_ROOT)/frontend
 RELEASE_COTURN_DIR := $(RELEASE_ROOT)/coturn
-RELEASE_SCRIPTS_DIR := $(RELEASE_ROOT)/scripts
 ARCHIVE_FILE := $(PROJECT_NAME)_$(shell git rev-parse --short=12 HEAD).tar.gz
 ARCHIVE_PATH := $(BUILD_DIR)/$(ARCHIVE_FILE)
 LATEST_FILE := $(BUILD_DIR)/latest.txt
@@ -74,7 +73,7 @@ linux: build-backend-linux build-frontend-release
 stage-release: linux
 	@set -euo pipefail; \
 	rm -rf "$(RELEASE_ROOT)"; \
-	mkdir -p "$(RELEASE_BACKEND_DIR)" "$(RELEASE_FRONTEND_DIR)/dist" "$(RELEASE_COTURN_DIR)" "$(RELEASE_SCRIPTS_DIR)"; \
+	mkdir -p "$(RELEASE_BACKEND_DIR)" "$(RELEASE_FRONTEND_DIR)/dist" "$(RELEASE_COTURN_DIR)"; \
 	[ -x "$(BACKEND_BINARY)" ] || { echo "backend binary missing or not executable: $(BACKEND_BINARY)" >&2; exit 1; }; \
 	[ -f "$(WEB_BUILD_DIR)/index.html" ] || { echo "frontend build output missing: $(WEB_BUILD_DIR)/index.html" >&2; exit 1; }; \
 	[ -f "docker-compose.yml" ] || { echo "docker-compose.yml missing" >&2; exit 1; }; \
@@ -87,8 +86,8 @@ stage-release: linux
 	cp "deploy/frontend/nginx.conf" "$(RELEASE_FRONTEND_DIR)/nginx.conf"; \
 	TURN_HOST="$(TURN_HOST)" TURN_USERNAME="$(TURN_USERNAME)" TURN_CREDENTIAL="$(TURN_CREDENTIAL)" python3 -c 'from pathlib import Path; import os; src = Path("deploy/coturn/turnserver.conf").read_text(); host = os.environ["TURN_HOST"]; user = os.environ["TURN_USERNAME"]; credential = os.environ["TURN_CREDENTIAL"]; src = src.replace("realm=turn.meeting.07c2.com.cn", "realm=" + host); src = src.replace("server-name=turn.meeting.07c2.com.cn", "server-name=" + host); src = src.replace("cert=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/fullchain.pem", "cert=/etc/letsencrypt/live/" + host + "/fullchain.pem"); src = src.replace("pkey=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/privkey.pem", "pkey=/etc/letsencrypt/live/" + host + "/privkey.pem"); src = src.replace("user=meeting:CHANGE_ME_STRONG_PASSWORD", "user=" + user + ":" + credential); Path("$(RELEASE_COTURN_DIR)/turnserver.conf").write_text(src)'; \
 	cp "docker-compose.yml" "$(RELEASE_ROOT)/docker-compose.yml"; \
-	cp scripts/*.sh "$(RELEASE_SCRIPTS_DIR)/"; \
-	chmod 755 "$(RELEASE_SCRIPTS_DIR)"/*.sh; \
+	cp scripts/*.sh "$(RELEASE_ROOT)/"; \
+	chmod 755 "$(RELEASE_ROOT)"/*.sh; \
 	printf '%s\n' "$(ARCHIVE_FILE)" > "$(CURRENT_FILE)"
 
 pack: stage-release

@@ -7,7 +7,22 @@ warn() { echo "[WARN][$(_now)] $*" >&2; }
 fail() { echo "[ERROR][$(_now)] $*" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-SERVICE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
+resolve_service_dir() {
+  if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
+    printf '%s\n' "${SCRIPT_DIR}"
+    return
+  fi
+
+  if [[ -f "${SCRIPT_DIR}/../docker-compose.yml" ]]; then
+    cd "${SCRIPT_DIR}/.." && pwd -P
+    return
+  fi
+
+  printf '%s\n' "${SCRIPT_DIR}"
+}
+
+SERVICE_DIR="${SERVICE_DIR:-$(resolve_service_dir)}"
+SERVICE_DIR="$(cd "${SERVICE_DIR}" && pwd -P)"
 COMPOSE_FILE="${COMPOSE_FILE:-${SERVICE_DIR}/docker-compose.yml}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-meeting}"
 REMOVE=1
@@ -49,4 +64,3 @@ else
 fi
 
 log "docker stack stopped"
-

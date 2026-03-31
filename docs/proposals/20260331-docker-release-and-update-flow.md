@@ -35,9 +35,9 @@
 
 ### 目标
 
-- 将发布脚本统一放到项目根目录的 `scripts/` 下。
+- 将发布脚本统一放到项目根目录的 `scripts/` 下维护，但发布包解压后这些脚本必须直接位于当前目录。
 - 以 `/Users/chenlei/Codes/07c2/www/public` 中的脚本为模板，先复制到本项目 `scripts/` 再按需要修改。
-- 保证每次发布新版本时，`scripts/` 中的脚本会与后端、前端、coturn 一起被打包。
+- 保证每次发布新版本时，脚本会与后端、前端、coturn 一起被打包，并在发布包中平铺到根目录。
 - 固定三个运行容器的名称：
   - `meeting-backend`
   - `meeting-frontend`
@@ -57,9 +57,9 @@
 
 ### A. 脚本目录与模板来源
 
-1. **脚本统一落在项目根目录的 `scripts/`**
-   - 新项目约定下，所有发布脚本都应在仓库根目录下可见、可打包、可执行。
-   - `scripts/` 应成为发布包的固定组成部分，而不是仅存在于运维机器上的私有文件。
+1. **脚本源码统一落在项目根目录的 `scripts/`**
+   - 新项目约定下，所有发布脚本都在仓库根目录下的 `scripts/` 维护。
+   - 发布包解压后，脚本应直接位于当前目录，便于运维直接执行 `./update.sh`、`./start.sh` 等命令。
 
 2. **脚本以 `/Users/chenlei/Codes/07c2/www/public` 为模板复制后修改**
    - 当前 `public` 下的脚本是单后端发布模型。
@@ -137,7 +137,7 @@ Makefile 应作为标准发布入口，补齐以下目标：
 
 - `scripts/`
   - 放置 `start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`
-  - 这些脚本要进入每次发布包
+  - 这些脚本是仓库内源码位置，发布包中会平铺到根目录
 
 - `docker-compose.yml`
   - 定义 `meeting-backend`、`meeting-frontend`、`meeting-coturn`
@@ -166,7 +166,13 @@ Makefile 应作为标准发布入口，补齐以下目标：
 
 `meeting_${commit}.tar.gz` 中至少应包含：
 
-- `scripts/`
+- 根目录脚本：
+  - `start.sh`
+  - `stop.sh`
+  - `restart.sh`
+  - `status.sh`
+  - `update.sh`
+  - `crontab.sh`
 - `docker-compose.yml`
 - 后端运行材料
 - 前端运行材料
@@ -195,7 +201,7 @@ Makefile 应作为标准发布入口，补齐以下目标：
 ### 兼容性影响
 
 - 原先 `/Users/chenlei/Codes/07c2/www/public` 的脚本仍可作为模板保留，但不应再作为当前项目的运行依赖。
-- 新发布包会显式包含 `scripts/`，这意味着脚本将和应用版本绑定。
+- 新发布包会显式包含根目录脚本，这意味着脚本将和应用版本绑定。
 - `status.sh` 从一般化状态检查收缩回“只看后端日志”，与当前项目的运维习惯保持一致。
 
 ### 迁移风险
@@ -203,23 +209,23 @@ Makefile 应作为标准发布入口，补齐以下目标：
 - `update.sh` 不做回滚，一旦中途失败，可能留下半更新状态。
 - 三容器固定命名后，不适合后续直接扩展为多副本部署。
 - `tail -F` 依赖日志路径或容器日志驱动稳定；如果后端日志策略变化，`status.sh` 也要同步调整。
-- `scripts/` 迁移进仓库后，若 Makefile 漏打包，会导致生产环境找不到脚本，因此 `pack` 必须做完整性校验。
+- `scripts/` 迁移进仓库后，若 Makefile 没有把脚本平铺到发布包根目录，会导致生产环境沿用旧路径或找不到脚本，因此 `pack` 必须做完整性校验。
 
 ### 迁移方式
 
 1. 先把 `public` 的脚本复制到本项目 `scripts/`。
 2. 再按 Docker 三容器模型和本项目的命名规则逐个改造。
 3. 同步调整 Makefile 的 `pack`、`upload`、`publish` 目标。
-4. 最后把生产 crontab 指向新的 `scripts/update.sh`。
+4. 最后把生产 crontab 指向新的 `./update.sh`。
 
 ## 验证与回滚思路
 
 ### 验证
 
-- 验证 `scripts/` 下脚本可在仓库根目录直接执行。
+- 验证仓库内的 `scripts/` 脚本可正常运行，并确认发布包解压后脚本直接位于当前目录。
 - 验证 `status.sh` 只跟踪后端日志，且使用 `tail -F`。
 - 验证 `start.sh` / `stop.sh` / `restart.sh` 能正确控制三个 Docker 容器。
-- 验证 `pack` 产物包含 `scripts/`、`docker-compose.yml` 和运行材料。
+- 验证 `pack` 产物包含根目录脚本、`docker-compose.yml` 和运行材料。
 - 验证 `pack` 能生成：
   - `meeting_${commit}.tar.gz`
   - `latest.txt`

@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `make publish` / `make upload` 的职责边界按标准发布流程重新收敛：`publish` 现在严格按 `clean -> linux -> pack -> upload` 线性执行，`upload` 只校验并上传现成产物，不再隐式触发重新构建或重新打包；上传阶段同时对齐 `gobot` 的进度条逻辑，优先使用 `pv`，否则回退到 `curl --progress-bar`。
+- 发布包中的运维脚本改为在解压后直接平铺到当前目录，不再额外保留 `scripts/` 子目录；仓库内的 `scripts/` 源码仍保留不变，并补齐了根目录与 `scripts/` 两种布局下的路径兼容逻辑。
 - Makefile 现在同时支持本地开发构建和 Docker 化发布打包，`build` 继续面向本地开发，`linux` / `pack` / `upload` / `publish` 面向标准发布流程。
 - 固化权限模型：`participant` 默认仅有文字聊天权限，其他能力需主持人授权。
 - 固化录制策略：录屏/录音默认本地录制，不上传服务器。

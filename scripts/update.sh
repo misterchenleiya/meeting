@@ -15,7 +15,38 @@ json_escape() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-SERVICE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
+resolve_service_dir() {
+  if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
+    printf '%s\n' "${SCRIPT_DIR}"
+    return
+  fi
+
+  if [[ -f "${SCRIPT_DIR}/../docker-compose.yml" ]]; then
+    cd "${SCRIPT_DIR}/.." && pwd -P
+    return
+  fi
+
+  printf '%s\n' "${SCRIPT_DIR}"
+}
+
+resolve_runtime_script_path() {
+  local script_name="$1"
+
+  if [[ -f "${SERVICE_DIR}/${script_name}" ]]; then
+    printf '%s\n' "${SERVICE_DIR}/${script_name}"
+    return 0
+  fi
+
+  if [[ -f "${SERVICE_DIR}/scripts/${script_name}" ]]; then
+    printf '%s\n' "${SERVICE_DIR}/scripts/${script_name}"
+    return 0
+  fi
+
+  return 1
+}
+
+SERVICE_DIR="${SERVICE_DIR:-$(resolve_service_dir)}"
+SERVICE_DIR="$(cd "${SERVICE_DIR}" && pwd -P)"
 PROJECT_NAME="${PROJECT_NAME:-meeting}"
 DOWNLOAD_BASE_URL="${DOWNLOAD_BASE_URL:-https://download.07c2.com/${PROJECT_NAME}}"
 LATEST_URL="${LATEST_URL:-${DOWNLOAD_BASE_URL}/latest.txt}"
@@ -231,8 +262,9 @@ if [[ ! -f "${SERVICE_DIR}/docker-compose.yml" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${SERVICE_DIR}/scripts/start.sh" ]]; then
-  log_error "scripts not found after extraction" path="${SERVICE_DIR}/scripts/start.sh"
+START_SCRIPT_PATH="$(resolve_runtime_script_path start.sh || true)"
+if [[ -z "${START_SCRIPT_PATH}" ]]; then
+  log_error "start script not found after extraction" path="${SERVICE_DIR}/start.sh"
   exit 1
 fi
 
@@ -242,12 +274,15 @@ if [[ ! -f "${SERVICE_DIR}/backend/meeting" ]]; then
 fi
 
 chmod +x "${SERVICE_DIR}/backend/meeting"
-chmod +x "${SERVICE_DIR}/scripts/"*.sh
+find "${SERVICE_DIR}" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} +
+if [[ -d "${SERVICE_DIR}/scripts" ]]; then
+  find "${SERVICE_DIR}/scripts" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} +
+fi
 mkdir -p "${SERVICE_DIR}/logs" "${SERVICE_DIR}/data"
 printf '%s\n' "${ARCHIVE_NAME}" > "${CURRENT_FILE}"
 
 log_info "starting docker stack after update"
-"${SCRIPT_DIR}/start.sh"
+"${START_SCRIPT_PATH}"
 
 cleanup_old_archives "${ARCHIVE_NAME}"
 log_info "update completed" filename="${ARCHIVE_NAME}" sha256="${EXPECTED_SHA256}" current="${CURRENT_FILE}"
