@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增黑色风格的 `meeting` 主图标 SVG 资产 `docs/design/meeting-logo-black.svg`，保留 `me` 两个小写字母和底部聚光灯效果，适用于移动 APP、微信和网站 Logo。
 - 新增根目录 `scripts/` 发布脚本目录，包含 `start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh` 和 `crontab.sh`，并纳入标准发布包。
 - 新增 `docker-compose.yml`、前端 Nginx 配置和 coturn 配置草案，为 Docker 化运行的后端、前端和 TURN 服务提供统一编排。
 - 新增标准发布流程 `make linux`、`make pack`、`make upload` 和 `make publish`，最终产物固定为 `meeting_${commit}.tar.gz` 与 `latest.txt`。
