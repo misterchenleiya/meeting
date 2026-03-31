@@ -153,6 +153,10 @@ npm run dev
 
 ```bash
 make build
+make linux
+make pack
+make upload
+make publish
 make run-backend
 make run-frontend
 make clean
@@ -163,8 +167,13 @@ make clean
 - `make build`：构建后端二进制和前端静态资源，产物写入 `build/`
 - 后端构建输出：`build/backend/meeting`
 - 前端构建输出：`build/frontend/`
+- `make linux`：构建用于 Docker 运行的 Linux/amd64 发布产物
+- `make pack`：将 `scripts/`、`docker-compose.yml`、后端、前端和 coturn 资源打入 `meeting_${commit}.tar.gz` 与 `latest.txt`
+- `make upload`：先上传 `meeting_${commit}.tar.gz`，再上传 `latest.txt`
+- `make publish`：执行标准 `clean -> linux -> pack -> upload` 发布流程
 - `make run-backend`：启动后端服务，并将运行期日志和 SQLite 数据写入 `build/run/`
 - `make run-frontend`：启动前端开发服务器
+- 根目录 `scripts/` 放置 Docker 运行辅助脚本（`start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh`、`crontab.sh`），并且会被每次发布一起打包
 - 前端运行期日志默认输出到浏览器控制台；`warn`/`error` 和关键 `info` 事件会批量上报到后端 `POST /api/client-logs`，并进入后端 JSON 日志；浏览器本地不再持久化保存这些日志
 - `make clean`：删除 `build/` 目录
 

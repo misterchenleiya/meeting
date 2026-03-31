@@ -157,6 +157,10 @@ The frontend dev server listens on `0.0.0.0:5188` by default.
 
 ```bash
 make build
+make linux
+make pack
+make upload
+make publish
 make run-backend
 make run-frontend
 make clean
@@ -165,8 +169,13 @@ make clean
 - `make build`: builds the backend binary and frontend assets into `build/`
 - Backend build output: `build/backend/meeting`
 - Frontend build output: `build/frontend/`
+- `make linux`: builds the Linux/amd64 release artifacts used by the Docker-based runtime
+- `make pack`: stages `scripts/`, `docker-compose.yml`, backend, frontend, and coturn assets into `meeting_${commit}.tar.gz` and `latest.txt`
+- `make upload`: uploads `meeting_${commit}.tar.gz` first, then `latest.txt`
+- `make publish`: runs the standard `clean -> linux -> pack -> upload` flow
 - `make run-backend`: starts the backend and writes runtime logs and SQLite data to `build/run/`
 - `make run-frontend`: starts the frontend dev server
+- Root `scripts/` contains the Docker runtime helpers (`start.sh`, `stop.sh`, `restart.sh`, `status.sh`, `update.sh`, `upload.sh`, `crontab.sh`) and is included in every release package
 - Frontend runtime logs are written to the browser console; `warn`/`error` and selected `info` events are batched to `POST /api/client-logs` and end up in the backend JSON logs, while the browser no longer persists them locally
 - `make clean`: removes `build/`
 

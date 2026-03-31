@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增根目录 `scripts/` 发布脚本目录，包含 `start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh` 和 `crontab.sh`，并纳入标准发布包。
+- 新增 `docker-compose.yml`、前端 Nginx 配置和 coturn 配置草案，为 Docker 化运行的后端、前端和 TURN 服务提供统一编排。
+- 新增标准发布流程 `make linux`、`make pack`、`make upload` 和 `make publish`，最终产物固定为 `meeting_${commit}.tar.gz` 与 `latest.txt`。
 - 初始化 `Meeting` 项目骨架，明确 P2P 优先、TURN 兜底、会议数据会后清理的架构方向。
 - 新增架构 ADR、后端服务入口、SQLite 审计/偏好存储和前端基础会议控制台骨架。
 - 新增基础 WSS 信令通道，支持房间欢迎消息、在线状态广播、聊天消息、能力申请/授权和 SDP/ICE 消息转发。
@@ -34,11 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增前端日志接收接口 `POST /api/client-logs`，用于接收浏览器侧关键 JSON 日志并写入现有后端日志体系。
 - 新增 `docs/api/` 接口文档目录，使用 OpenAPI 和 WebSocket 协议文档补齐 REST 与信令接口契约说明。
 - 新增 `docs/proposals/20260331-media-reliability-and-identity-plan.md`，整理媒体可靠性与身份体系两条主线的实施计划、范围、风险与验证思路。
+- 新增 `docs/proposals/20260331-docker-release-and-update-flow.md`，整理 Docker 化运行、根目录发布脚本、原地更新流程与标准打包发布方案。
 - 新增 `docs/issues/README.md` 的 20260331 方案执行拆解，补充媒体可靠性与身份体系两条主线的可执行 issue 列表。
 - 新增 `docs/deploy/coturn.md` 和 `web/.env.example`，补齐 TURN / coturn 的部署样例和前端环境配置示例。
 
 ### Changed
 
+- Makefile 现在同时支持本地开发构建和 Docker 化发布打包，`build` 继续面向本地开发，`linux` / `pack` / `upload` / `publish` 面向标准发布流程。
 - 固化权限模型：`participant` 默认仅有文字聊天权限，其他能力需主持人授权。
 - 固化录制策略：录屏/录音默认本地录制，不上传服务器。
 - 会中聊天改为服务端临时保存，断线重连后仍可通过房间快照恢复，会议结束后统一删除。
@@ -109,6 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 前端审计统计开始驱动媒体质量档位，会根据延迟、丢包、码率和 peer 数自动调整视频上限，并在审计面板中展示当前档位和视频限制。
 - 前端 Mesh 连接在 ICE 失败或断开时会自动触发重协商恢复，减少多人房间里个别 peer 短暂掉线后的人工介入。
 - 登录入口拆分为独立的注册和登录路径，注册完成后会返回登录页并要求重新用验证码登录。
+- 新增生产环境 Nginx 配置草案，并修正 `api.07c2.com.cn/meeting` 的反代规则为前缀剥离模式，确保后端收到的是原始 `/api/...` 与 `/ws/...` 路径。
 
 ### Fixed
 
