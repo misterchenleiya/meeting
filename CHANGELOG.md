@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Docker 化发布链路继续收口：coturn relay 端口范围默认调整为 `52000-52048`，并在 `docker-compose.yml` 与发布时生成的 `turnserver.conf` 中统一对齐；`update.sh` 现在支持空目录首装时跳过停止旧栈，并在失败时记录具体步骤、退出码和失败命令。
 - `make publish` / `make upload` 的职责边界按标准发布流程重新收敛：`publish` 现在严格按 `clean -> linux -> pack -> upload` 线性执行，`upload` 只校验并上传现成产物，不再隐式触发重新构建或重新打包；上传阶段同时对齐 `gobot` 的进度条逻辑，优先使用 `pv`，否则回退到 `curl --progress-bar`。
 - 发布包中的运维脚本改为在解压后直接平铺到当前目录，不再额外保留 `scripts/` 子目录；仓库内的 `scripts/` 源码仍保留不变，并补齐了根目录与 `scripts/` 两种布局下的路径兼容逻辑。
 - Makefile 现在同时支持本地开发构建和 Docker 化发布打包，`build` 继续面向本地开发，`linux` / `pack` / `upload` / `publish` 面向标准发布流程。
@@ -121,6 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 Docker 化前端 `nginx.conf` 的 `/healthz` 配置语法，避免 `meeting-frontend` 容器因无效的 `Content-Type` 参数而持续重启。
 - 后端日志输出统一为包含 `level`、`time`、`message` 的 JSON 格式，并将 `level` 调整为小写，满足项目全局日志规范。
 - 后端日志文件补齐 24 小时轮转和最近 3 天保留策略，避免长时间运行时单文件持续增长且依赖重启才清理旧日志。
 - 后端启动早期的日志初始化失败场景改为使用同一套 JSON 日志格式输出到标准错误，避免绕过项目日志规范。

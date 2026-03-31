@@ -26,7 +26,11 @@ FRONTEND_STUN_URLS := stun:stun.l.google.com:19302
 TURN_HOST := turn.meeting.07c2.com.cn
 TURN_USERNAME := meeting
 TURN_CREDENTIAL ?= CHANGE_ME_STRONG_PASSWORD
-FRONTEND_TURN_URLS := turn:$(TURN_HOST):3478?transport=udp,turn:$(TURN_HOST):3478?transport=tcp,turns:$(TURN_HOST):5349?transport=tcp
+COTURN_LISTEN_PORT ?= 3478
+COTURN_TLS_LISTEN_PORT ?= 5349
+COTURN_MIN_PORT ?= 52000
+COTURN_MAX_PORT ?= 52048
+FRONTEND_TURN_URLS := turn:$(TURN_HOST):$(COTURN_LISTEN_PORT)?transport=udp,turn:$(TURN_HOST):$(COTURN_LISTEN_PORT)?transport=tcp,turns:$(TURN_HOST):$(COTURN_TLS_LISTEN_PORT)?transport=tcp
 
 .PHONY: build build-backend build-frontend build-backend-linux build-frontend-release linux stage-release pack upload publish clean
 
@@ -84,8 +88,8 @@ stage-release: linux
 	chmod 755 "$(RELEASE_BACKEND_DIR)/meeting"; \
 	cp -R "$(WEB_BUILD_DIR)/." "$(RELEASE_FRONTEND_DIR)/dist/"; \
 	cp "deploy/frontend/nginx.conf" "$(RELEASE_FRONTEND_DIR)/nginx.conf"; \
-	TURN_HOST="$(TURN_HOST)" TURN_USERNAME="$(TURN_USERNAME)" TURN_CREDENTIAL="$(TURN_CREDENTIAL)" python3 -c 'from pathlib import Path; import os; src = Path("deploy/coturn/turnserver.conf").read_text(); host = os.environ["TURN_HOST"]; user = os.environ["TURN_USERNAME"]; credential = os.environ["TURN_CREDENTIAL"]; src = src.replace("realm=turn.meeting.07c2.com.cn", "realm=" + host); src = src.replace("server-name=turn.meeting.07c2.com.cn", "server-name=" + host); src = src.replace("cert=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/fullchain.pem", "cert=/etc/letsencrypt/live/" + host + "/fullchain.pem"); src = src.replace("pkey=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/privkey.pem", "pkey=/etc/letsencrypt/live/" + host + "/privkey.pem"); src = src.replace("user=meeting:CHANGE_ME_STRONG_PASSWORD", "user=" + user + ":" + credential); Path("$(RELEASE_COTURN_DIR)/turnserver.conf").write_text(src)'; \
-	cp "docker-compose.yml" "$(RELEASE_ROOT)/docker-compose.yml"; \
+	TURN_HOST="$(TURN_HOST)" TURN_USERNAME="$(TURN_USERNAME)" TURN_CREDENTIAL="$(TURN_CREDENTIAL)" COTURN_LISTEN_PORT="$(COTURN_LISTEN_PORT)" COTURN_TLS_LISTEN_PORT="$(COTURN_TLS_LISTEN_PORT)" COTURN_MIN_PORT="$(COTURN_MIN_PORT)" COTURN_MAX_PORT="$(COTURN_MAX_PORT)" python3 -c 'from pathlib import Path; import os; src = Path("deploy/coturn/turnserver.conf").read_text(); host = os.environ["TURN_HOST"]; user = os.environ["TURN_USERNAME"]; credential = os.environ["TURN_CREDENTIAL"]; listen_port = os.environ["COTURN_LISTEN_PORT"]; tls_port = os.environ["COTURN_TLS_LISTEN_PORT"]; min_port = os.environ["COTURN_MIN_PORT"]; max_port = os.environ["COTURN_MAX_PORT"]; src = src.replace("listening-port=3478", "listening-port=" + listen_port); src = src.replace("tls-listening-port=5349", "tls-listening-port=" + tls_port); src = src.replace("realm=turn.meeting.07c2.com.cn", "realm=" + host); src = src.replace("server-name=turn.meeting.07c2.com.cn", "server-name=" + host); src = src.replace("cert=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/fullchain.pem", "cert=/etc/letsencrypt/live/" + host + "/fullchain.pem"); src = src.replace("pkey=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/privkey.pem", "pkey=/etc/letsencrypt/live/" + host + "/privkey.pem"); src = src.replace("user=meeting:CHANGE_ME_STRONG_PASSWORD", "user=" + user + ":" + credential); src = src.replace("min-port=52000", "min-port=" + min_port); src = src.replace("max-port=52048", "max-port=" + max_port); Path("$(RELEASE_COTURN_DIR)/turnserver.conf").write_text(src)'; \
+	COTURN_LISTEN_PORT="$(COTURN_LISTEN_PORT)" COTURN_TLS_LISTEN_PORT="$(COTURN_TLS_LISTEN_PORT)" COTURN_MIN_PORT="$(COTURN_MIN_PORT)" COTURN_MAX_PORT="$(COTURN_MAX_PORT)" python3 -c 'from pathlib import Path; import os; src = Path("docker-compose.yml").read_text(); listen_port = os.environ["COTURN_LISTEN_PORT"]; tls_port = os.environ["COTURN_TLS_LISTEN_PORT"]; min_port = os.environ["COTURN_MIN_PORT"]; max_port = os.environ["COTURN_MAX_PORT"]; src = src.replace("$${COTURN_LISTEN_PORT:-3478}", listen_port); src = src.replace("$${COTURN_TLS_LISTEN_PORT:-5349}", tls_port); src = src.replace("$${COTURN_MIN_PORT:-52000}", min_port); src = src.replace("$${COTURN_MAX_PORT:-52048}", max_port); Path("$(RELEASE_ROOT)/docker-compose.yml").write_text(src)'; \
 	cp scripts/*.sh "$(RELEASE_ROOT)/"; \
 	chmod 755 "$(RELEASE_ROOT)"/*.sh; \
 	printf '%s\n' "$(ARCHIVE_FILE)" > "$(CURRENT_FILE)"

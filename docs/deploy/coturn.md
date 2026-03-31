@@ -16,7 +16,7 @@
 - `3478/tcp`：TURN over TCP
 - `5349/tcp`：TURN over TLS
 
-如果你需要更严格地限制 relay 端口范围，可以再额外配置 coturn 的 `min-port` / `max-port`，并在防火墙里一并放行。
+当前项目发布包默认把 coturn relay 端口范围收敛到 `52000-52048`，以减少和宿主机上常见高位端口占用冲突；如果你需要其他范围，可以在打包时覆盖 `COTURN_MIN_PORT` / `COTURN_MAX_PORT`，并在防火墙里一并放行。
 
 ## 示例配置
 
@@ -35,6 +35,8 @@ no-multicast-peers
 stale-nonce
 cert=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/fullchain.pem
 pkey=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/privkey.pem
+min-port=52000
+max-port=52048
 log-file=stdout
 simple-log
 ```
@@ -61,7 +63,7 @@ VITE_MEETING_TURN_CREDENTIAL=CHANGE_ME_STRONG_PASSWORD
 
 ## 验证方式
 
-1. 启动 coturn，并确保 3478 / 5349 端口可达
+1. 启动 coturn，并确保 `3478`、`5349` 和 relay 端口范围 `52000-52048` 可达
 2. 用上面的前端环境变量重新构建前端
 3. 打开会议页，在调试信息里观察 candidate 类型
 4. 当网络环境无法直连时，应该能看到 `relay` candidate，而不是只停留在 `host` / `srflx`

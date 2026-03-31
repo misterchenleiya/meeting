@@ -15,6 +15,7 @@ json_escape() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+CURRENT_STEP="initialize"
 resolve_service_dir() {
   if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
     printf '%s\n' "${SCRIPT_DIR}"
@@ -92,6 +93,16 @@ log_json() {
 log_info() { log_json info "$@"; }
 log_warn() { log_json warn "$@"; }
 log_error() { log_json error "$@"; }
+
+handle_error() {
+  local exit_code=$?
+  local line_number="${BASH_LINENO[0]:-unknown}"
+  local failed_command="${BASH_COMMAND:-unknown}"
+  log_error "update failed" step="${CURRENT_STEP}" exit_code="${exit_code}" line="${line_number}" command="${failed_command}"
+  exit "${exit_code}"
+}
+
+trap 'handle_error' ERR
 
 ensure_command() {
   local command_name="$1"
@@ -176,6 +187,15 @@ cleanup_old_archives() {
   done < <(find "${SERVICE_DIR}" -maxdepth 1 -type f -name "${PROJECT_NAME}_*.tar.gz" 2>/dev/null | sed 's#.*/##' | sort)
 }
 
+has_existing_deployment() {
+  [[ -f "${CURRENT_FILE}" ]] && return 0
+  [[ -f "${SERVICE_DIR}/docker-compose.yml" ]] && return 0
+  [[ -d "${SERVICE_DIR}/backend" ]] && return 0
+  [[ -d "${SERVICE_DIR}/frontend" ]] && return 0
+  [[ -d "${SERVICE_DIR}/coturn" ]] && return 0
+  return 1
+}
+
 ensure_command tar
 ensure_command find
 ensure_command sed
@@ -188,6 +208,7 @@ ensure_command mv
 with_update_lock
 log_info "update started" latest_url="${LATEST_URL}"
 
+CURRENT_STEP="download_latest_metadata"
 LATEST_REMOTE_TEXT="$(download_text "${LATEST_URL}")"
 ARCHIVE_NAME="$(parse_field "${LATEST_REMOTE_TEXT}" filename)"
 EXPECTED_SHA256="$(parse_field "${LATEST_REMOTE_TEXT}" sha256sum)"
@@ -237,6 +258,7 @@ fi
 
 if [[ ! -f "${ARCHIVE_PATH}" ]]; then
   log_info "downloading archive" url="${DOWNLOAD_BASE_URL}/${ARCHIVE_NAME}"
+  CURRENT_STEP="download_archive"
   rm -f "${ARCHIVE_TMP_PATH}"
   download_file "${DOWNLOAD_BASE_URL}/${ARCHIVE_NAME}" "${ARCHIVE_TMP_PATH}"
 
@@ -251,10 +273,22 @@ if [[ ! -f "${ARCHIVE_PATH}" ]]; then
   log_info "archive downloaded" filename="${ARCHIVE_NAME}" sha256="${EXPECTED_SHA256}"
 fi
 
-log_info "stopping docker stack before update"
-"${SCRIPT_DIR}/stop.sh" --remove
+STOP_SCRIPT_PATH="$(resolve_runtime_script_path stop.sh || true)"
+if has_existing_deployment; then
+  if [[ -z "${STOP_SCRIPT_PATH}" ]]; then
+    log_error "stop script not found for existing deployment" expected_primary="${SERVICE_DIR}/stop.sh" expected_legacy="${SERVICE_DIR}/scripts/stop.sh"
+    exit 1
+  fi
+
+  CURRENT_STEP="stop_existing_stack"
+  log_info "stopping docker stack before update"
+  "${STOP_SCRIPT_PATH}" --remove
+else
+  log_info "no existing deployment detected, skipping stop"
+fi
 
 log_info "extracting archive" archive="${ARCHIVE_PATH}"
+CURRENT_STEP="extract_archive"
 tar -xzf "${ARCHIVE_PATH}" -C "${SERVICE_DIR}"
 
 if [[ ! -f "${SERVICE_DIR}/docker-compose.yml" ]]; then
@@ -274,6 +308,7 @@ if [[ ! -f "${SERVICE_DIR}/backend/meeting" ]]; then
 fi
 
 chmod +x "${SERVICE_DIR}/backend/meeting"
+CURRENT_STEP="prepare_release_files"
 find "${SERVICE_DIR}" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} +
 if [[ -d "${SERVICE_DIR}/scripts" ]]; then
   find "${SERVICE_DIR}/scripts" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} +
@@ -282,7 +317,9 @@ mkdir -p "${SERVICE_DIR}/logs" "${SERVICE_DIR}/data"
 printf '%s\n' "${ARCHIVE_NAME}" > "${CURRENT_FILE}"
 
 log_info "starting docker stack after update"
+CURRENT_STEP="start_updated_stack"
 "${START_SCRIPT_PATH}"
 
 cleanup_old_archives "${ARCHIVE_NAME}"
+CURRENT_STEP="complete"
 log_info "update completed" filename="${ARCHIVE_NAME}" sha256="${EXPECTED_SHA256}" current="${CURRENT_FILE}"
