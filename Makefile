@@ -18,6 +18,9 @@ LATEST_FILE := $(BUILD_DIR)/latest.txt
 CURRENT_FILE := $(RELEASE_ROOT)/current.txt
 UPLOAD_BASE := https://upload.07c2.com
 UPLOAD_PATH := /$(PROJECT_NAME)
+UPLOAD_TIMEOUT_SECONDS ?= 30
+UPLOAD_MAX_RETRIES ?= 5
+UPLOAD_RETRY_DELAY_SECONDS ?= 1
 FRONTEND_API_BASE_URL := https://api.07c2.com.cn/meeting/
 FRONTEND_SIGNAL_BASE_URL := https://api.07c2.com.cn/meeting/
 FRONTEND_STUN_URLS := stun:stun.l.google.com:19302
@@ -100,11 +103,27 @@ pack: stage-release
 		echo "no sha256 tool found" >&2; \
 		exit 1; \
 	fi; \
-	printf 'filename: %s\nsha256sum: %s\n' "$(ARCHIVE_FILE)" "$$sha256" > "$(LATEST_FILE)"; \
-	printf 'packed %s\n' "$(ARCHIVE_PATH)"
+		printf 'filename: %s\nsha256sum: %s\n' "$(ARCHIVE_FILE)" "$$sha256" > "$(LATEST_FILE)"; \
+		printf 'packed %s\n' "$(ARCHIVE_PATH)"
 
-upload: pack
+upload:
 	@set -euo pipefail; \
+	[ -f "$(LATEST_FILE)" ] || { echo "$(LATEST_FILE) not found" >&2; exit 1; }; \
+	artifact_name="$$(sed -n 's/^filename:[[:space:]]*//p' "$(LATEST_FILE)" | head -n1 | tr -d '\r')"; \
+	sha_expected="$$(sed -n 's/^sha256sum:[[:space:]]*//p' "$(LATEST_FILE)" | head -n1 | tr -d '\r')"; \
+	[[ -n "$$artifact_name" ]] || { echo "filename is missing in $(LATEST_FILE)" >&2; exit 1; }; \
+	[[ -n "$$sha_expected" ]] || { echo "sha256sum is missing in $(LATEST_FILE)" >&2; exit 1; }; \
+	artifact_path="$(BUILD_DIR)/$$artifact_name"; \
+	[ -f "$$artifact_path" ] || { echo "$$artifact_path not found" >&2; exit 1; }; \
+	if command -v sha256sum >/dev/null 2>&1; then \
+		sha_actual="$$(sha256sum "$$artifact_path" | awk '{print $$1}')"; \
+	elif command -v shasum >/dev/null 2>&1; then \
+		sha_actual="$$(shasum -a 256 "$$artifact_path" | awk '{print $$1}')"; \
+	else \
+		echo "no sha256 tool found" >&2; \
+		exit 1; \
+	fi; \
+	[[ "$$sha_actual" == "$$sha_expected" ]] || { echo "sha256 mismatch for $$artifact_path" >&2; echo "expected=$$sha_expected actual=$$sha_actual" >&2; exit 1; }; \
 	if [[ -z "$${deploy_username:-}" ]]; then \
 		printf 'deploy username: '; \
 		IFS= read -r deploy_username; \
@@ -125,8 +144,16 @@ upload: pack
 		exit 1; \
 	fi; \
 	export deploy_username deploy_password; \
-	UPLOAD_BASE="$(UPLOAD_BASE)" ./scripts/upload.sh "$(ARCHIVE_PATH)" "$(UPLOAD_PATH)"; \
-	UPLOAD_BASE="$(UPLOAD_BASE)" ./scripts/upload.sh "$(LATEST_FILE)" "$(UPLOAD_PATH)"
+	UPLOAD_BASE="$(UPLOAD_BASE)" \
+	UPLOAD_TIMEOUT_SECONDS="$(UPLOAD_TIMEOUT_SECONDS)" \
+	UPLOAD_MAX_RETRIES="$(UPLOAD_MAX_RETRIES)" \
+	UPLOAD_RETRY_DELAY_SECONDS="$(UPLOAD_RETRY_DELAY_SECONDS)" \
+	./scripts/upload.sh "$$artifact_path" "$(UPLOAD_PATH)"; \
+	UPLOAD_BASE="$(UPLOAD_BASE)" \
+	UPLOAD_TIMEOUT_SECONDS="$(UPLOAD_TIMEOUT_SECONDS)" \
+	UPLOAD_MAX_RETRIES="$(UPLOAD_MAX_RETRIES)" \
+	UPLOAD_RETRY_DELAY_SECONDS="$(UPLOAD_RETRY_DELAY_SECONDS)" \
+	./scripts/upload.sh "$(LATEST_FILE)" "$(UPLOAD_PATH)"
 
 publish:
 	@set -euo pipefail; \
@@ -150,7 +177,10 @@ publish:
 		exit 1; \
 	fi; \
 	export deploy_username deploy_password; \
-	$(MAKE) clean linux upload
+	$(MAKE) --no-print-directory clean && \
+	$(MAKE) --no-print-directory linux && \
+	$(MAKE) --no-print-directory pack && \
+	$(MAKE) --no-print-directory upload
 
 clean:
 	rm -rf "$(BUILD_DIR)"

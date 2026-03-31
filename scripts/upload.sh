@@ -119,10 +119,22 @@ upload_file() {
   fi
 
   for ((attempt = 1; attempt <= UPLOAD_MAX_RETRIES; attempt++)); do
-    if curl \
+    if command -v pv >/dev/null 2>&1; then
+      if pv -f "${src_path}" | curl \
+        --fail \
+        --show-error \
+        --max-time "${UPLOAD_TIMEOUT_SECONDS}" \
+        --user "${deploy_username}:${deploy_password}" \
+        -T - \
+        "${dst_url}"; then
+        log_info "uploaded file=${src_path##*/} path=${dst_url} attempt=${attempt}"
+        return
+      fi
+    elif curl \
       --fail \
       --show-error \
       --progress-bar \
+      --stderr - \
       --max-time "${UPLOAD_TIMEOUT_SECONDS}" \
       --user "${deploy_username}:${deploy_password}" \
       -T "${src_path}" \
@@ -205,4 +217,3 @@ main() {
 }
 
 main "$@"
-
