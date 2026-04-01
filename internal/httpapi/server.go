@@ -51,6 +51,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/auth/login/code", s.handleLoginCode)
 	s.mux.HandleFunc("POST /api/auth/login/verify", s.handleLoginVerify)
 	s.mux.HandleFunc("POST /api/auth/login/password", s.handlePasswordLogin)
+	s.mux.HandleFunc("POST /api/auth/wechat/mini/login", s.handleWechatMiniProgramLogin)
 	s.mux.HandleFunc("GET /api/auth/me", s.handleMe)
 	s.mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	s.mux.HandleFunc("POST /api/meetings", s.handleCreateMeeting)

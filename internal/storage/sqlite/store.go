@@ -84,6 +84,12 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.ensureColumn(ctx, "users", "email_verified_at", "TEXT"); err != nil {
 		return err
 	}
+	if err := s.ensureIndex(ctx, "idx_users_wechat_openid_unique", `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_wechat_openid_unique
+ON users(wechat_openid)
+WHERE wechat_openid IS NOT NULL AND wechat_openid <> ''`); err != nil {
+		return err
+	}
 
 	if err := s.ensureColumn(ctx, "auth_verification_codes", "nickname", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err

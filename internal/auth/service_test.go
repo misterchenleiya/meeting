@@ -10,6 +10,18 @@ import (
 	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
 )
 
+type fakeWechatMiniProgramCodeExchanger struct {
+	openID string
+	err    error
+}
+
+func (f fakeWechatMiniProgramCodeExchanger) ExchangeCode(_ context.Context, _ string) (WechatMiniProgramIdentity, error) {
+	if f.err != nil {
+		return WechatMiniProgramIdentity{}, f.err
+	}
+	return WechatMiniProgramIdentity{OpenID: f.openID}, nil
+}
+
 func TestRequestLoginCodeAllowsUnregisteredEmail(t *testing.T) {
 	t.Parallel()
 
@@ -107,6 +119,73 @@ func TestCompletePasswordLoginRejectsUserWithoutPassword(t *testing.T) {
 	)
 	if err != ErrPasswordNotSet {
 		t.Fatalf("CompletePasswordLogin() error = %v, want %v", err, ErrPasswordNotSet)
+	}
+}
+
+func TestCompleteWechatMiniProgramLoginAutoRegisters(t *testing.T) {
+	t.Parallel()
+
+	store := openTestAuthStore(t)
+	service := NewService(store, nil, WithWechatMiniProgramCodeExchanger(fakeWechatMiniProgramCodeExchanger{
+		openID: "wechat-openid-001",
+	}))
+
+	user, session, autoRegistered, err := service.CompleteWechatMiniProgramLogin(
+		context.Background(),
+		"wx-code",
+		"wechat-agent",
+		"127.0.0.1",
+	)
+	if err != nil {
+		t.Fatalf("CompleteWechatMiniProgramLogin() error = %v", err)
+	}
+	if !autoRegistered {
+		t.Fatalf("CompleteWechatMiniProgramLogin() autoRegistered = false, want true")
+	}
+	if session.Token == "" {
+		t.Fatalf("CompleteWechatMiniProgramLogin() session token is empty")
+	}
+	if user.Email != "" {
+		t.Fatalf("CompleteWechatMiniProgramLogin() email = %q, want empty", user.Email)
+	}
+	if !strings.HasPrefix(user.Nickname, "微信用户") {
+		t.Fatalf("CompleteWechatMiniProgramLogin() nickname = %q", user.Nickname)
+	}
+}
+
+func TestCompleteWechatMiniProgramLoginUsesExistingUser(t *testing.T) {
+	t.Parallel()
+
+	store := openTestAuthStore(t)
+	now := time.Now().UTC()
+	if err := store.CreateUser(context.Background(), sqlite.UserRecord{
+		ID:           "usr_wechat_existing",
+		WechatOpenID: "wechat-openid-existing",
+		Nickname:     "已绑定微信用户",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("CreateUser() error = %v", err)
+	}
+
+	service := NewService(store, nil, WithWechatMiniProgramCodeExchanger(fakeWechatMiniProgramCodeExchanger{
+		openID: "wechat-openid-existing",
+	}))
+
+	user, _, autoRegistered, err := service.CompleteWechatMiniProgramLogin(
+		context.Background(),
+		"wx-code",
+		"wechat-agent",
+		"127.0.0.1",
+	)
+	if err != nil {
+		t.Fatalf("CompleteWechatMiniProgramLogin() error = %v", err)
+	}
+	if autoRegistered {
+		t.Fatalf("CompleteWechatMiniProgramLogin() autoRegistered = true, want false")
+	}
+	if user.ID != "usr_wechat_existing" {
+		t.Fatalf("CompleteWechatMiniProgramLogin() user id = %q", user.ID)
 	}
 }
 

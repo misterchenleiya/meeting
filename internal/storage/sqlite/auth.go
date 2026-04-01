@@ -148,6 +148,58 @@ WHERE email = ?`
 	return record, true, nil
 }
 
+func (s *Store) GetUserByWechatOpenID(ctx context.Context, wechatOpenID string) (UserRecord, bool, error) {
+	const query = `
+SELECT id, email, password_hash, wechat_openid, nickname, email_verified_at, created_at, updated_at
+FROM users
+WHERE wechat_openid = ?`
+
+	var (
+		record          UserRecord
+		emailVerifiedAt sql.NullString
+		createdAtRaw    string
+		updatedAtRaw    string
+	)
+
+	if err := s.db.QueryRowContext(ctx, query, wechatOpenID).Scan(
+		&record.ID,
+		&record.Email,
+		&record.PasswordHash,
+		&record.WechatOpenID,
+		&record.Nickname,
+		&emailVerifiedAt,
+		&createdAtRaw,
+		&updatedAtRaw,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return UserRecord{}, false, nil
+		}
+		return UserRecord{}, false, fmt.Errorf("get user by wechat openid: %w", err)
+	}
+
+	createdAt, err := time.Parse(time.RFC3339Nano, createdAtRaw)
+	if err != nil {
+		return UserRecord{}, false, fmt.Errorf("parse user created_at: %w", err)
+	}
+
+	updatedAt, err := time.Parse(time.RFC3339Nano, updatedAtRaw)
+	if err != nil {
+		return UserRecord{}, false, fmt.Errorf("parse user updated_at: %w", err)
+	}
+
+	record.CreatedAt = createdAt
+	record.UpdatedAt = updatedAt
+	if emailVerifiedAt.Valid && emailVerifiedAt.String != "" {
+		parsed, parseErr := time.Parse(time.RFC3339Nano, emailVerifiedAt.String)
+		if parseErr != nil {
+			return UserRecord{}, false, fmt.Errorf("parse user email_verified_at: %w", parseErr)
+		}
+		record.EmailVerifiedAt = &parsed
+	}
+
+	return record, true, nil
+}
+
 func (s *Store) CreateUser(ctx context.Context, user UserRecord) error {
 	const statement = `
 INSERT INTO users (

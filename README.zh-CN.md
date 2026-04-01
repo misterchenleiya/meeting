@@ -49,6 +49,7 @@
 | 前端录制层 | `web/src/recording.ts` | 本地录制缓存、下载保存、丢弃缓存 | 已实现 |
 | 前端白板模块 | `web/src/whiteboard.tsx` | 白板绘制与显示 | 已实现 |
 | 前端会议控制台 | `web/src/App.tsx` | 产品化登录壳层、入会流程、主舞台、右侧抽屉和会中辅助协作面板 | 已实现 |
+| 微信小程序客户端 | `wechat/miniprogram` | 提供小程序登录壳层、显式 token 鉴权封装、入会壳层和基础会中占位页 | 第一阶段已实现 |
 
 ## 需求实现状态
 
@@ -82,12 +83,14 @@
   当前支持会中临时纪要、聊天记录、白板数量和就位确认摘要导出；“会议结束时提示主持人保存纪要”尚未补齐。
 - [~] 审计日志
   当前已上报延迟、丢包、帧率、码率和连接摘要；仍可继续丰富设备指纹和更细粒度网络信息。
+- [~] 微信小程序客户端
+  当前第一阶段已实现：支持微信快捷登录、显式 token 登录态保持、会议查询、带密码加入会议和基础会中壳层；音视频和更完整的会中协作能力仍待继续补齐。
 
 ### 未实现
 
 - [ ] `TURN` / coturn 部署与穿透失败自动退化链路的生产验证
 - [ ] 多人 Mesh 的动态管理和性能优化
-- [ ] 微信注册、扫码登录
+- [ ] 微信扫码登录与更完整的账号绑定流程
 - [ ] 打开邀请链接后自动回填会议号与密码
 - [ ] 会议结束时主持人的纪要保存提示流
 
@@ -124,6 +127,7 @@
 
 - `POST /api/auth/register/code`、`POST /api/auth/register/verify`、`POST /api/auth/login/code`、`POST /api/auth/login/verify`、`GET /api/auth/me`、`POST /api/auth/logout`：注册 / 登录 / 当前用户 / 退出登录接口
 - `POST /api/auth/login/password`：最小密码登录接口；未设置密码的账号会返回“请使用邮箱验证码登录”的明确提示
+- `POST /api/auth/wechat/mini/login`：微信小程序快捷登录接口；后端使用 `wx.login` 返回的 code 换取 `openid`，并返回显式 `sessionToken`
 - `POST /api/meetings` 返回的会议对象现在同时包含内部 `id` 和公开 `meetingNumber`。
 - `GET /api/meetings/{meetingID}` 与 `POST /api/meetings/{meetingID}/join` 等会议级接口现在同时接受内部运行态 ID 和公开 `9` 位会议号。
 - `GET /ws/meetings/{meetingID}` 仍继续使用内部运行态 ID，以减少对现有信令链路的影响。
@@ -146,6 +150,8 @@ go run ./cmd/server
 - `MEETING_SMTP_FROM_ADDRESS`、`MEETING_SMTP_FROM_NAME`、`MEETING_SMTP_REQUIRE_TLS`
 - `MEETING_SENDCLOUD_API_BASE_URL`、`MEETING_SENDCLOUD_API_USER`、`MEETING_SENDCLOUD_API_KEY`
 - `MEETING_SENDCLOUD_FROM_ADDRESS`、`MEETING_SENDCLOUD_FROM_NAME`
+- `MEETING_WECHAT_MINIPROGRAM_APP_ID`、`MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
+- `MEETING_WECHAT_MINIPROGRAM_API_BASE_URL`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
 
 ### 生产环境邮件发送
@@ -166,9 +172,22 @@ MEETING_SENDCLOUD_API_KEY=your_sendcloud_api_key
 MEETING_SENDCLOUD_FROM_ADDRESS=no-reply@mail.07c2.com.cn
 MEETING_SENDCLOUD_FROM_NAME=meeting
 MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+MEETING_WECHAT_MINIPROGRAM_APP_ID=your_wechat_miniprogram_app_id
+MEETING_WECHAT_MINIPROGRAM_APP_SECRET=your_wechat_miniprogram_app_secret
+MEETING_WECHAT_MINIPROGRAM_API_BASE_URL=https://api.weixin.qq.com
 ```
 
 仓库内同时提供了生产配置模版 [scripts/env.example](scripts/env.example)。每次发布打包时，这个文件也会一并进入压缩包根目录，文件名保持为 `env.example`，便于运维复制到 `/data/07c2.com.cn/meeting/meeting-backend.env` 后再手工填写真实凭据。SMTP 仍然保留为备选模式，但生产环境优先推荐 SendCloud API。
+
+### 微信小程序
+
+- 小程序源码位于 `wechat/`
+- 用微信开发者工具打开 [wechat/project.config.json](wechat/project.config.json)，并使用对应的小程序 `AppID`
+- 需要在微信公众平台配置合法 request 域名，例如 `https://meeting.07c2.com.cn`
+- 后端必须配置：
+  - `MEETING_WECHAT_MINIPROGRAM_APP_ID`
+  - `MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
+- 当前第一阶段采用 `wx.login -> POST /api/auth/wechat/mini/login` 的方式完成快捷登录；后端负责调用微信 `jscode2session` 换取 `openid`，必要时自动创建用户，并把显式 `sessionToken` 返回给小程序端，本地保存后通过 `Authorization: Bearer ...` 继续访问认证与会议接口
 
 ### 前端
 

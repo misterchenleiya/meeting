@@ -47,6 +47,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 | Frontend recording | `web/src/recording.ts` | Handles local recording cache, download, and discard | Implemented |
 | Frontend whiteboard | `web/src/whiteboard.tsx` | Draws and renders the shared whiteboard | Implemented |
 | Meeting console | `web/src/App.tsx` | Renders the productized auth shell, meeting entry flows, featured stage, drawers, and secondary collaboration panels | Implemented |
+| WeChat mini program client | `wechat/miniprogram` | Provides the mini program login shell, token-based auth wrapper, join flow shell, and placeholder in-room page | Phase 1 implemented |
 
 ## Feature Status
 
@@ -80,12 +81,14 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
   Temporary minutes, chat history, whiteboard counts, and ready check summaries can be exported, but there is no host-side save reminder at meeting end yet.
 - [~] Audit logging
   The frontend already reports latency, packet loss, frame rate, bitrate, and connection summary, but device fingerprinting and richer network context are still missing.
+- [~] WeChat mini program client
+  Phase 1 is now implemented: the mini program supports WeChat quick login, token-based auth persistence, meeting lookup, password-gated join, and a minimal room shell. Audio/video and richer in-room collaboration are still pending.
 
 ### Not Yet Implemented
 
 - [ ] TURN / coturn deployment and production validation for peers that fail NAT traversal
 - [ ] Dynamic multi-peer mesh management and performance optimization
-- [ ] WeChat registration and QR-code login
+- [ ] WeChat QR-code login and richer account binding flows
 - [ ] Auto-fill the join form when opening an invite link directly
 - [ ] Host reminder to save meeting minutes at meeting end
 
@@ -109,6 +112,7 @@ Key endpoints that are already available:
 - `POST /api/auth/login/code`
 - `POST /api/auth/login/verify`
 - `POST /api/auth/login/password`
+- `POST /api/auth/wechat/mini/login`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
 - `POST /api/meetings`
@@ -149,6 +153,8 @@ Optional environment variables:
 - `MEETING_SMTP_FROM_ADDRESS`, `MEETING_SMTP_FROM_NAME`, `MEETING_SMTP_REQUIRE_TLS`
 - `MEETING_SENDCLOUD_API_BASE_URL`, `MEETING_SENDCLOUD_API_USER`, `MEETING_SENDCLOUD_API_KEY`
 - `MEETING_SENDCLOUD_FROM_ADDRESS`, `MEETING_SENDCLOUD_FROM_NAME`
+- `MEETING_WECHAT_MINIPROGRAM_APP_ID`, `MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
+- `MEETING_WECHAT_MINIPROGRAM_API_BASE_URL`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
 
 ### Production Mail Delivery
@@ -169,9 +175,22 @@ MEETING_SENDCLOUD_API_KEY=your_sendcloud_api_key
 MEETING_SENDCLOUD_FROM_ADDRESS=no-reply@mail.07c2.com.cn
 MEETING_SENDCLOUD_FROM_NAME=meeting
 MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+MEETING_WECHAT_MINIPROGRAM_APP_ID=your_wechat_miniprogram_app_id
+MEETING_WECHAT_MINIPROGRAM_APP_SECRET=your_wechat_miniprogram_app_secret
+MEETING_WECHAT_MINIPROGRAM_API_BASE_URL=https://api.weixin.qq.com
 ```
 
 The repository also ships a production template at [scripts/env.example](scripts/env.example). Every release package now includes this file as root-level `env.example` so operators can copy it to `/data/07c2.com.cn/meeting/meeting-backend.env` and fill in real credentials manually. SMTP is still supported as a fallback mode, but SendCloud API is the recommended production path.
+
+### WeChat Mini Program
+
+- Mini program source now lives in `wechat/`
+- Open `wechat/project.config.json` in WeChat DevTools with your mini program `AppID`
+- Make sure the request legal domain includes `https://meeting.07c2.com.cn`
+- The backend must be configured with:
+  - `MEETING_WECHAT_MINIPROGRAM_APP_ID`
+  - `MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
+- Phase 1 uses `wx.login` on the client and `POST /api/auth/wechat/mini/login` on the backend; the backend exchanges the code for `openid`, auto-registers the user when needed, and returns a `sessionToken` that the mini program stores locally and sends back through `Authorization: Bearer ...`
 
 ### Frontend
 

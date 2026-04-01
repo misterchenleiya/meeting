@@ -29,6 +29,10 @@ type authPasswordLoginRequest struct {
 	Password string `json:"password"`
 }
 
+type authWechatMiniLoginRequest struct {
+	Code string `json:"code"`
+}
+
 func (s *Server) handleRegisterCode(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
 		writeError(w, http.StatusNotImplemented, "auth service is not available")
@@ -193,6 +197,39 @@ func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleWechatMiniProgramLogin(w http.ResponseWriter, r *http.Request) {
+	if s.auth == nil {
+		writeError(w, http.StatusNotImplemented, "auth service is not available")
+		return
+	}
+
+	var request authWechatMiniLoginRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+
+	user, session, autoRegistered, err := s.auth.CompleteWechatMiniProgramLogin(
+		r.Context(),
+		request.Code,
+		r.UserAgent(),
+		clientIP(r),
+	)
+	if err != nil {
+		s.writeAuthError(w, err)
+		return
+	}
+
+	setAuthSessionCookie(w, r, session.Token, session.ExpiresAt)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":         "logged_in",
+		"user":           user,
+		"sessionToken":   session.Token,
+		"sessionEndsAt":  session.ExpiresAt,
+		"autoRegistered": autoRegistered,
+		"loginMethod":    "wechat_miniprogram",
+	})
+}
+
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
 		writeError(w, http.StatusNotImplemented, "auth service is not available")
@@ -261,10 +298,14 @@ func (s *Server) writeAuthError(w http.ResponseWriter, err error) {
 		errors.Is(err, auth.ErrVerificationCodeRequired),
 		errors.Is(err, auth.ErrPasswordRequired):
 		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, auth.ErrWechatCodeRequired):
+		writeError(w, http.StatusBadRequest, "微信登录凭证缺失，请重新发起登录")
 	case errors.Is(err, auth.ErrAlreadyRegistered):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, auth.ErrPasswordNotSet):
 		writeError(w, http.StatusConflict, "该账号尚未设置密码，请使用邮箱验证码登录")
+	case errors.Is(err, auth.ErrWechatLoginUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "微信小程序登录暂未配置")
 	case errors.Is(err, auth.ErrNotRegistered):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, auth.ErrVerificationCodeResendTooSoon):
@@ -276,6 +317,9 @@ func (s *Server) writeAuthError(w http.ResponseWriter, err error) {
 		errors.Is(err, auth.ErrVerificationAttemptsExceeded),
 		errors.Is(err, auth.ErrPasswordInvalid):
 		writeError(w, http.StatusUnauthorized, err.Error())
+	case errors.Is(err, auth.ErrWechatLoginFailed):
+		s.logger.Warn("wechat mini program login failed", "error", err)
+		writeError(w, http.StatusUnauthorized, "微信登录失败，请稍后重试")
 	case errors.Is(err, auth.ErrSessionNotFound), errors.Is(err, auth.ErrSessionExpired):
 		writeError(w, http.StatusUnauthorized, err.Error())
 	default:

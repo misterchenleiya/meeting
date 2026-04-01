@@ -50,11 +50,15 @@ var (
 	ErrPasswordRequired              = errors.New("password is required")
 	ErrPasswordNotSet                = errors.New("password is not set for this account")
 	ErrPasswordInvalid               = errors.New("password is invalid")
+	ErrWechatCodeRequired            = errors.New("wechat code is required")
+	ErrWechatLoginUnavailable        = errors.New("wechat mini program login is not configured")
+	ErrWechatLoginFailed             = errors.New("wechat mini program login failed")
 )
 
 type Service struct {
 	store           *sqlite.Store
 	mailer          Mailer
+	wechatMini      WechatMiniProgramCodeExchanger
 	codeTTL         time.Duration
 	codeResendDelay time.Duration
 	maxCodeAttempts int
@@ -83,6 +87,8 @@ type Session struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
+type ServiceOption func(*Service)
+
 type CodeDelivery struct {
 	Email        string    `json:"email"`
 	Purpose      string    `json:"purpose"`
@@ -92,12 +98,12 @@ type CodeDelivery struct {
 	DeliveryMode string    `json:"deliveryMode"`
 }
 
-func NewService(store *sqlite.Store, mailer Mailer) *Service {
+func NewService(store *sqlite.Store, mailer Mailer, options ...ServiceOption) *Service {
 	if mailer == nil {
 		mailer = NewDebugMailer(nil)
 	}
 
-	return &Service{
+	service := &Service{
 		store:           store,
 		mailer:          mailer,
 		codeTTL:         defaultCodeTTL,
@@ -107,6 +113,20 @@ func NewService(store *sqlite.Store, mailer Mailer) *Service {
 		ipRateLimit:     defaultIPRateLimit,
 		sessionTTL:      defaultSessionTTL,
 		now:             time.Now,
+	}
+
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+
+	return service
+}
+
+func WithWechatMiniProgramCodeExchanger(exchanger WechatMiniProgramCodeExchanger) ServiceOption {
+	return func(service *Service) {
+		service.wechatMini = exchanger
 	}
 }
 
@@ -292,6 +312,43 @@ func (s *Service) CompletePasswordLogin(ctx context.Context, email string, passw
 	return toUser(userRecord), session, nil
 }
 
+func (s *Service) CompleteWechatMiniProgramLogin(ctx context.Context, code string, userAgent string, ipAddress string) (User, Session, bool, error) {
+	normalizedCode := strings.TrimSpace(code)
+	if normalizedCode == "" {
+		return User{}, Session{}, false, ErrWechatCodeRequired
+	}
+	if s.wechatMini == nil {
+		return User{}, Session{}, false, ErrWechatLoginUnavailable
+	}
+
+	identity, err := s.wechatMini.ExchangeCode(ctx, normalizedCode)
+	if err != nil {
+		return User{}, Session{}, false, fmt.Errorf("%w: %v", ErrWechatLoginFailed, err)
+	}
+
+	userRecord, found, err := s.store.GetUserByWechatOpenID(ctx, identity.OpenID)
+	if err != nil {
+		return User{}, Session{}, false, err
+	}
+
+	autoRegistered := false
+	now := s.now().UTC()
+	if !found {
+		userRecord, err = s.createWechatMiniProgramUser(ctx, identity.OpenID, now)
+		if err != nil {
+			return User{}, Session{}, false, err
+		}
+		autoRegistered = true
+	}
+
+	session, err := s.createSession(ctx, userRecord.ID, userAgent, ipAddress)
+	if err != nil {
+		return User{}, Session{}, false, err
+	}
+
+	return toUser(userRecord), session, autoRegistered, nil
+}
+
 func (s *Service) GetCurrentUser(ctx context.Context, sessionToken string) (User, Session, error) {
 	normalizedToken := strings.TrimSpace(sessionToken)
 	if normalizedToken == "" {
@@ -450,6 +507,32 @@ func (s *Service) createAutoRegisteredUser(ctx context.Context, email string, no
 	return created, nil
 }
 
+func (s *Service) createWechatMiniProgramUser(ctx context.Context, openID string, now time.Time) (sqlite.UserRecord, error) {
+	userID, err := generateUserID()
+	if err != nil {
+		return sqlite.UserRecord{}, err
+	}
+
+	userRecord := sqlite.UserRecord{
+		ID:           userID,
+		WechatOpenID: openID,
+		Nickname:     deriveWechatNickname(openID),
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if err := s.store.CreateUser(ctx, userRecord); err != nil {
+		return sqlite.UserRecord{}, err
+	}
+
+	created, _, err := s.store.GetUserByWechatOpenID(ctx, openID)
+	if err != nil {
+		return sqlite.UserRecord{}, err
+	}
+
+	return created, nil
+}
+
 func (s *Service) createSession(ctx context.Context, userID string, userAgent string, ipAddress string) (Session, error) {
 	token, tokenHash, err := generateSessionToken()
 	if err != nil {
@@ -524,6 +607,18 @@ func normalizeEmail(email string) (string, error) {
 	}
 
 	return strings.ToLower(addr.Address), nil
+}
+
+func deriveWechatNickname(openID string) string {
+	trimmed := strings.TrimSpace(openID)
+	if len(trimmed) >= 6 {
+		return "微信用户" + trimmed[len(trimmed)-6:]
+	}
+	if trimmed != "" {
+		return "微信用户" + trimmed
+	}
+
+	return "微信用户"
 }
 
 func toUser(record sqlite.UserRecord) User {

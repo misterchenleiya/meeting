@@ -8,23 +8,26 @@ import (
 )
 
 type Config struct {
-	HTTPAddr              string
-	SQLitePath            string
-	LogDir                string
-	MailerMode            string
-	SMTPHost              string
-	SMTPPort              int
-	SMTPUsername          string
-	SMTPPassword          string
-	SMTPFromAddress       string
-	SMTPFromName          string
-	SMTPRequireTLS        bool
-	SendCloudAPIBaseURL   string
-	SendCloudAPIUser      string
-	SendCloudAPIKey       string
-	SendCloudFromAddress  string
-	SendCloudFromName     string
-	AuthCodeSubjectPrefix string
+	HTTPAddr                    string
+	SQLitePath                  string
+	LogDir                      string
+	MailerMode                  string
+	SMTPHost                    string
+	SMTPPort                    int
+	SMTPUsername                string
+	SMTPPassword                string
+	SMTPFromAddress             string
+	SMTPFromName                string
+	SMTPRequireTLS              bool
+	SendCloudAPIBaseURL         string
+	SendCloudAPIUser            string
+	SendCloudAPIKey             string
+	SendCloudFromAddress        string
+	SendCloudFromName           string
+	WechatMiniProgramAppID      string
+	WechatMiniProgramAppSecret  string
+	WechatMiniProgramAPIBaseURL string
+	AuthCodeSubjectPrefix       string
 }
 
 func Load() (Config, error) {
@@ -39,23 +42,26 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		HTTPAddr:              envOrDefault("MEETING_HTTP_ADDR", ":5180"),
-		SQLitePath:            envOrDefault("MEETING_SQLITE_PATH", "./data/meeting.db"),
-		LogDir:                envOrDefault("MEETING_LOG_DIR", "./logs"),
-		MailerMode:            strings.ToLower(envOrDefault("MEETING_MAILER_MODE", "debug")),
-		SMTPHost:              envOrDefault("MEETING_SMTP_HOST", ""),
-		SMTPPort:              smtpPort,
-		SMTPUsername:          envOrDefault("MEETING_SMTP_USERNAME", ""),
-		SMTPPassword:          envOrDefault("MEETING_SMTP_PASSWORD", ""),
-		SMTPFromAddress:       envOrDefault("MEETING_SMTP_FROM_ADDRESS", ""),
-		SMTPFromName:          envOrDefault("MEETING_SMTP_FROM_NAME", "meeting"),
-		SMTPRequireTLS:        smtpRequireTLS,
-		SendCloudAPIBaseURL:   envOrDefault("MEETING_SENDCLOUD_API_BASE_URL", "https://api.sendcloud.net/apiv2"),
-		SendCloudAPIUser:      envOrDefault("MEETING_SENDCLOUD_API_USER", ""),
-		SendCloudAPIKey:       envOrDefault("MEETING_SENDCLOUD_API_KEY", ""),
-		SendCloudFromAddress:  envOrDefault("MEETING_SENDCLOUD_FROM_ADDRESS", "no-reply@mail.07c2.com.cn"),
-		SendCloudFromName:     envOrDefault("MEETING_SENDCLOUD_FROM_NAME", "meeting"),
-		AuthCodeSubjectPrefix: envOrDefault("MEETING_AUTH_CODE_SUBJECT_PREFIX", "[meeting]"),
+		HTTPAddr:                    envOrDefault("MEETING_HTTP_ADDR", ":5180"),
+		SQLitePath:                  envOrDefault("MEETING_SQLITE_PATH", "./data/meeting.db"),
+		LogDir:                      envOrDefault("MEETING_LOG_DIR", "./logs"),
+		MailerMode:                  strings.ToLower(envOrDefault("MEETING_MAILER_MODE", "debug")),
+		SMTPHost:                    envOrDefault("MEETING_SMTP_HOST", ""),
+		SMTPPort:                    smtpPort,
+		SMTPUsername:                envOrDefault("MEETING_SMTP_USERNAME", ""),
+		SMTPPassword:                envOrDefault("MEETING_SMTP_PASSWORD", ""),
+		SMTPFromAddress:             envOrDefault("MEETING_SMTP_FROM_ADDRESS", ""),
+		SMTPFromName:                envOrDefault("MEETING_SMTP_FROM_NAME", "meeting"),
+		SMTPRequireTLS:              smtpRequireTLS,
+		SendCloudAPIBaseURL:         envOrDefault("MEETING_SENDCLOUD_API_BASE_URL", "https://api.sendcloud.net/apiv2"),
+		SendCloudAPIUser:            envOrDefault("MEETING_SENDCLOUD_API_USER", ""),
+		SendCloudAPIKey:             envOrDefault("MEETING_SENDCLOUD_API_KEY", ""),
+		SendCloudFromAddress:        envOrDefault("MEETING_SENDCLOUD_FROM_ADDRESS", "no-reply@mail.07c2.com.cn"),
+		SendCloudFromName:           envOrDefault("MEETING_SENDCLOUD_FROM_NAME", "meeting"),
+		WechatMiniProgramAppID:      envOrDefault("MEETING_WECHAT_MINIPROGRAM_APP_ID", ""),
+		WechatMiniProgramAppSecret:  envOrDefault("MEETING_WECHAT_MINIPROGRAM_APP_SECRET", ""),
+		WechatMiniProgramAPIBaseURL: envOrDefault("MEETING_WECHAT_MINIPROGRAM_API_BASE_URL", "https://api.weixin.qq.com"),
+		AuthCodeSubjectPrefix:       envOrDefault("MEETING_AUTH_CODE_SUBJECT_PREFIX", "[meeting]"),
 	}, nil
 }
 

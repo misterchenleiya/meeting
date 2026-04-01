@@ -1,0 +1,32 @@
+<navigation-bar title="meeting" back="{{false}}" color="white" background="transparent"></navigation-bar>
+
+<view class="page">
+  <view class="brand">
+    <view class="brand-wordmark">meeting</view>
+    <view class="brand-light"></view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">登录 meeting</view>
+    <view class="card-subtitle">在微信小程序中使用微信快捷登录快速进入会议。</view>
+
+    <button class="wechat-login-button" bindtap="handleWechatQuickLogin" disabled="{{checkingSession || loginLoading}}">
+      <view wx:if="{{!loginLoading}}" class="wechat-icon-shell" aria-hidden="true">
+        <view class="wechat-icon wechat-icon-main">
+          <view class="wechat-eye wechat-eye-left"></view>
+          <view class="wechat-eye wechat-eye-right"></view>
+          <view class="wechat-tail"></view>
+        </view>
+        <view class="wechat-icon wechat-icon-secondary">
+          <view class="wechat-eye wechat-eye-left"></view>
+          <view class="wechat-eye wechat-eye-right"></view>
+        </view>
+      </view>
+      <view wx:else class="wechat-loading-text">登录中...</view>
+    </button>
+
+    <view wx:if="{{checkingSession}}" class="status-text">正在恢复登录状态...</view>
+    <view wx:elif="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
+    <view wx:else class="status-text">首次登录会自动创建小程序账号，点击微信图标即可快捷登录。</view>
+  </view>
+</view>

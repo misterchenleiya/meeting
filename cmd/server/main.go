@@ -66,7 +66,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	authService := auth.NewService(store, mailer)
+	var authOptions []auth.ServiceOption
+	if cfg.WechatMiniProgramAppID != "" && cfg.WechatMiniProgramAppSecret != "" {
+		wechatClient, wechatErr := auth.NewWechatMiniProgramClient(logger, auth.WechatMiniProgramClientConfig{
+			AppID:      cfg.WechatMiniProgramAppID,
+			AppSecret:  cfg.WechatMiniProgramAppSecret,
+			APIBaseURL: cfg.WechatMiniProgramAPIBaseURL,
+		})
+		if wechatErr != nil {
+			logger.Error("failed to initialize wechat mini program auth client", "error", wechatErr)
+			os.Exit(1)
+		}
+		authOptions = append(authOptions, auth.WithWechatMiniProgramCodeExchanger(wechatClient))
+	}
+
+	authService := auth.NewService(store, mailer, authOptions...)
 	meetingService := meeting.NewService(logger, store)
 	signalingHub := signaling.NewHub(logger, meetingService)
 	server := &http.Server{

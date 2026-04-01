@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增独立的 `wechat/` 微信小程序客户端工程第一阶段实现，支持微信快捷登录、显式 `sessionToken` 持久化、基础首页、会议查询、带密码加入会议和基础会中占位页。
+- 新增小程序快捷登录后端接口 `POST /api/auth/wechat/mini/login`，服务端会使用 `wx.login` 返回的 code 调用微信 `jscode2session` 接口换取 `openid`，并基于现有 `auth_sessions` 返回 Bearer 会话。
 - 新增黑色风格的 `meeting` 主图标 SVG 资产 `docs/design/meeting-logo-black.svg`，保留 `me` 两个小写字母和底部聚光灯效果，适用于移动 APP、微信和网站 Logo。
 - 新增根目录 `scripts/` 发布脚本目录，包含 `start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh` 和 `crontab.sh`，并纳入标准发布包。
 - 新增 `docker-compose.yml`、前端 Nginx 配置和 coturn 配置草案，为 Docker 化运行的后端、前端和 TURN 服务提供统一编排。
@@ -44,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 微信小程序接入方案文档已从草案推进到第一阶段已实现状态，并明确当前采用显式 Bearer token 而不是 Cookie 维持小程序登录态。
+- 生产环境配置模版 `env.example` 现在同时补充了 `MEETING_WECHAT_MINIPROGRAM_APP_ID`、`MEETING_WECHAT_MINIPROGRAM_APP_SECRET` 和微信接口基地址，便于后端启用小程序快捷登录。
 - 发布包现在会额外携带脱敏的邮件发送配置模版 `env.example`；仓库源码位于 `scripts/env.example`，打包后会平铺到压缩包根目录，便于生产环境复制成外部 `meeting-backend.env` 后手工维护真实凭据。
 - Docker 生产部署现在支持通过外部 env 文件为 `meeting-backend` 注入外部邮件服务配置；默认读取部署根目录下的 `meeting-backend.env`，该文件不入库、不进入发布包，便于人工维护并避免后续升级覆盖凭据。
 - `start.sh` 现在会在未显式指定时自动加载部署根目录下的 `meeting-backend.env`，生产环境可直接在 `/data/07c2.com.cn/meeting/meeting-backend.env` 维护 SendCloud 等外部邮件配置。
@@ -132,6 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复微信小程序上传校验对空值合并与可选链语法的兼容问题；小程序工程编译目标已下调到 `ES2019`，并移除了当前登录请求封装中的 `??` 与 `?.` 用法，避免上传时出现 `Unexpected token ?`。
 - 修复生产发布包默认将前端 API / WSS 地址硬编码到 `api.07c2.com.cn/meeting` 的问题；`make linux` 现在默认生成同源 `/api` 与 `/ws` 的前端包，避免在未配置 CORS 的生产环境中触发浏览器 `Failed to fetch`。
 - 修复生产同源前端包在 `meeting-frontend` 容器内仍将 `/api/...` 当成静态路由返回 `index.html` 的问题；打包随附的前端 Nginx 现在会把 `/api/` 和 `/ws/` 代理到 `meeting-backend`，避免验证码登录时报 `Unexpected token '<'`。
 - 修复 Docker 化前端 `nginx.conf` 的 `/healthz` 配置语法，避免 `meeting-frontend` 容器因无效的 `Content-Type` 参数而持续重启。
