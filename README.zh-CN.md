@@ -39,7 +39,8 @@
 | 配置模块 | `internal/config` | 加载服务地址、SQLite 路径、日志目录等运行配置 | 已实现 |
 | 日志模块 | `internal/logging` | 初始化 JSON 日志、按天轮转和保留策略 | 已实现 |
 | 存储模块 | `internal/storage/sqlite` | 持久化审计事件和注册用户默认媒体偏好 | 已实现，未承载会议运行态 |
-| 会议领域模块 | `internal/meeting` | 房间、参与者、权限、白板、临时聊天、就位确认、纪要等运行态管理 | 已实现核心能力，仍待补完整登录体系和多人 Mesh 优化 |
+| 会议领域模块 | `internal/meeting` | 房间、参与者、权限、白板、临时聊天、就位确认、纪要等运行态管理 | 已实现核心能力，仍待继续完善多人 Mesh 稳定性 |
+| 认证领域模块 | `internal/auth` | 管理注册 / 登录验证码、会话、密码登录校验和邮件发送 | 已实现 |
 | HTTP API 模块 | `internal/httpapi` | 提供创建/加入/离会/结束会议、昵称修改、纪要查询、审计上报等接口 | 已实现基础 API |
 | 信令模块 | `internal/signaling` | WebSocket 会话管理、房间广播、能力申请/授权、SDP/ICE 转发、协作事件广播 | 已实现 |
 | 前端 API 层 | `web/src/api.ts` | 封装 REST 请求 | 已实现 |
@@ -76,7 +77,7 @@
 - [~] 多人视频会议
   当前已具备 1v1 主链路和基础 Mesh 结构，仍需继续做多人 Mesh 稳定性、弱网和退化策略优化。
 - [~] 产品化登录与预定会议流程
-  当前前端已经落地黑色风格登录壳层、快速会议、预定会议表单和带密码弹窗的加入会议流程，但真实登录、验证码和真正的预定会议持久化仍未实现。
+  当前已实现黑色风格登录壳层、邮箱验证码登录、验证码自动注册、最小密码登录提示、快速会议、预定会议表单和带密码弹窗的加入会议流程；预定会议仍复用当前创建会议接口，尚未拆分成独立持久化调度模型。
 - [~] 会议纪要
   当前支持会中临时纪要、聊天记录、白板数量和就位确认摘要导出；“会议结束时提示主持人保存纪要”尚未补齐。
 - [~] 审计日志
@@ -86,14 +87,14 @@
 
 - [ ] `TURN` / coturn 部署与穿透失败自动退化链路的生产验证
 - [ ] 多人 Mesh 的动态管理和性能优化
-- [ ] 微信注册、扫码登录、邮箱验证码登录
+- [ ] 微信注册、扫码登录
 - [ ] 打开邀请链接后自动回填会议号与密码
 - [ ] 会议结束时主持人的纪要保存提示流
 
 ## 当前 UI 流程
 
 - 入会前的登录页已经切换为全屏单卡布局：顶部是大号 `meeting` 字标，下方是聚焦光斑，再往下是居中的登录卡片，整体与会中页保持同一套 macOS dark 风格。
-- 登录流程已经拆成两个独立入口：`注册` 和 `登录`。注册时先填邮箱、昵称和验证码，验证成功后会自动返回登录页；登录时使用邮箱验证码完成登录，成功后进入登录后的入口卡片。开发模式下验证码会自动回填，便于本地联调。
+- 登录流程已经拆成两个独立入口：`注册` 和 `登录`。注册时先填邮箱、昵称和验证码，验证成功后会自动返回登录页；登录时支持邮箱验证码登录和最小密码登录两种模式，其中验证码登录会在首次成功时自动注册账号。开发模式下验证码仍可自动回填，便于本地联调。
 - 主持人流程：先登录，再回到黑色产品壳层中选择快速会议或预定会议；其中预定会议表单当前仍复用现有创建会议接口，提交后会立即进入会议。
 - 加入会议流程：先输入公开 `9` 位会议号并做预检，只有会议需要密码时才会弹出密码悬浮窗继续加入；带空格的 `3-3-3` 会议号也会自动规范化。
 - 会中流程：会议房间已经切换为单屏全舞台布局，顶部是标题栏，底部是 dock 工具栏，主持人工具 / 会议工具 / 设置 / 应用 / 结束会议通过贴附式子窗口展开，成员和聊天默认收纳到右侧抽屉。无人开视频 / 共享时显示头像墙；存在活动媒体时切为主画面 + 右侧缩略窗。
@@ -121,6 +122,7 @@
 说明：
 
 - `POST /api/auth/register/code`、`POST /api/auth/register/verify`、`POST /api/auth/login/code`、`POST /api/auth/login/verify`、`GET /api/auth/me`、`POST /api/auth/logout`：注册 / 登录 / 当前用户 / 退出登录接口
+- `POST /api/auth/login/password`：最小密码登录接口；未设置密码的账号会返回“请使用邮箱验证码登录”的明确提示
 - `POST /api/meetings` 返回的会议对象现在同时包含内部 `id` 和公开 `meetingNumber`。
 - `GET /api/meetings/{meetingID}` 与 `POST /api/meetings/{meetingID}/join` 等会议级接口现在同时接受内部运行态 ID 和公开 `9` 位会议号。
 - `GET /ws/meetings/{meetingID}` 仍继续使用内部运行态 ID，以减少对现有信令链路的影响。
@@ -138,6 +140,34 @@ go run ./cmd/server
 - `MEETING_HTTP_ADDR`，默认 `:5180`
 - `MEETING_SQLITE_PATH`，默认 `./data/meeting.db`
 - `MEETING_LOG_DIR`，默认 `./logs`
+- `MEETING_MAILER_MODE`，默认 `debug`，生产环境使用 `smtp`
+- `MEETING_SMTP_HOST`、`MEETING_SMTP_PORT`、`MEETING_SMTP_USERNAME`、`MEETING_SMTP_PASSWORD`
+- `MEETING_SMTP_FROM_ADDRESS`、`MEETING_SMTP_FROM_NAME`、`MEETING_SMTP_REQUIRE_TLS`
+- `MEETING_AUTH_CODE_SUBJECT_PREFIX`
+
+### 生产环境 SMTP Relay
+
+Docker 生产部署建议把 SMTP 凭据放在仓库外、发布包外的独立环境文件中，由运维手工创建和维护。
+
+- `docker-compose.yml` 现在会为 `meeting-backend` 读取一个可选的外部 env 文件
+- 默认路径：`/etc/meeting/meeting-backend.env`
+- 如需自定义路径，可在执行 `./start.sh`、`./update.sh` 或 `./crontab.sh add` 前设置 `MEETING_BACKEND_ENV_FILE=/你的路径/backend.env`
+
+示例 `/etc/meeting/meeting-backend.env`：
+
+```env
+MEETING_MAILER_MODE=smtp
+MEETING_SMTP_HOST=smtp.sendcloud.net
+MEETING_SMTP_PORT=587
+MEETING_SMTP_USERNAME=your_smtp_username
+MEETING_SMTP_PASSWORD=your_smtp_password
+MEETING_SMTP_FROM_ADDRESS=notice@example.com
+MEETING_SMTP_FROM_NAME=meeting
+MEETING_SMTP_REQUIRE_TLS=true
+MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+```
+
+仓库内同时提供了生产配置模版 [scripts/env.example](scripts/env.example)。每次发布打包时，这个文件也会一并进入压缩包根目录，文件名保持为 `env.example`，便于运维复制到 `/etc/meeting/meeting-backend.env` 后再手工填写真实凭据。
 
 ### 前端
 
@@ -173,7 +203,7 @@ make clean
 - `make publish`：执行标准 `clean -> linux -> pack -> upload` 发布流程
 - `make run-backend`：启动后端服务，并将运行期日志和 SQLite 数据写入 `build/run/`
 - `make run-frontend`：启动前端开发服务器
-- 根目录 `scripts/` 放置 Docker 运行辅助脚本（`start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh`、`crontab.sh`），并且会被每次发布一起打包
+- 根目录 `scripts/` 放置 Docker 运行辅助脚本（`start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh`、`crontab.sh`）以及 SMTP 配置模版 [`env.example`](scripts/env.example)，并且会被每次发布一起打包；其中 `env.example` 会平铺到压缩包根目录
 - 前端运行期日志默认输出到浏览器控制台；`warn`/`error` 和关键 `info` 事件会批量上报到后端 `POST /api/client-logs`，并进入后端 JSON 日志；浏览器本地不再持久化保存这些日志
 - `make clean`：删除 `build/` 目录
 

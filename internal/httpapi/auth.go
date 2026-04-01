@@ -10,13 +10,18 @@ import (
 )
 
 type authCodeRequest struct {
-	Email   string `json:"email"`
+	Email    string `json:"email"`
 	Nickname string `json:"nickname,omitempty"`
 }
 
 type authVerifyRequest struct {
 	Email string `json:"email"`
 	Code  string `json:"code"`
+}
+
+type authPasswordLoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 func (s *Server) handleRegisterCode(w http.ResponseWriter, r *http.Request) {
@@ -66,7 +71,7 @@ func (s *Server) handleRegisterVerify(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"status": "registered",
-		"user":    user,
+		"user":   user,
 	})
 }
 
@@ -109,7 +114,44 @@ func (s *Server) handleLoginVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, session, err := s.auth.CompleteLogin(r.Context(), request.Email, request.Code, r.UserAgent(), clientIP(r))
+	user, session, autoRegistered, err := s.auth.CompleteLogin(
+		r.Context(),
+		request.Email,
+		request.Code,
+		r.UserAgent(),
+		clientIP(r),
+	)
+	if err != nil {
+		s.writeAuthError(w, err)
+		return
+	}
+
+	setAuthSessionCookie(w, r, session.Token, session.ExpiresAt)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":         "logged_in",
+		"user":           user,
+		"autoRegistered": autoRegistered,
+	})
+}
+
+func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
+	if s.auth == nil {
+		writeError(w, http.StatusNotImplemented, "auth service is not available")
+		return
+	}
+
+	var request authPasswordLoginRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+
+	user, session, err := s.auth.CompletePasswordLogin(
+		r.Context(),
+		request.Email,
+		request.Password,
+		r.UserAgent(),
+		clientIP(r),
+	)
 	if err != nil {
 		s.writeAuthError(w, err)
 		return
@@ -135,7 +177,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"user":        user,
+		"user":          user,
 		"sessionEndsAt": session.ExpiresAt,
 	})
 }
@@ -187,17 +229,21 @@ func (s *Server) writeAuthError(w http.ResponseWriter, err error) {
 	case errors.Is(err, auth.ErrEmailRequired),
 		errors.Is(err, auth.ErrEmailInvalid),
 		errors.Is(err, auth.ErrNicknameRequired),
-		errors.Is(err, auth.ErrVerificationCodeRequired):
+		errors.Is(err, auth.ErrVerificationCodeRequired),
+		errors.Is(err, auth.ErrPasswordRequired):
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, auth.ErrAlreadyRegistered):
 		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, auth.ErrPasswordNotSet):
+		writeError(w, http.StatusConflict, "该账号尚未设置密码，请使用邮箱验证码登录")
 	case errors.Is(err, auth.ErrNotRegistered):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, auth.ErrVerificationCodeResendTooSoon):
 		writeError(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, auth.ErrVerificationCodeExpired),
 		errors.Is(err, auth.ErrVerificationCodeInvalid),
-		errors.Is(err, auth.ErrVerificationAttemptsExceeded):
+		errors.Is(err, auth.ErrVerificationAttemptsExceeded),
+		errors.Is(err, auth.ErrPasswordInvalid):
 		writeError(w, http.StatusUnauthorized, err.Error())
 	case errors.Is(err, auth.ErrSessionNotFound), errors.Is(err, auth.ErrSessionExpired):
 		writeError(w, http.StatusUnauthorized, err.Error())

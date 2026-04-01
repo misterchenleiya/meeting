@@ -38,6 +38,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 | Logging | `internal/logging` | Initializes JSON logging, daily rotation, and retention behavior | Implemented |
 | Storage | `internal/storage/sqlite` | Persists audit events and saved media preferences | Implemented |
 | Meeting domain | `internal/meeting` | Handles rooms, participants, permissions, whiteboard, chat, ready check, and temporary minutes | Core flow implemented |
+| Auth domain | `internal/auth` | Manages register/login verification codes, sessions, password login checks, and mail delivery | Implemented |
 | HTTP API | `internal/httpapi` | Exposes create/join/leave/end, nickname update, minutes query, and audit endpoints | Implemented |
 | Signaling | `internal/signaling` | Manages WebSocket sessions, broadcasts, capability flow, SDP/ICE forwarding, and collaboration events | Implemented |
 | Frontend API | `web/src/api.ts` | Wraps REST calls | Implemented |
@@ -74,7 +75,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - [~] Multi-party video meetings
   The repo already has a 1v1 primary path and a mesh foundation, but still needs multi-peer mesh hardening, weak-network handling, and graceful degradation.
 - [~] Productized login and scheduling flow
-  The new dark auth shell, quick meeting, scheduled meeting form, and password-gated join flow are implemented on the frontend, but real authentication, verification codes, and true scheduled-meeting persistence are still missing.
+  The dark auth shell, email verification-code login, auto-registration, minimal password-login prompt, quick meeting, scheduled meeting form, and password-gated join flow are implemented. Scheduled meetings still reuse the current create-meeting API instead of a separate persistent scheduler.
 - [~] Meeting minutes
   Temporary minutes, chat history, whiteboard counts, and ready check summaries can be exported, but there is no host-side save reminder at meeting end yet.
 - [~] Audit logging
@@ -85,14 +86,13 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - [ ] TURN / coturn deployment and production validation for peers that fail NAT traversal
 - [ ] Dynamic multi-peer mesh management and performance optimization
 - [ ] WeChat registration and QR-code login
-- [ ] Real email delivery backend for verification-code registration/login
 - [ ] Auto-fill the join form when opening an invite link directly
 - [ ] Host reminder to save meeting minutes at meeting end
 
 ## Current UI Flow
 
 - Before joining a meeting, the login view now uses a full-screen single-card layout with a large `meeting` wordmark, a focused spotlight below it, and a centered auth card in the same macOS-dark visual system as the room UI.
-- Auth flow: login and registration are separate entry points. Registration verifies the email code and then returns to the login card; login uses an email code to create a session and then returns to the home card after success. Development builds may auto-fill the verification code for convenience.
+- Auth flow: login and registration remain separate entry points. Registration verifies the email code and returns to the login card; verification-code login now supports both existing users and first-time users, auto-registering the user on successful verification. Password login is exposed as a minimal companion path and shows a clear prompt when the account has not set a password. Development builds may still auto-fill the verification code for convenience.
 - Host flow: after sign-in, the app returns to the dark entry shell for quick meeting or scheduled meeting entry. The scheduled form currently reuses the existing create-meeting API and enters the room immediately.
 - Join flow: enter the public 9-digit meeting number, run a preflight lookup, and then enter the password in a modal only if the meeting requires one. Grouped `3-3-3` meeting numbers with spaces are normalized automatically.
 - In-room flow: the room now uses a single-screen full-stage layout with a top title bar, a bottom dock toolbar, attached host / meeting / settings / apps / end panels, and right-side drawers for members and chat. Idle meetings show an avatar wall; active media switches to a featured stage with a thumbnail rail.
@@ -107,6 +107,7 @@ Key endpoints that are already available:
 - `POST /api/auth/register/verify`
 - `POST /api/auth/login/code`
 - `POST /api/auth/login/verify`
+- `POST /api/auth/login/password`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
 - `POST /api/meetings`
@@ -142,6 +143,34 @@ Optional environment variables:
 - `MEETING_HTTP_ADDR`, default `:5180`
 - `MEETING_SQLITE_PATH`, default `./data/meeting.db`
 - `MEETING_LOG_DIR`, default `./logs`
+- `MEETING_MAILER_MODE`, default `debug`, use `smtp` in production
+- `MEETING_SMTP_HOST`, `MEETING_SMTP_PORT`, `MEETING_SMTP_USERNAME`, `MEETING_SMTP_PASSWORD`
+- `MEETING_SMTP_FROM_ADDRESS`, `MEETING_SMTP_FROM_NAME`, `MEETING_SMTP_REQUIRE_TLS`
+- `MEETING_AUTH_CODE_SUBJECT_PREFIX`
+
+### Production SMTP Relay
+
+For Docker deployments, the recommended production setup is to keep SMTP credentials outside the repo and outside the release archive.
+
+- `docker-compose.yml` now reads an optional external env file for `meeting-backend`
+- default path: `/etc/meeting/meeting-backend.env`
+- override path: set `MEETING_BACKEND_ENV_FILE=/your/path/backend.env` before running `./start.sh`, `./update.sh`, or `./crontab.sh add`
+
+Example `/etc/meeting/meeting-backend.env`:
+
+```env
+MEETING_MAILER_MODE=smtp
+MEETING_SMTP_HOST=smtp.sendcloud.net
+MEETING_SMTP_PORT=587
+MEETING_SMTP_USERNAME=your_smtp_username
+MEETING_SMTP_PASSWORD=your_smtp_password
+MEETING_SMTP_FROM_ADDRESS=notice@example.com
+MEETING_SMTP_FROM_NAME=meeting
+MEETING_SMTP_REQUIRE_TLS=true
+MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+```
+
+The repository also ships a production template at [scripts/env.example](scripts/env.example). Every release package now includes this file as root-level `env.example` so operators can copy it to `/etc/meeting/meeting-backend.env` and fill in real credentials manually.
 
 ### Frontend
 
@@ -175,7 +204,7 @@ make clean
 - `make publish`: runs the standard `clean -> linux -> pack -> upload` flow
 - `make run-backend`: starts the backend and writes runtime logs and SQLite data to `build/run/`
 - `make run-frontend`: starts the frontend dev server
-- Root `scripts/` contains the Docker runtime helpers (`start.sh`, `stop.sh`, `restart.sh`, `status.sh`, `update.sh`, `upload.sh`, `crontab.sh`) and is included in every release package
+- Root `scripts/` contains the Docker runtime helpers (`start.sh`, `stop.sh`, `restart.sh`, `status.sh`, `update.sh`, `upload.sh`, `crontab.sh`) plus the SMTP template [`env.example`](scripts/env.example); all of them are included in every release package, with `env.example` flattened to the package root
 - Frontend runtime logs are written to the browser console; `warn`/`error` and selected `info` events are batched to `POST /api/client-logs` and end up in the backend JSON logs, while the browser no longer persists them locally
 - `make clean`: removes `build/`
 

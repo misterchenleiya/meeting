@@ -3,6 +3,9 @@ services:
     container_name: meeting-backend
     image: debian:bookworm-slim
     restart: unless-stopped
+    env_file:
+      - path: ${MEETING_BACKEND_ENV_FILE:-/etc/meeting/meeting-backend.env}
+        required: false
     ports:
       - "127.0.0.1:5180:5180"
     volumes:

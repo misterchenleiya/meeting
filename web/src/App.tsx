@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { createClientLogger, formatClientLogs } from "./logger";
 import {
   completeLogin,
+  completePasswordLogin,
   completeRegister,
   createMeeting,
   endMeeting,
@@ -110,8 +111,10 @@ type StageItem = {
 };
 
 type LoginFormState = {
+  mode: "code" | "password";
   email: string;
   code: string;
+  password: string;
 };
 
 type RegisterFormState = {
@@ -151,8 +154,10 @@ type PersistedAppState = {
 const appStateStorageKey = "meeting:app-state:v3";
 const defaultEntryStatusMessage = "准备开始会议";
 const defaultLoginForm: LoginFormState = {
+  mode: "code",
   email: "",
-  code: ""
+  code: "",
+  password: ""
 };
 const defaultRegisterForm: RegisterFormState = {
   email: "",
@@ -1343,12 +1348,41 @@ function App() {
   const handleLoginSubmit = useEffectEvent((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const email = loginForm.email.trim();
-    const code = loginForm.code.trim();
     if (!email) {
       setErrorMessage("请输入邮箱");
       return;
     }
 
+    if (loginForm.mode === "password") {
+      const password = loginForm.password.trim();
+      if (!password) {
+        setErrorMessage("请输入密码");
+        return;
+      }
+
+      void completePasswordLogin({ email, password })
+        .then((response) => {
+          syncAuthenticatedUser(response.user);
+          setEntryView("home");
+          setLoginForm((current) => ({
+            ...current,
+            password: ""
+          }));
+          logger.info("auth.password_login_succeeded", {
+            email,
+            userId: response.user.id,
+            nickname: response.user.nickname
+          });
+          setStatusMessage(`欢迎回来，${response.user.nickname || response.user.email}`);
+          setErrorMessage("");
+        })
+        .catch((error: unknown) => {
+          setErrorMessage(asMessage(error));
+        });
+      return;
+    }
+
+    const code = loginForm.code.trim();
     if (!code) {
       setErrorMessage("请输入验证码");
       return;
@@ -1365,9 +1399,14 @@ function App() {
         logger.info("auth.login_succeeded", {
           email,
           userId: response.user.id,
-          nickname: response.user.nickname
+          nickname: response.user.nickname,
+          autoRegistered: response.autoRegistered === true
         });
-        setStatusMessage(`欢迎回来，${response.user.nickname || response.user.email}`);
+        setStatusMessage(
+          response.autoRegistered
+            ? `已自动完成注册并登录，欢迎 ${response.user.nickname || response.user.email}`
+            : `欢迎回来，${response.user.nickname || response.user.email}`
+        );
         setErrorMessage("");
       })
       .catch((error: unknown) => {
@@ -1413,11 +1452,25 @@ function App() {
 
   const handleSwitchToLogin = useEffectEvent(() => {
     setLoginForm((current) => ({
+      ...defaultLoginForm,
       ...current,
       email: registerForm.email.trim() || current.email,
-      code: ""
+      mode: "code",
+      code: "",
+      password: ""
     }));
     setEntryView("login");
+    setStatusMessage(defaultEntryStatusMessage);
+    setErrorMessage("");
+  });
+
+  const handleToggleLoginMode = useEffectEvent(() => {
+    setLoginForm((current) => ({
+      ...current,
+      mode: current.mode === "password" ? "code" : "password",
+      code: "",
+      password: ""
+    }));
     setStatusMessage(defaultEntryStatusMessage);
     setErrorMessage("");
   });
@@ -1443,7 +1496,7 @@ function App() {
   });
 
   const handleForgotPasswordHint = useEffectEvent(() => {
-    setStatusMessage("忘记密码入口已保留，后续可接真实身份体系");
+    setStatusMessage("当前版本暂不支持重置密码，请使用邮箱验证码登录");
     setErrorMessage("");
   });
 
@@ -1471,7 +1524,9 @@ function App() {
         setLoginForm((current) => ({
           ...current,
           email,
-          code: ""
+          mode: "code",
+          code: "",
+          password: ""
         }));
         setRegisterForm((current) => ({
           ...current,
@@ -2471,10 +2526,17 @@ function App() {
               <section className="panel auth-card" data-view="login">
                 <form className="form-grid login-form" onSubmit={handleLoginSubmit}>
                   <div className="login-header-copy">
-                    <div className="login-mode-title">邮箱验证码登录</div>
-                    <button className="login-switch-link" onClick={handleSwitchToRegister} type="button">
-                      没有账号？去注册 &gt;
-                    </button>
+                    <div className="login-mode-title">
+                      {loginForm.mode === "password" ? "密码登录" : "邮箱验证码登录"}
+                    </div>
+                    <div className="login-header-actions">
+                      <button className="login-switch-link" onClick={handleToggleLoginMode} type="button">
+                        {loginForm.mode === "password" ? "使用验证码登录 >" : "使用密码登录 >"}
+                      </button>
+                      <button className="login-switch-link" onClick={handleSwitchToRegister} type="button">
+                        没有账号？去注册 &gt;
+                      </button>
+                    </div>
                   </div>
                   <input
                     aria-label="邮箱"
@@ -2485,21 +2547,33 @@ function App() {
                     type="email"
                     value={loginForm.email}
                   />
-                  <div className="field-shell">
+                  {loginForm.mode === "password" ? (
                     <input
-                      aria-label="验证码"
-                      inputMode="numeric"
+                      aria-label="密码"
                       onChange={(event) =>
-                        setLoginForm((current) => ({ ...current, code: event.target.value }))
+                        setLoginForm((current) => ({ ...current, password: event.target.value }))
                       }
-                      placeholder="请输入验证码"
-                      type="text"
-                      value={loginForm.code}
+                      placeholder="请输入密码"
+                      type="password"
+                      value={loginForm.password}
                     />
-                    <button className="field-inline-action" onClick={handleRequestLoginCode} type="button">
-                      获取验证码
-                    </button>
-                  </div>
+                  ) : (
+                    <div className="field-shell">
+                      <input
+                        aria-label="验证码"
+                        inputMode="numeric"
+                        onChange={(event) =>
+                          setLoginForm((current) => ({ ...current, code: event.target.value }))
+                        }
+                        placeholder="请输入验证码"
+                        type="text"
+                        value={loginForm.code}
+                      />
+                      <button className="field-inline-action" onClick={handleRequestLoginCode} type="button">
+                        获取验证码
+                      </button>
+                    </div>
+                  )}
                   <div className="login-footer">
                     <button onClick={handleForgotPasswordHint} type="button">
                       忘记密码
@@ -4778,8 +4852,10 @@ function readPersistedAppState(): PersistedAppState | null {
         parsed.isAuthenticated === true || Boolean(currentUser) ? "home" : "login"
       ),
       loginForm: {
+        mode: parsed.loginForm?.mode === "password" ? "password" : defaultLoginForm.mode,
         email: parsed.loginForm?.email ?? defaultLoginForm.email,
-        code: parsed.loginForm?.code ?? defaultLoginForm.code
+        code: parsed.loginForm?.code ?? defaultLoginForm.code,
+        password: parsed.loginForm?.password ?? defaultLoginForm.password
       },
       registerForm: {
         email: parsed.registerForm?.email ?? defaultRegisterForm.email,

@@ -589,6 +589,12 @@ p {
   gap: 4px;
 }
 
+.login-header-actions {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+
 .login-mode-title {
   color: var(--text);
   font-size: 17px;

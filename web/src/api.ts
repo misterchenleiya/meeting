@@ -18,6 +18,12 @@ export type AuthCodeDelivery = {
   deliveryMode: string;
 };
 
+export type AuthLoginResponse = {
+  status: string;
+  user: AuthUser;
+  autoRegistered?: boolean;
+};
+
 type CreateMeetingResponse = {
   meeting: Meeting;
   host: Participant;
@@ -123,8 +129,18 @@ export async function requestLoginCode(input: { email: string }): Promise<AuthCo
 export async function completeLogin(input: {
   email: string;
   code: string;
-}): Promise<{ status: string; user: AuthUser }> {
-  return requestJSON<{ status: string; user: AuthUser }>("/api/auth/login/verify", {
+}): Promise<AuthLoginResponse> {
+  return requestJSON<AuthLoginResponse>("/api/auth/login/verify", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function completePasswordLogin(input: {
+  email: string;
+  password: string;
+}): Promise<AuthLoginResponse> {
+  return requestJSON<AuthLoginResponse>("/api/auth/login/password", {
     method: "POST",
     body: JSON.stringify(input)
   });

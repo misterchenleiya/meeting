@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 发布包现在会额外携带脱敏的 SMTP 配置模版 `env.example`；仓库源码位于 `scripts/env.example`，打包后会平铺到压缩包根目录，便于生产环境复制成外部 `meeting-backend.env` 后手工维护真实凭据。
+- Docker 生产部署现在支持通过外部 env 文件为 `meeting-backend` 注入 SMTP relay 配置；默认读取 `/etc/meeting/meeting-backend.env`，该文件不入库、不进入发布包，便于人工维护并避免后续升级覆盖凭据。
+- 身份体系升级为“邮箱验证码优先”：未注册邮箱现在可直接获取登录验证码，验证成功后会自动完成注册并建立会话；同时新增最小密码登录接口，无密码账号尝试密码登录时会收到“请使用邮箱验证码登录”的明确提示。
+- 后端新增 `debug` / `smtp` 双 mailer，Docker 部署现在可通过 `MEETING_MAILER_MODE` 和 SMTP 环境变量切换真实验证码邮件发送；中英文 README 与认证方案文档同步更新为当前事实。
 - Docker 化发布链路继续收口：coturn relay 端口范围默认调整为 `52000-52048`，并在 `docker-compose.yml` 与发布时生成的 `turnserver.conf` 中统一对齐；`update.sh` 现在支持空目录首装时跳过停止旧栈，并在失败时记录具体步骤、退出码和失败命令。
 - `make publish` / `make upload` 的职责边界按标准发布流程重新收敛：`publish` 现在严格按 `clean -> linux -> pack -> upload` 线性执行，`upload` 只校验并上传现成产物，不再隐式触发重新构建或重新打包；上传阶段同时对齐 `gobot` 的进度条逻辑，优先使用 `pv`，否则回退到 `curl --progress-bar`。
 - 发布包中的运维脚本改为在解压后直接平铺到当前目录，不再额外保留 `scripts/` 子目录；仓库内的 `scripts/` 源码仍保留不变，并补齐了根目录与 `scripts/` 两种布局下的路径兼容逻辑。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -22,8 +23,8 @@ const (
 	registerPurpose = "register"
 	loginPurpose    = "login"
 
-	defaultCodeTTL           = 10 * time.Minute
-	defaultCodeResendDelay   = 60 * time.Second
+	defaultCodeTTL            = 10 * time.Minute
+	defaultCodeResendDelay    = 60 * time.Second
 	defaultCodeMaxAttempts    = 5
 	defaultSessionTTL         = 30 * 24 * time.Hour
 	defaultUserIDPrefix       = "usr_"
@@ -31,7 +32,7 @@ const (
 )
 
 var (
-	ErrAlreadyRegistered            = errors.New("email already registered")
+	ErrAlreadyRegistered             = errors.New("email already registered")
 	ErrNotRegistered                 = errors.New("email not registered")
 	ErrVerificationCodeRequired      = errors.New("verification code is required")
 	ErrVerificationCodeExpired       = errors.New("verification code expired")
@@ -43,15 +44,19 @@ var (
 	ErrNicknameRequired              = errors.New("nickname is required")
 	ErrEmailRequired                 = errors.New("email is required")
 	ErrEmailInvalid                  = errors.New("email is invalid")
+	ErrPasswordRequired              = errors.New("password is required")
+	ErrPasswordNotSet                = errors.New("password is not set for this account")
+	ErrPasswordInvalid               = errors.New("password is invalid")
 )
 
 type Service struct {
-	store              *sqlite.Store
-	codeTTL            time.Duration
-	codeResendDelay    time.Duration
-	maxCodeAttempts    int
-	sessionTTL         time.Duration
-	now                func() time.Time
+	store           *sqlite.Store
+	mailer          Mailer
+	codeTTL         time.Duration
+	codeResendDelay time.Duration
+	maxCodeAttempts int
+	sessionTTL      time.Duration
+	now             func() time.Time
 }
 
 type User struct {
@@ -77,9 +82,14 @@ type CodeDelivery struct {
 	DeliveryMode string    `json:"deliveryMode"`
 }
 
-func NewService(store *sqlite.Store) *Service {
+func NewService(store *sqlite.Store, mailer Mailer) *Service {
+	if mailer == nil {
+		mailer = NewDebugMailer(nil)
+	}
+
 	return &Service{
 		store:           store,
+		mailer:          mailer,
 		codeTTL:         defaultCodeTTL,
 		codeResendDelay: defaultCodeResendDelay,
 		maxCodeAttempts: defaultCodeMaxAttempts,
@@ -114,12 +124,10 @@ func (s *Service) RequestLoginCode(ctx context.Context, email string) (CodeDeliv
 		return CodeDelivery{}, err
 	}
 
-	if user, found, err := s.store.GetUserByEmail(ctx, normalizedEmail); err != nil {
+	if _, found, err := s.store.GetUserByEmail(ctx, normalizedEmail); err != nil {
 		return CodeDelivery{}, err
-	} else if !found {
-		return CodeDelivery{}, ErrNotRegistered
-	} else if user.EmailVerifiedAt == nil {
-		return CodeDelivery{}, ErrNotRegistered
+	} else if found {
+		return s.issueVerificationCode(ctx, normalizedEmail, "", loginPurpose)
 	}
 
 	return s.issueVerificationCode(ctx, normalizedEmail, "", loginPurpose)
@@ -167,12 +175,12 @@ func (s *Service) CompleteRegistration(ctx context.Context, email string, code s
 	}
 
 	userRecord := sqlite.UserRecord{
-		ID:       userID,
-		Email:    normalizedEmail,
-		Nickname: record.Nickname,
+		ID:              userID,
+		Email:           normalizedEmail,
+		Nickname:        record.Nickname,
 		EmailVerifiedAt: &now,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	if err := s.store.CreateUser(ctx, userRecord); err != nil {
@@ -187,10 +195,67 @@ func (s *Service) CompleteRegistration(ctx context.Context, email string, code s
 	return toUser(created), nil
 }
 
-func (s *Service) CompleteLogin(ctx context.Context, email string, code string, userAgent string, ipAddress string) (User, Session, error) {
+func (s *Service) CompleteLogin(ctx context.Context, email string, code string, userAgent string, ipAddress string) (User, Session, bool, error) {
+	normalizedEmail, err := normalizeEmail(email)
+	if err != nil {
+		return User{}, Session{}, false, err
+	}
+
+	userRecord, found, err := s.store.GetUserByEmail(ctx, normalizedEmail)
+	if err != nil {
+		return User{}, Session{}, false, err
+	}
+
+	record, err := s.verifyLatestCode(ctx, normalizedEmail, loginPurpose, code)
+	if err != nil {
+		return User{}, Session{}, false, err
+	}
+
+	if err := s.store.ConsumeVerificationCode(ctx, record.ID, s.now().UTC(), s.now().UTC()); err != nil {
+		return User{}, Session{}, false, err
+	}
+
+	autoRegistered := false
+	now := s.now().UTC()
+	switch {
+	case !found:
+		userRecord, err = s.createAutoRegisteredUser(ctx, normalizedEmail, now)
+		if err != nil {
+			return User{}, Session{}, false, err
+		}
+		autoRegistered = true
+	case userRecord.EmailVerifiedAt == nil:
+		nickname := strings.TrimSpace(userRecord.Nickname)
+		if nickname == "" {
+			nickname = deriveDefaultNickname(normalizedEmail)
+		}
+		if err := s.store.UpdateUserEmailVerification(ctx, userRecord.ID, now, nickname, now); err != nil {
+			return User{}, Session{}, false, err
+		}
+		userRecord, _, err = s.store.GetUserByEmail(ctx, normalizedEmail)
+		if err != nil {
+			return User{}, Session{}, false, err
+		}
+		autoRegistered = true
+	}
+
+	session, err := s.createSession(ctx, userRecord.ID, userAgent, ipAddress)
+	if err != nil {
+		return User{}, Session{}, false, err
+	}
+
+	return toUser(userRecord), session, autoRegistered, nil
+}
+
+func (s *Service) CompletePasswordLogin(ctx context.Context, email string, password string, userAgent string, ipAddress string) (User, Session, error) {
 	normalizedEmail, err := normalizeEmail(email)
 	if err != nil {
 		return User{}, Session{}, err
+	}
+
+	normalizedPassword := strings.TrimSpace(password)
+	if normalizedPassword == "" {
+		return User{}, Session{}, ErrPasswordRequired
 	}
 
 	userRecord, found, err := s.store.GetUserByEmail(ctx, normalizedEmail)
@@ -200,39 +265,19 @@ func (s *Service) CompleteLogin(ctx context.Context, email string, code string, 
 	if !found || userRecord.EmailVerifiedAt == nil {
 		return User{}, Session{}, ErrNotRegistered
 	}
+	if strings.TrimSpace(userRecord.PasswordHash) == "" {
+		return User{}, Session{}, ErrPasswordNotSet
+	}
+	if !verifyPasswordHash(userRecord.PasswordHash, normalizedPassword) {
+		return User{}, Session{}, ErrPasswordInvalid
+	}
 
-	record, err := s.verifyLatestCode(ctx, normalizedEmail, loginPurpose, code)
+	session, err := s.createSession(ctx, userRecord.ID, userAgent, ipAddress)
 	if err != nil {
 		return User{}, Session{}, err
 	}
 
-	if err := s.store.ConsumeVerificationCode(ctx, record.ID, s.now().UTC(), s.now().UTC()); err != nil {
-		return User{}, Session{}, err
-	}
-
-	token, tokenHash, err := generateSessionToken()
-	if err != nil {
-		return User{}, Session{}, err
-	}
-
-	now := s.now().UTC()
-	session := sqlite.SessionRecord{
-		TokenHash: tokenHash,
-		UserID:    userRecord.ID,
-		CreatedAt: now,
-		ExpiresAt: now.Add(s.sessionTTL),
-		UserAgent: strings.TrimSpace(userAgent),
-		IPAddress: strings.TrimSpace(ipAddress),
-	}
-
-	if err := s.store.CreateSession(ctx, session); err != nil {
-		return User{}, Session{}, err
-	}
-
-	return toUser(userRecord), Session{
-		Token:     token,
-		ExpiresAt: session.ExpiresAt,
-	}, nil
+	return toUser(userRecord), session, nil
 }
 
 func (s *Service) GetCurrentUser(ctx context.Context, sessionToken string) (User, Session, error) {
@@ -311,6 +356,18 @@ func (s *Service) issueVerificationCode(ctx context.Context, email string, nickn
 		UpdatedAt:    now,
 	}
 
+	delivery, err := s.mailer.SendVerificationCode(ctx, VerificationMessage{
+		Email:     email,
+		Purpose:   purpose,
+		Code:      code,
+		ExpiresAt: record.ExpiresAt,
+		SentAt:    now,
+		Nickname:  nickname,
+	})
+	if err != nil {
+		return CodeDelivery{}, err
+	}
+
 	if err := s.store.UpsertVerificationCode(ctx, record); err != nil {
 		return CodeDelivery{}, err
 	}
@@ -318,10 +375,63 @@ func (s *Service) issueVerificationCode(ctx context.Context, email string, nickn
 	return CodeDelivery{
 		Email:        email,
 		Purpose:      purpose,
-		DebugCode:    code,
+		DebugCode:    delivery.DebugCode,
 		ExpiresAt:    record.ExpiresAt,
 		ResendAfter:  now.Add(s.codeResendDelay),
-		DeliveryMode: "debug",
+		DeliveryMode: delivery.Mode,
+	}, nil
+}
+
+func (s *Service) createAutoRegisteredUser(ctx context.Context, email string, now time.Time) (sqlite.UserRecord, error) {
+	userID, err := generateUserID()
+	if err != nil {
+		return sqlite.UserRecord{}, err
+	}
+
+	userRecord := sqlite.UserRecord{
+		ID:              userID,
+		Email:           email,
+		Nickname:        deriveDefaultNickname(email),
+		EmailVerifiedAt: &now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+
+	if err := s.store.CreateUser(ctx, userRecord); err != nil {
+		return sqlite.UserRecord{}, err
+	}
+
+	created, _, err := s.store.GetUserByEmail(ctx, email)
+	if err != nil {
+		return sqlite.UserRecord{}, err
+	}
+
+	return created, nil
+}
+
+func (s *Service) createSession(ctx context.Context, userID string, userAgent string, ipAddress string) (Session, error) {
+	token, tokenHash, err := generateSessionToken()
+	if err != nil {
+		return Session{}, err
+	}
+
+	now := s.now().UTC()
+	session := sqlite.SessionRecord{
+		TokenHash: tokenHash,
+		UserID:    userID,
+		CreatedAt: now,
+		ExpiresAt: now.Add(s.sessionTTL),
+		UserAgent: strings.TrimSpace(userAgent),
+		IPAddress: strings.TrimSpace(ipAddress),
+	}
+
+	if err := s.store.CreateSession(ctx, session); err != nil {
+		return Session{}, err
+	}
+
+	return Session{
+		Token:     token,
+		ExpiresAt: session.ExpiresAt,
 	}, nil
 }
 
@@ -377,12 +487,12 @@ func normalizeEmail(email string) (string, error) {
 
 func toUser(record sqlite.UserRecord) User {
 	return User{
-		ID:       record.ID,
-		Email:    record.Email,
-		Nickname: record.Nickname,
+		ID:              record.ID,
+		Email:           record.Email,
+		Nickname:        record.Nickname,
 		EmailVerifiedAt: record.EmailVerifiedAt,
-		CreatedAt: record.CreatedAt,
-		UpdatedAt: record.UpdatedAt,
+		CreatedAt:       record.CreatedAt,
+		UpdatedAt:       record.UpdatedAt,
 	}
 }
 
@@ -434,4 +544,47 @@ func hashVerificationCode(value string) string {
 func hashToken(value string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(value)))
 	return hex.EncodeToString(sum[:])
+}
+
+func hashPassword(value string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(value)))
+	return hex.EncodeToString(sum[:])
+}
+
+func verifyPasswordHash(storedHash string, password string) bool {
+	normalizedHash := strings.TrimSpace(storedHash)
+	if normalizedHash == "" {
+		return false
+	}
+
+	passwordHash := hashPassword(password)
+	return subtle.ConstantTimeCompare([]byte(normalizedHash), []byte(passwordHash)) == 1
+}
+
+func deriveDefaultNickname(email string) string {
+	localPart := strings.TrimSpace(strings.SplitN(email, "@", 2)[0])
+	localPart = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		case r == '.' || r == '-' || r == '_':
+			return r
+		default:
+			return -1
+		}
+	}, localPart)
+	if localPart != "" {
+		return localPart
+	}
+
+	code, err := generateNumericCode(4)
+	if err != nil {
+		return "用户"
+	}
+
+	return "用户" + code
 }

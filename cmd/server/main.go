@@ -18,8 +18,12 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
 	bootstrapLogger := logging.NewBootstrapLogger(os.Stderr)
+	cfg, err := config.Load()
+	if err != nil {
+		bootstrapLogger.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
 
 	logger, closeLogger, err := logging.NewLogger(cfg.LogDir)
 	if err != nil {
@@ -41,7 +45,23 @@ func main() {
 		}
 	}()
 
-	authService := auth.NewService(store)
+	mailer, err := auth.NewMailer(logger, auth.MailerConfig{
+		Mode:            cfg.MailerMode,
+		SMTPHost:        cfg.SMTPHost,
+		SMTPPort:        cfg.SMTPPort,
+		SMTPUsername:    cfg.SMTPUsername,
+		SMTPPassword:    cfg.SMTPPassword,
+		SMTPFromAddress: cfg.SMTPFromAddress,
+		SMTPFromName:    cfg.SMTPFromName,
+		SMTPRequireTLS:  cfg.SMTPRequireTLS,
+		SubjectPrefix:   cfg.AuthCodeSubjectPrefix,
+	})
+	if err != nil {
+		logger.Error("failed to initialize auth mailer", "error", err)
+		os.Exit(1)
+	}
+
+	authService := auth.NewService(store, mailer)
 	meetingService := meeting.NewService(logger, store)
 	signalingHub := signaling.NewHub(logger, meetingService)
 	server := &http.Server{

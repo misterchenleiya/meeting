@@ -7,6 +7,7 @@ UPDATE_SCRIPT="${UPDATE_SCRIPT:-${SERVICE_DIR}/update.sh}"
 LOG_DIR="${LOG_DIR:-${SERVICE_DIR}/logs}"
 LOG_SYMLINK="${LOG_DIR}/crontab.log"
 LATEST_URL="${LATEST_URL:-https://download.07c2.com/${SERVICE_NAME}/latest.txt}"
+MEETING_BACKEND_ENV_FILE="${MEETING_BACKEND_ENV_FILE:-}"
 DEFAULT_SCHEDULE="${DEFAULT_SCHEDULE:-* * * * *}"
 CRON_BEGIN="# >>> ${SERVICE_NAME}-update begin >>>"
 CRON_END="# <<< ${SERVICE_NAME}-update end <<<"
@@ -133,7 +134,15 @@ setup_logging() {
 build_cron_command() {
   local schedule="$1"
   local escaped_service_dir
+  local escaped_backend_env_file
   escaped_service_dir="$(escape_single_quotes "${SERVICE_DIR}")"
+  if [[ -n "${MEETING_BACKEND_ENV_FILE}" ]]; then
+    escaped_backend_env_file="$(escape_single_quotes "${MEETING_BACKEND_ENV_FILE}")"
+    printf "%s /bin/bash -lc 'cd '\''%s'\'' && export MEETING_BACKEND_ENV_FILE='\''%s'\'' && ./update.sh >/dev/null 2>&1'" \
+      "${schedule}" "${escaped_service_dir}" "${escaped_backend_env_file}"
+    return
+  fi
+
   printf "%s /bin/bash -lc 'cd '\''%s'\'' && ./update.sh >/dev/null 2>&1'" "${schedule}" "${escaped_service_dir}"
 }
 
@@ -189,6 +198,11 @@ cmd_check() {
   echo "update script: ${UPDATE_SCRIPT}"
   echo "download latest: ${LATEST_URL}"
   echo "log dir: ${LOG_DIR}"
+  if [[ -n "${MEETING_BACKEND_ENV_FILE}" ]]; then
+    echo "backend env file: ${MEETING_BACKEND_ENV_FILE}"
+  else
+    echo "backend env file: (use compose default /etc/meeting/meeting-backend.env)"
+  fi
 
   if crontab -l 2>/dev/null | awk -v begin="${CRON_BEGIN}" -v end="${CRON_END}" '
     $0 == begin {in_block=1; next}
