@@ -1,4 +1,4 @@
-# 20260401 邮箱验证码自动注册与 SMTP 发信方案
+# 20260401 邮箱验证码自动注册与外部发信方案
 
 - Status: implemented
 - Date: 2026-04-01
@@ -110,7 +110,7 @@
 - 对已经有密码的存量用户或后续人工导入用户开放
 - 对无密码账号给出明确提示，而不是模糊失败
 
-### 5. 生产发信采用 SMTP relay，不新增独立邮件服务容器
+### 5. 生产发信采用外部邮件服务，不新增独立邮件服务容器
 
 本方案明确拒绝“在 compose 里新增一个验证码发送服务容器”作为生产首选。
 
@@ -118,7 +118,7 @@
 
 - 当前用户量小，额外维护一个邮件服务容器收益低、运维成本高。
 - 自建 SMTP / 邮件中继会带来域名信誉、SPF/DKIM/DMARC、出站端口和垃圾邮件治理问题。
-- 对验证码邮件这种低频场景，最简单稳定的做法是由 `meeting-backend` 直接连接外部 SMTP relay。
+- 对验证码邮件这种低频场景，最简单稳定的做法是由 `meeting-backend` 直接连接外部邮件服务。
 
 因此生产部署策略为：
 
@@ -126,10 +126,11 @@
 - 根据配置选择：
   - `debug mailer`
   - `smtp mailer`
-- `docker-compose.yml` 只为 `meeting-backend` 注入 SMTP 相关环境变量
+  - `sendcloud api mailer`
+- `docker-compose.yml` 只为 `meeting-backend` 注入外部邮件服务相关环境变量
 - 不新增 `mail-service`、`worker`、`queue` 等新容器
 
-开发或预发环境如需本地收信观察，可选接 `Mailpit/MailHog`，但这不是生产方案的一部分。
+当前实现优先推荐 SendCloud API 作为生产发信路径，SMTP 继续作为备选回退方案。开发或预发环境如需本地收信观察，可选接 `Mailpit/MailHog`，但这不是生产方案的一部分。
 
 ## 涉及模块 / 数据结构 / 接口 / 配置 / 存储影响
 
@@ -163,7 +164,7 @@
   - 扩展验证码登录返回结构，支持识别是否自动注册
 
 - `docker-compose.yml`
-  - 为 `meeting-backend` 注入 SMTP 环境变量
+  - 为 `meeting-backend` 注入 SendCloud API 或 SMTP 环境变量
 
 ### 数据结构
 
@@ -204,14 +205,14 @@
 
 - `POST /api/auth/login/code`
   - 在生产模式下不再返回 `debugCode`
-  - `deliveryMode` 从 `debug` 切换到 `smtp`
+  - `deliveryMode` 从 `debug` 切换到 `sendcloud_api` 或 `smtp`
 
 ### 配置变化
 
 建议新增以下后端环境变量：
 
 - `MEETING_MAILER_MODE`
-  - `debug` / `smtp`
+  - `debug` / `smtp` / `sendcloud_api`
 - `MEETING_SMTP_HOST`
 - `MEETING_SMTP_PORT`
 - `MEETING_SMTP_USERNAME`
@@ -219,12 +220,17 @@
 - `MEETING_SMTP_FROM_ADDRESS`
 - `MEETING_SMTP_FROM_NAME`
 - `MEETING_SMTP_REQUIRE_TLS`
+- `MEETING_SENDCLOUD_API_BASE_URL`
+- `MEETING_SENDCLOUD_API_USER`
+- `MEETING_SENDCLOUD_API_KEY`
+- `MEETING_SENDCLOUD_FROM_ADDRESS`
+- `MEETING_SENDCLOUD_FROM_NAME`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
 
 其中：
 
 - 本地开发默认 `MEETING_MAILER_MODE=debug`
-- 生产环境使用 `MEETING_MAILER_MODE=smtp`
+- 生产环境优先使用 `MEETING_MAILER_MODE=sendcloud_api`
 
 ## 兼容性、迁移方案与风险
 
@@ -237,11 +243,11 @@
 ### 迁移策略
 
 1. 先在开发环境保留 `debug mailer`
-2. 增加 `smtp mailer` 并通过配置切换
+2. 增加外部发信 mailer 并通过配置切换
 3. 登录验证码接口先支持“未注册也可发码”
 4. 验证登录成功后自动注册
 5. 再补最小密码登录入口和“未设置密码”提示
-6. 最后切换生产环境 `MEETING_MAILER_MODE=smtp`
+6. 最后切换生产环境 `MEETING_MAILER_MODE=sendcloud_api`
 
 ### 风险
 
@@ -253,9 +259,9 @@
    - 使用邮箱前缀会带来“昵称不够产品化”的问题
    - 但相对首次登录强制补资料，这个取舍更符合“功能优先”
 
-3. **SMTP 发信稳定性**
+3. **外部发信稳定性**
    - 发信失败、超时、认证错误都需要可观测日志
-   - 生产环境必须确保 DNS、端口、账号授权和 TLS 配置正确
+   - 生产环境必须确保域名验证、API 凭据或 SMTP 凭据配置正确
 
 4. **密码登录入口会让用户以为已经支持完整密码体系**
    - 因此必须在 UI 和返回文案中明确：
@@ -270,7 +276,7 @@
   - 未注册邮箱验证码验证成功后自动创建用户
   - 自动注册昵称生成规则
   - `password_hash == ""` 时密码登录返回 `ErrPasswordNotSet`
-  - SMTP mailer 配置校验与失败路径
+  - SendCloud API / SMTP mailer 配置校验与失败路径
 
 - 集成测试
   - 已注册用户验证码登录成功
@@ -279,13 +285,13 @@
   - 密码登录尝试命中“未设置密码”提示
 
 - 部署验证
-  - 生产环境通过 SMTP 成功发送验证码邮件
+  - 生产环境通过外部邮件服务成功发送验证码邮件
   - 后端日志中能观察到发信成功 / 失败原因
   - 前端不再显示 `debugCode` 自动回填
 
 ### 回滚
 
-- 若 SMTP 接入失败，可把 `MEETING_MAILER_MODE` 临时切回 `debug`
+- 若 SendCloud API 接入失败，可把 `MEETING_MAILER_MODE` 临时切回 `smtp` 或 `debug`
 - 若自动注册带来产品问题，可恢复 `POST /api/auth/login/code` 的“仅已注册用户可发码”策略
 - 新增的密码登录入口可以先隐藏前端入口，仅保留后端接口，为回滚留空间
 
@@ -323,12 +329,12 @@
 放弃原因：
 
 - 对当前规模明显过度设计
-- 自建邮件发送基础设施的运维复杂度远高于直接接 SMTP relay
+- 自建邮件发送基础设施的运维复杂度远高于直接接外部邮件服务
 - 不符合“先实现功能为主”的优先级
 
 ## 推荐实施顺序
 
-1. 先补 `Mailer` 抽象与 `debug/smtp` 双实现
+1. 先补 `Mailer` 抽象与 `debug/smtp/sendcloud_api` 多实现
 2. 再改后端验证码登录语义，支持自动注册
 3. 补前端“自动注册成功”提示与密码登录入口
 4. 最后把生产环境 compose 配置切到 SMTP 模式并联调

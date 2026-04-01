@@ -46,15 +46,20 @@ func main() {
 	}()
 
 	mailer, err := auth.NewMailer(logger, auth.MailerConfig{
-		Mode:            cfg.MailerMode,
-		SMTPHost:        cfg.SMTPHost,
-		SMTPPort:        cfg.SMTPPort,
-		SMTPUsername:    cfg.SMTPUsername,
-		SMTPPassword:    cfg.SMTPPassword,
-		SMTPFromAddress: cfg.SMTPFromAddress,
-		SMTPFromName:    cfg.SMTPFromName,
-		SMTPRequireTLS:  cfg.SMTPRequireTLS,
-		SubjectPrefix:   cfg.AuthCodeSubjectPrefix,
+		Mode:                 cfg.MailerMode,
+		SMTPHost:             cfg.SMTPHost,
+		SMTPPort:             cfg.SMTPPort,
+		SMTPUsername:         cfg.SMTPUsername,
+		SMTPPassword:         cfg.SMTPPassword,
+		SMTPFromAddress:      cfg.SMTPFromAddress,
+		SMTPFromName:         cfg.SMTPFromName,
+		SMTPRequireTLS:       cfg.SMTPRequireTLS,
+		SendCloudAPIBaseURL:  cfg.SendCloudAPIBaseURL,
+		SendCloudAPIUser:     cfg.SendCloudAPIUser,
+		SendCloudAPIKey:      cfg.SendCloudAPIKey,
+		SendCloudFromAddress: cfg.SendCloudFromAddress,
+		SendCloudFromName:    cfg.SendCloudFromName,
+		SubjectPrefix:        cfg.AuthCodeSubjectPrefix,
 	})
 	if err != nil {
 		logger.Error("failed to initialize auth mailer", "error", err)

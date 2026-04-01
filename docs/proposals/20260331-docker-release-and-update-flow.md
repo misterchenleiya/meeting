@@ -186,9 +186,9 @@ Makefile 应作为标准发布入口，补齐以下目标：
 
 说明：
 
-- 生产环境的 SMTP relay 配置文件不应入库，也不应进入发布包。
+- 生产环境的外部邮件服务配置文件不应入库，也不应进入发布包。
 - `docker-compose.yml` 应通过外部 env 文件为 `meeting-backend` 注入 SMTP 相关变量。
-- 默认外部路径可约定为 `/etc/meeting/meeting-backend.env`，并允许通过 `MEETING_BACKEND_ENV_FILE` 覆盖。
+- 默认外部路径可约定为部署根目录下的 `meeting-backend.env`，生产环境默认使用 `/data/07c2.com.cn/meeting/meeting-backend.env`，并允许通过 `MEETING_BACKEND_ENV_FILE` 覆盖。
 - 仓库内可以提供脱敏的 `scripts/env.example` 作为生产配置模版，并在打包时平铺为发布包根目录下的 `env.example`，便于运维复制后手工填写真实凭据。
 
 ### 版本标记要求

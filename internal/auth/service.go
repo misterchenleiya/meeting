@@ -26,6 +26,8 @@ const (
 	defaultCodeTTL            = 10 * time.Minute
 	defaultCodeResendDelay    = 60 * time.Second
 	defaultCodeMaxAttempts    = 5
+	defaultIPRateWindow       = 10 * time.Minute
+	defaultIPRateLimit        = 12
 	defaultSessionTTL         = 30 * 24 * time.Hour
 	defaultUserIDPrefix       = "usr_"
 	defaultVerificationPrefix = "vcode_"
@@ -38,6 +40,7 @@ var (
 	ErrVerificationCodeExpired       = errors.New("verification code expired")
 	ErrVerificationCodeInvalid       = errors.New("verification code invalid")
 	ErrVerificationCodeResendTooSoon = errors.New("verification code request too frequent")
+	ErrVerificationCodeRateLimited   = errors.New("verification code request rate limited")
 	ErrVerificationAttemptsExceeded  = errors.New("verification code attempts exceeded")
 	ErrSessionNotFound               = errors.New("session not found")
 	ErrSessionExpired                = errors.New("session expired")
@@ -55,8 +58,15 @@ type Service struct {
 	codeTTL         time.Duration
 	codeResendDelay time.Duration
 	maxCodeAttempts int
+	ipRateWindow    time.Duration
+	ipRateLimit     int
 	sessionTTL      time.Duration
 	now             func() time.Time
+}
+
+type VerificationRequestMeta struct {
+	ClientID  string
+	IPAddress string
 }
 
 type User struct {
@@ -93,12 +103,14 @@ func NewService(store *sqlite.Store, mailer Mailer) *Service {
 		codeTTL:         defaultCodeTTL,
 		codeResendDelay: defaultCodeResendDelay,
 		maxCodeAttempts: defaultCodeMaxAttempts,
+		ipRateWindow:    defaultIPRateWindow,
+		ipRateLimit:     defaultIPRateLimit,
 		sessionTTL:      defaultSessionTTL,
 		now:             time.Now,
 	}
 }
 
-func (s *Service) RequestRegisterCode(ctx context.Context, email string, nickname string) (CodeDelivery, error) {
+func (s *Service) RequestRegisterCode(ctx context.Context, email string, nickname string, meta VerificationRequestMeta) (CodeDelivery, error) {
 	normalizedEmail, err := normalizeEmail(email)
 	if err != nil {
 		return CodeDelivery{}, err
@@ -115,10 +127,10 @@ func (s *Service) RequestRegisterCode(ctx context.Context, email string, nicknam
 		return CodeDelivery{}, ErrAlreadyRegistered
 	}
 
-	return s.issueVerificationCode(ctx, normalizedEmail, normalizedNickname, registerPurpose)
+	return s.issueVerificationCode(ctx, normalizedEmail, normalizedNickname, registerPurpose, meta)
 }
 
-func (s *Service) RequestLoginCode(ctx context.Context, email string) (CodeDelivery, error) {
+func (s *Service) RequestLoginCode(ctx context.Context, email string, meta VerificationRequestMeta) (CodeDelivery, error) {
 	normalizedEmail, err := normalizeEmail(email)
 	if err != nil {
 		return CodeDelivery{}, err
@@ -127,10 +139,10 @@ func (s *Service) RequestLoginCode(ctx context.Context, email string) (CodeDeliv
 	if _, found, err := s.store.GetUserByEmail(ctx, normalizedEmail); err != nil {
 		return CodeDelivery{}, err
 	} else if found {
-		return s.issueVerificationCode(ctx, normalizedEmail, "", loginPurpose)
+		return s.issueVerificationCode(ctx, normalizedEmail, "", loginPurpose, meta)
 	}
 
-	return s.issueVerificationCode(ctx, normalizedEmail, "", loginPurpose)
+	return s.issueVerificationCode(ctx, normalizedEmail, "", loginPurpose, meta)
 }
 
 func (s *Service) CompleteRegistration(ctx context.Context, email string, code string) (User, error) {
@@ -324,12 +336,33 @@ func (s *Service) Logout(ctx context.Context, sessionToken string) error {
 	return s.store.RevokeSession(ctx, hashToken(normalizedToken), s.now().UTC())
 }
 
-func (s *Service) issueVerificationCode(ctx context.Context, email string, nickname string, purpose string) (CodeDelivery, error) {
+func (s *Service) issueVerificationCode(ctx context.Context, email string, nickname string, purpose string, meta VerificationRequestMeta) (CodeDelivery, error) {
+	now := s.now().UTC()
+	meta = normalizeVerificationRequestMeta(meta)
+
 	if latest, found, err := s.store.GetLatestVerificationCode(ctx, email, purpose); err != nil {
 		return CodeDelivery{}, err
 	} else if found {
-		if latest.ConsumedAt == nil && s.now().UTC().Before(latest.SentAt.Add(s.codeResendDelay)) {
+		if now.Before(latest.SentAt.Add(s.codeResendDelay)) {
 			return CodeDelivery{}, ErrVerificationCodeResendTooSoon
+		}
+	}
+
+	if meta.ClientID != "" {
+		if latest, found, err := s.store.GetLatestVerificationCodeByClientID(ctx, meta.ClientID); err != nil {
+			return CodeDelivery{}, err
+		} else if found && now.Before(latest.SentAt.Add(s.codeResendDelay)) {
+			return CodeDelivery{}, ErrVerificationCodeResendTooSoon
+		}
+	}
+
+	if meta.IPAddress != "" {
+		count, err := s.store.CountVerificationCodesByIPAddressSince(ctx, meta.IPAddress, now.Add(-s.ipRateWindow))
+		if err != nil {
+			return CodeDelivery{}, err
+		}
+		if count >= s.ipRateLimit {
+			return CodeDelivery{}, ErrVerificationCodeRateLimited
 		}
 	}
 
@@ -338,7 +371,6 @@ func (s *Service) issueVerificationCode(ctx context.Context, email string, nickn
 		return CodeDelivery{}, err
 	}
 
-	now := s.now().UTC()
 	verificationID, err := randomHexID(12)
 	if err != nil {
 		return CodeDelivery{}, err
@@ -348,6 +380,8 @@ func (s *Service) issueVerificationCode(ctx context.Context, email string, nickn
 		Email:        email,
 		Purpose:      purpose,
 		Nickname:     nickname,
+		ClientID:     meta.ClientID,
+		IPAddress:    meta.IPAddress,
 		CodeHash:     hashVerificationCode(code),
 		AttemptCount: 0,
 		SentAt:       now,
@@ -380,6 +414,13 @@ func (s *Service) issueVerificationCode(ctx context.Context, email string, nickn
 		ResendAfter:  now.Add(s.codeResendDelay),
 		DeliveryMode: delivery.Mode,
 	}, nil
+}
+
+func normalizeVerificationRequestMeta(meta VerificationRequestMeta) VerificationRequestMeta {
+	return VerificationRequestMeta{
+		ClientID:  strings.TrimSpace(meta.ClientID),
+		IPAddress: strings.TrimSpace(meta.IPAddress),
+	}
 }
 
 func (s *Service) createAutoRegisteredUser(ctx context.Context, email string, now time.Time) (sqlite.UserRecord, error) {

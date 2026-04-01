@@ -93,6 +93,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 
 - Before joining a meeting, the login view now uses a full-screen single-card layout with a large `meeting` wordmark, a focused spotlight below it, and a centered auth card in the same macOS-dark visual system as the room UI.
 - Auth flow: login and registration remain separate entry points. Registration verifies the email code and returns to the login card; verification-code login now supports both existing users and first-time users, auto-registering the user on successful verification. Password login is exposed as a minimal companion path and shows a clear prompt when the account has not set a password. Development builds may still auto-fill the verification code for convenience.
+- Verification-code requests now enforce a server-side `60s` cooldown per email and per anonymous client. Refreshing the page does not bypass the cooldown, and a relaxed IP fallback limit is used to reduce abuse without immediately locking an entire shared network.
 - Host flow: after sign-in, the app returns to the dark entry shell for quick meeting or scheduled meeting entry. The scheduled form currently reuses the existing create-meeting API and enters the room immediately.
 - Join flow: enter the public 9-digit meeting number, run a preflight lookup, and then enter the password in a modal only if the meeting requires one. Grouped `3-3-3` meeting numbers with spaces are normalized automatically.
 - In-room flow: the room now uses a single-screen full-stage layout with a top title bar, a bottom dock toolbar, attached host / meeting / settings / apps / end panels, and right-side drawers for members and chat. Idle meetings show an avatar wall; active media switches to a featured stage with a thumbnail rail.
@@ -143,34 +144,34 @@ Optional environment variables:
 - `MEETING_HTTP_ADDR`, default `:5180`
 - `MEETING_SQLITE_PATH`, default `./data/meeting.db`
 - `MEETING_LOG_DIR`, default `./logs`
-- `MEETING_MAILER_MODE`, default `debug`, use `smtp` in production
+- `MEETING_MAILER_MODE`, default `debug`, recommended production value `sendcloud_api`
 - `MEETING_SMTP_HOST`, `MEETING_SMTP_PORT`, `MEETING_SMTP_USERNAME`, `MEETING_SMTP_PASSWORD`
 - `MEETING_SMTP_FROM_ADDRESS`, `MEETING_SMTP_FROM_NAME`, `MEETING_SMTP_REQUIRE_TLS`
+- `MEETING_SENDCLOUD_API_BASE_URL`, `MEETING_SENDCLOUD_API_USER`, `MEETING_SENDCLOUD_API_KEY`
+- `MEETING_SENDCLOUD_FROM_ADDRESS`, `MEETING_SENDCLOUD_FROM_NAME`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
 
-### Production SMTP Relay
+### Production Mail Delivery
 
-For Docker deployments, the recommended production setup is to keep SMTP credentials outside the repo and outside the release archive.
+For Docker deployments, the recommended production setup is to keep SendCloud API credentials outside the repo and outside the release archive.
 
 - `docker-compose.yml` now reads an optional external env file for `meeting-backend`
-- default path: `/etc/meeting/meeting-backend.env`
+- default path: `/data/07c2.com.cn/meeting/meeting-backend.env`
 - override path: set `MEETING_BACKEND_ENV_FILE=/your/path/backend.env` before running `./start.sh`, `./update.sh`, or `./crontab.sh add`
 
-Example `/etc/meeting/meeting-backend.env`:
+Example `/data/07c2.com.cn/meeting/meeting-backend.env`:
 
 ```env
-MEETING_MAILER_MODE=smtp
-MEETING_SMTP_HOST=smtp.sendcloud.net
-MEETING_SMTP_PORT=587
-MEETING_SMTP_USERNAME=your_smtp_username
-MEETING_SMTP_PASSWORD=your_smtp_password
-MEETING_SMTP_FROM_ADDRESS=notice@example.com
-MEETING_SMTP_FROM_NAME=meeting
-MEETING_SMTP_REQUIRE_TLS=true
+MEETING_MAILER_MODE=sendcloud_api
+MEETING_SENDCLOUD_API_BASE_URL=https://api.sendcloud.net/apiv2
+MEETING_SENDCLOUD_API_USER=your_sendcloud_api_user
+MEETING_SENDCLOUD_API_KEY=your_sendcloud_api_key
+MEETING_SENDCLOUD_FROM_ADDRESS=no-reply@mail.07c2.com.cn
+MEETING_SENDCLOUD_FROM_NAME=meeting
 MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
 ```
 
-The repository also ships a production template at [scripts/env.example](scripts/env.example). Every release package now includes this file as root-level `env.example` so operators can copy it to `/etc/meeting/meeting-backend.env` and fill in real credentials manually.
+The repository also ships a production template at [scripts/env.example](scripts/env.example). Every release package now includes this file as root-level `env.example` so operators can copy it to `/data/07c2.com.cn/meeting/meeting-backend.env` and fill in real credentials manually. SMTP is still supported as a fallback mode, but SendCloud API is the recommended production path.
 
 ### Frontend
 
@@ -198,13 +199,14 @@ make clean
 - `make build`: builds the backend binary and frontend assets into `build/`
 - Backend build output: `build/backend/meeting`
 - Frontend build output: `build/frontend/`
-- `make linux`: builds the Linux/amd64 release artifacts used by the Docker-based runtime
+- `make linux`: builds the Linux/amd64 release artifacts used by the Docker-based runtime; the frontend release bundle now defaults to same-origin `/api` and `/ws`, assuming your outer Nginx reverse-proxies those paths to the backend. Only set `FRONTEND_API_BASE_URL` / `FRONTEND_SIGNAL_BASE_URL` when you intentionally need a cross-origin deployment
 - `make pack`: stages `scripts/`, `docker-compose.yml`, backend, frontend, and coturn assets into `meeting_${commit}.tar.gz` and `latest.txt`
 - `make upload`: uploads `meeting_${commit}.tar.gz` first, then `latest.txt`
 - `make publish`: runs the standard `clean -> linux -> pack -> upload` flow
 - `make run-backend`: starts the backend and writes runtime logs and SQLite data to `build/run/`
 - `make run-frontend`: starts the frontend dev server
-- Root `scripts/` contains the Docker runtime helpers (`start.sh`, `stop.sh`, `restart.sh`, `status.sh`, `update.sh`, `upload.sh`, `crontab.sh`) plus the SMTP template [`env.example`](scripts/env.example); all of them are included in every release package, with `env.example` flattened to the package root
+- Root `scripts/` contains the Docker runtime helpers (`start.sh`, `stop.sh`, `restart.sh`, `status.sh`, `update.sh`, `upload.sh`, `crontab.sh`) plus the mail-delivery template [`env.example`](scripts/env.example); all of them are included in every release package, with `env.example` flattened to the package root
+- The packaged frontend Nginx now proxies same-origin `/api/` and `/ws/` traffic to `meeting-backend`, so a standard `meeting.07c2.com.cn -> meeting-frontend` reverse proxy can keep auth and signaling on the same origin without adding CORS to the backend
 - Frontend runtime logs are written to the browser console; `warn`/`error` and selected `info` events are batched to `POST /api/client-logs` and end up in the backend JSON logs, while the browser no longer persists them locally
 - `make clean`: removes `build/`
 

@@ -19,6 +19,11 @@ type Config struct {
 	SMTPFromAddress       string
 	SMTPFromName          string
 	SMTPRequireTLS        bool
+	SendCloudAPIBaseURL   string
+	SendCloudAPIUser      string
+	SendCloudAPIKey       string
+	SendCloudFromAddress  string
+	SendCloudFromName     string
 	AuthCodeSubjectPrefix string
 }
 
@@ -45,6 +50,11 @@ func Load() (Config, error) {
 		SMTPFromAddress:       envOrDefault("MEETING_SMTP_FROM_ADDRESS", ""),
 		SMTPFromName:          envOrDefault("MEETING_SMTP_FROM_NAME", "meeting"),
 		SMTPRequireTLS:        smtpRequireTLS,
+		SendCloudAPIBaseURL:   envOrDefault("MEETING_SENDCLOUD_API_BASE_URL", "https://api.sendcloud.net/apiv2"),
+		SendCloudAPIUser:      envOrDefault("MEETING_SENDCLOUD_API_USER", ""),
+		SendCloudAPIKey:       envOrDefault("MEETING_SENDCLOUD_API_KEY", ""),
+		SendCloudFromAddress:  envOrDefault("MEETING_SENDCLOUD_FROM_ADDRESS", "no-reply@mail.07c2.com.cn"),
+		SendCloudFromName:     envOrDefault("MEETING_SENDCLOUD_FROM_NAME", "meeting"),
 		AuthCodeSubjectPrefix: envOrDefault("MEETING_AUTH_CODE_SUBJECT_PREFIX", "[meeting]"),
 	}, nil
 }

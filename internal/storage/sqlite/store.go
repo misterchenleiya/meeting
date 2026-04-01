@@ -88,6 +88,24 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.ensureColumn(ctx, "auth_verification_codes", "nickname", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := s.ensureColumn(ctx, "auth_verification_codes", "client_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "auth_verification_codes", "ip_address", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureIndex(ctx, "idx_auth_verification_codes_client_id_created_at", `
+CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_client_id_created_at
+ON auth_verification_codes(client_id, created_at DESC)
+WHERE client_id <> ''`); err != nil {
+		return err
+	}
+	if err := s.ensureIndex(ctx, "idx_auth_verification_codes_ip_address_created_at", `
+CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_ip_address_created_at
+ON auth_verification_codes(ip_address, created_at DESC)
+WHERE ip_address <> ''`); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -101,12 +119,12 @@ func (s *Store) ensureColumn(ctx context.Context, tableName string, columnName s
 
 	for rows.Next() {
 		var (
-			cid         int
-			name        string
-			columnType  string
-			notNull     int
+			cid          int
+			name         string
+			columnType   string
+			notNull      int
 			defaultValue sql.NullString
-			pk          int
+			pk           int
 		)
 		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
 			return fmt.Errorf("inspect table %s: %w", tableName, err)
@@ -125,6 +143,14 @@ func (s *Store) ensureColumn(ctx context.Context, tableName string, columnName s
 			return nil
 		}
 		return fmt.Errorf("add column %s.%s: %w", tableName, columnName, err)
+	}
+
+	return nil
+}
+
+func (s *Store) ensureIndex(ctx context.Context, indexName string, statement string) error {
+	if _, err := s.db.ExecContext(ctx, statement); err != nil {
+		return fmt.Errorf("ensure index %s: %w", indexName, err)
 	}
 
 	return nil

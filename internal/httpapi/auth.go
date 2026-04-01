@@ -1,13 +1,18 @@
 package httpapi
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/misterchenleiya/meeting/internal/auth"
 )
+
+const verificationClientCookieName = "meeting_verification_client"
 
 type authCodeRequest struct {
 	Email    string `json:"email"`
@@ -35,10 +40,22 @@ func (s *Server) handleRegisterCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delivery, err := s.auth.RequestRegisterCode(r.Context(), request.Email, request.Nickname)
+	clientID, shouldPersistCookie, err := ensureVerificationClientID(r)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to initialize verification client")
+		return
+	}
+
+	delivery, err := s.auth.RequestRegisterCode(r.Context(), request.Email, request.Nickname, auth.VerificationRequestMeta{
+		ClientID:  clientID,
+		IPAddress: verificationRateLimitIP(r),
+	})
 	if err != nil {
 		s.writeAuthError(w, err)
 		return
+	}
+	if shouldPersistCookie {
+		setVerificationClientCookie(w, r, clientID)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -86,10 +103,22 @@ func (s *Server) handleLoginCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delivery, err := s.auth.RequestLoginCode(r.Context(), request.Email)
+	clientID, shouldPersistCookie, err := ensureVerificationClientID(r)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to initialize verification client")
+		return
+	}
+
+	delivery, err := s.auth.RequestLoginCode(r.Context(), request.Email, auth.VerificationRequestMeta{
+		ClientID:  clientID,
+		IPAddress: verificationRateLimitIP(r),
+	})
 	if err != nil {
 		s.writeAuthError(w, err)
 		return
+	}
+	if shouldPersistCookie {
+		setVerificationClientCookie(w, r, clientID)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -239,7 +268,9 @@ func (s *Server) writeAuthError(w http.ResponseWriter, err error) {
 	case errors.Is(err, auth.ErrNotRegistered):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, auth.ErrVerificationCodeResendTooSoon):
-		writeError(w, http.StatusTooManyRequests, err.Error())
+		writeError(w, http.StatusTooManyRequests, "验证码发送过于频繁，请 1 分钟后再试")
+	case errors.Is(err, auth.ErrVerificationCodeRateLimited):
+		writeError(w, http.StatusTooManyRequests, "当前网络请求过于频繁，请稍后再试")
 	case errors.Is(err, auth.ErrVerificationCodeExpired),
 		errors.Is(err, auth.ErrVerificationCodeInvalid),
 		errors.Is(err, auth.ErrVerificationAttemptsExceeded),
@@ -304,4 +335,67 @@ func shouldUseSecureCookie(r *http.Request) bool {
 	}
 
 	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+func readVerificationClientID(r *http.Request) (string, bool) {
+	if cookie, err := r.Cookie(verificationClientCookieName); err == nil {
+		value := strings.TrimSpace(cookie.Value)
+		if value != "" {
+			return value, true
+		}
+	}
+
+	return "", false
+}
+
+func ensureVerificationClientID(r *http.Request) (string, bool, error) {
+	if clientID, found := readVerificationClientID(r); found {
+		return clientID, false, nil
+	}
+
+	clientID, err := newVerificationClientID()
+	if err != nil {
+		return "", false, err
+	}
+
+	return clientID, true, nil
+}
+
+func setVerificationClientCookie(w http.ResponseWriter, r *http.Request, clientID string) {
+	const maxAgeSeconds = 180 * 24 * 60 * 60
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     verificationClientCookieName,
+		Value:    clientID,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   shouldUseSecureCookie(r),
+		MaxAge:   maxAgeSeconds,
+		Expires:  time.Now().UTC().Add(180 * 24 * time.Hour),
+	})
+}
+
+func newVerificationClientID() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(raw), nil
+}
+
+func verificationRateLimitIP(r *http.Request) string {
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		return strings.TrimSpace(parts[0])
+	}
+
+	remoteAddr := strings.TrimSpace(r.RemoteAddr)
+	if remoteAddr == "" {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		return host
+	}
+	return remoteAddr
 }

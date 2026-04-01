@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +16,10 @@ func TestRequestLoginCodeAllowsUnregisteredEmail(t *testing.T) {
 	store := openTestAuthStore(t)
 	service := NewService(store, nil)
 
-	delivery, err := service.RequestLoginCode(context.Background(), "new-user@example.com")
+	delivery, err := service.RequestLoginCode(context.Background(), "new-user@example.com", VerificationRequestMeta{
+		ClientID:  "test-client-1",
+		IPAddress: "203.0.113.10",
+	})
 	if err != nil {
 		t.Fatalf("RequestLoginCode() error = %v", err)
 	}
@@ -38,7 +42,10 @@ func TestCompleteLoginAutoRegistersUnregisteredEmail(t *testing.T) {
 	service := NewService(store, nil)
 	ctx := context.Background()
 
-	delivery, err := service.RequestLoginCode(ctx, "auto-register@example.com")
+	delivery, err := service.RequestLoginCode(ctx, "auto-register@example.com", VerificationRequestMeta{
+		ClientID:  "test-client-2",
+		IPAddress: "203.0.113.11",
+	})
 	if err != nil {
 		t.Fatalf("RequestLoginCode() error = %v", err)
 	}
@@ -100,6 +107,68 @@ func TestCompletePasswordLoginRejectsUserWithoutPassword(t *testing.T) {
 	)
 	if err != ErrPasswordNotSet {
 		t.Fatalf("CompletePasswordLogin() error = %v, want %v", err, ErrPasswordNotSet)
+	}
+}
+
+func TestVerificationCodeClientCooldownAppliesAcrossEmails(t *testing.T) {
+	t.Parallel()
+
+	store := openTestAuthStore(t)
+	service := NewService(store, nil)
+	now := time.Date(2026, time.April, 2, 10, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return now }
+
+	meta := VerificationRequestMeta{
+		ClientID:  "client-cooldown",
+		IPAddress: "203.0.113.21",
+	}
+
+	if _, err := service.RequestLoginCode(context.Background(), "first@example.com", meta); err != nil {
+		t.Fatalf("RequestLoginCode(first) error = %v", err)
+	}
+
+	if _, err := service.RequestLoginCode(context.Background(), "second@example.com", meta); err != ErrVerificationCodeResendTooSoon {
+		t.Fatalf("RequestLoginCode(second) error = %v, want %v", err, ErrVerificationCodeResendTooSoon)
+	}
+
+	now = now.Add(61 * time.Second)
+	if _, err := service.RequestLoginCode(context.Background(), "second@example.com", meta); err != nil {
+		t.Fatalf("RequestLoginCode(after cooldown) error = %v", err)
+	}
+}
+
+func TestVerificationCodeIPFallbackRateLimit(t *testing.T) {
+	t.Parallel()
+
+	store := openTestAuthStore(t)
+	service := NewService(store, nil)
+	now := time.Date(2026, time.April, 2, 11, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return now }
+
+	for index := 0; index < defaultIPRateLimit; index++ {
+		_, err := service.RequestLoginCode(context.Background(), fmt.Sprintf("user-%d@example.com", index), VerificationRequestMeta{
+			ClientID:  fmt.Sprintf("client-%d", index),
+			IPAddress: "198.51.100.8",
+		})
+		if err != nil {
+			t.Fatalf("RequestLoginCode(%d) error = %v", index, err)
+		}
+	}
+
+	_, err := service.RequestLoginCode(context.Background(), "overflow@example.com", VerificationRequestMeta{
+		ClientID:  "client-overflow",
+		IPAddress: "198.51.100.8",
+	})
+	if err != ErrVerificationCodeRateLimited {
+		t.Fatalf("RequestLoginCode(overflow) error = %v, want %v", err, ErrVerificationCodeRateLimited)
+	}
+
+	now = now.Add(defaultIPRateWindow + time.Second)
+	if _, err := service.RequestLoginCode(context.Background(), "recovered@example.com", VerificationRequestMeta{
+		ClientID:  "client-recovered",
+		IPAddress: "198.51.100.8",
+	}); err != nil {
+		t.Fatalf("RequestLoginCode(after ip window) error = %v", err)
 	}
 }
 

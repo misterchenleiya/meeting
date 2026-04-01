@@ -23,6 +23,8 @@ type VerificationCodeRecord struct {
 	Email        string
 	Purpose      string
 	Nickname     string
+	ClientID     string
+	IPAddress    string
 	CodeHash     string
 	AttemptCount int
 	SentAt       time.Time
@@ -50,9 +52,9 @@ WHERE id = ?`
 
 	var (
 		record          UserRecord
-		emailVerifiedAt  sql.NullString
-		createdAtRaw     string
-		updatedAtRaw     string
+		emailVerifiedAt sql.NullString
+		createdAtRaw    string
+		updatedAtRaw    string
 	)
 
 	if err := s.db.QueryRowContext(ctx, query, userID).Scan(
@@ -102,9 +104,9 @@ WHERE email = ?`
 
 	var (
 		record          UserRecord
-		emailVerifiedAt  sql.NullString
-		createdAtRaw     string
-		updatedAtRaw     string
+		emailVerifiedAt sql.NullString
+		createdAtRaw    string
+		updatedAtRaw    string
 	)
 
 	if err := s.db.QueryRowContext(ctx, query, email).Scan(
@@ -198,8 +200,8 @@ WHERE id = ?`
 func (s *Store) UpsertVerificationCode(ctx context.Context, code VerificationCodeRecord) error {
 	const statement = `
 INSERT INTO auth_verification_codes (
-    id, email, purpose, nickname, code_hash, attempt_count, sent_at, expires_at, consumed_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    id, email, purpose, nickname, client_id, ip_address, code_hash, attempt_count, sent_at, expires_at, consumed_at, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	var consumedAt any
 	if code.ConsumedAt != nil {
@@ -213,6 +215,8 @@ INSERT INTO auth_verification_codes (
 		code.Email,
 		code.Purpose,
 		code.Nickname,
+		code.ClientID,
+		code.IPAddress,
 		code.CodeHash,
 		code.AttemptCount,
 		code.SentAt.UTC().Format(time.RFC3339Nano),
@@ -229,19 +233,19 @@ INSERT INTO auth_verification_codes (
 
 func (s *Store) GetLatestVerificationCode(ctx context.Context, email string, purpose string) (VerificationCodeRecord, bool, error) {
 	const query = `
-SELECT id, email, purpose, nickname, code_hash, attempt_count, sent_at, expires_at, consumed_at, created_at, updated_at
+SELECT id, email, purpose, nickname, client_id, ip_address, code_hash, attempt_count, sent_at, expires_at, consumed_at, created_at, updated_at
 FROM auth_verification_codes
 WHERE email = ? AND purpose = ?
 ORDER BY created_at DESC
 LIMIT 1`
 
 	var (
-		record         VerificationCodeRecord
-		sentAtRaw      string
-		expiresAtRaw   string
-		consumedAtRaw  sql.NullString
-		createdAtRaw   string
-		updatedAtRaw   string
+		record        VerificationCodeRecord
+		sentAtRaw     string
+		expiresAtRaw  string
+		consumedAtRaw sql.NullString
+		createdAtRaw  string
+		updatedAtRaw  string
 	)
 
 	if err := s.db.QueryRowContext(ctx, query, email, purpose).Scan(
@@ -249,6 +253,8 @@ LIMIT 1`
 		&record.Email,
 		&record.Purpose,
 		&record.Nickname,
+		&record.ClientID,
+		&record.IPAddress,
 		&record.CodeHash,
 		&record.AttemptCount,
 		&sentAtRaw,
@@ -293,6 +299,90 @@ LIMIT 1`
 	}
 
 	return record, true, nil
+}
+
+func (s *Store) GetLatestVerificationCodeByClientID(ctx context.Context, clientID string) (VerificationCodeRecord, bool, error) {
+	const query = `
+SELECT id, email, purpose, nickname, client_id, ip_address, code_hash, attempt_count, sent_at, expires_at, consumed_at, created_at, updated_at
+FROM auth_verification_codes
+WHERE client_id = ?
+ORDER BY created_at DESC
+LIMIT 1`
+
+	var (
+		record        VerificationCodeRecord
+		sentAtRaw     string
+		expiresAtRaw  string
+		consumedAtRaw sql.NullString
+		createdAtRaw  string
+		updatedAtRaw  string
+	)
+
+	if err := s.db.QueryRowContext(ctx, query, clientID).Scan(
+		&record.ID,
+		&record.Email,
+		&record.Purpose,
+		&record.Nickname,
+		&record.ClientID,
+		&record.IPAddress,
+		&record.CodeHash,
+		&record.AttemptCount,
+		&sentAtRaw,
+		&expiresAtRaw,
+		&consumedAtRaw,
+		&createdAtRaw,
+		&updatedAtRaw,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return VerificationCodeRecord{}, false, nil
+		}
+		return VerificationCodeRecord{}, false, fmt.Errorf("get verification code by client id: %w", err)
+	}
+
+	sentAt, err := time.Parse(time.RFC3339Nano, sentAtRaw)
+	if err != nil {
+		return VerificationCodeRecord{}, false, fmt.Errorf("parse verification code sent_at: %w", err)
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, expiresAtRaw)
+	if err != nil {
+		return VerificationCodeRecord{}, false, fmt.Errorf("parse verification code expires_at: %w", err)
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, createdAtRaw)
+	if err != nil {
+		return VerificationCodeRecord{}, false, fmt.Errorf("parse verification code created_at: %w", err)
+	}
+	updatedAt, err := time.Parse(time.RFC3339Nano, updatedAtRaw)
+	if err != nil {
+		return VerificationCodeRecord{}, false, fmt.Errorf("parse verification code updated_at: %w", err)
+	}
+
+	record.SentAt = sentAt
+	record.ExpiresAt = expiresAt
+	record.CreatedAt = createdAt
+	record.UpdatedAt = updatedAt
+	if consumedAtRaw.Valid && consumedAtRaw.String != "" {
+		parsed, parseErr := time.Parse(time.RFC3339Nano, consumedAtRaw.String)
+		if parseErr != nil {
+			return VerificationCodeRecord{}, false, fmt.Errorf("parse verification code consumed_at: %w", parseErr)
+		}
+		record.ConsumedAt = &parsed
+	}
+
+	return record, true, nil
+}
+
+func (s *Store) CountVerificationCodesByIPAddressSince(ctx context.Context, ipAddress string, since time.Time) (int, error) {
+	const query = `
+SELECT COUNT(*)
+FROM auth_verification_codes
+WHERE ip_address = ? AND created_at >= ?`
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, query, ipAddress, since.UTC().Format(time.RFC3339Nano)).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count verification codes by ip address: %w", err)
+	}
+
+	return count, nil
 }
 
 func (s *Store) IncrementVerificationCodeAttempt(ctx context.Context, codeID string, updatedAt time.Time) error {
@@ -362,10 +452,10 @@ FROM auth_sessions
 WHERE token_hash = ?`
 
 	var (
-		record        SessionRecord
-		createdAtRaw  string
-		expiresAtRaw  string
-		revokedAtRaw  sql.NullString
+		record       SessionRecord
+		createdAtRaw string
+		expiresAtRaw string
+		revokedAtRaw sql.NullString
 	)
 
 	if err := s.db.QueryRowContext(ctx, query, tokenHash).Scan(

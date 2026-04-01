@@ -24,6 +24,7 @@ SERVICE_DIR="${SERVICE_DIR:-$(resolve_service_dir)}"
 SERVICE_DIR="$(cd "${SERVICE_DIR}" && pwd -P)"
 COMPOSE_FILE="${COMPOSE_FILE:-${SERVICE_DIR}/docker-compose.yml}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-meeting}"
+DEFAULT_BACKEND_ENV_FILE="${SERVICE_DIR}/meeting-backend.env"
 BACKEND_BINARY="${SERVICE_DIR}/backend/meeting"
 FRONTEND_INDEX="${SERVICE_DIR}/frontend/dist/index.html"
 FRONTEND_CONF="${SERVICE_DIR}/frontend/nginx.conf"
@@ -37,6 +38,10 @@ command -v docker >/dev/null 2>&1 || fail "docker command not found"
 [ -f "${COTURN_CONF}" ] || fail "coturn config not found: ${COTURN_CONF}"
 
 mkdir -p "${SERVICE_DIR}/logs" "${SERVICE_DIR}/data"
+
+if [[ -z "${MEETING_BACKEND_ENV_FILE:-}" ]]; then
+  export MEETING_BACKEND_ENV_FILE="${DEFAULT_BACKEND_ENV_FILE}"
+fi
 
 compose=()
 if docker compose version >/dev/null 2>&1; then

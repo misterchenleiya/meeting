@@ -95,6 +95,7 @@
 
 - 入会前的登录页已经切换为全屏单卡布局：顶部是大号 `meeting` 字标，下方是聚焦光斑，再往下是居中的登录卡片，整体与会中页保持同一套 macOS dark 风格。
 - 登录流程已经拆成两个独立入口：`注册` 和 `登录`。注册时先填邮箱、昵称和验证码，验证成功后会自动返回登录页；登录时支持邮箱验证码登录和最小密码登录两种模式，其中验证码登录会在首次成功时自动注册账号。开发模式下验证码仍可自动回填，便于本地联调。
+- 验证码请求现在会在服务端执行 `60` 秒冷却：既限制同一邮箱，也限制同一匿名客户端，因此刷新页面或临时修改邮箱都不能立即绕过；同时保留一个更宽松的 IP 兜底限流，避免被恶意批量请求打爆。
 - 主持人流程：先登录，再回到黑色产品壳层中选择快速会议或预定会议；其中预定会议表单当前仍复用现有创建会议接口，提交后会立即进入会议。
 - 加入会议流程：先输入公开 `9` 位会议号并做预检，只有会议需要密码时才会弹出密码悬浮窗继续加入；带空格的 `3-3-3` 会议号也会自动规范化。
 - 会中流程：会议房间已经切换为单屏全舞台布局，顶部是标题栏，底部是 dock 工具栏，主持人工具 / 会议工具 / 设置 / 应用 / 结束会议通过贴附式子窗口展开，成员和聊天默认收纳到右侧抽屉。无人开视频 / 共享时显示头像墙；存在活动媒体时切为主画面 + 右侧缩略窗。
@@ -140,34 +141,34 @@ go run ./cmd/server
 - `MEETING_HTTP_ADDR`，默认 `:5180`
 - `MEETING_SQLITE_PATH`，默认 `./data/meeting.db`
 - `MEETING_LOG_DIR`，默认 `./logs`
-- `MEETING_MAILER_MODE`，默认 `debug`，生产环境使用 `smtp`
+- `MEETING_MAILER_MODE`，默认 `debug`，生产环境推荐使用 `sendcloud_api`
 - `MEETING_SMTP_HOST`、`MEETING_SMTP_PORT`、`MEETING_SMTP_USERNAME`、`MEETING_SMTP_PASSWORD`
 - `MEETING_SMTP_FROM_ADDRESS`、`MEETING_SMTP_FROM_NAME`、`MEETING_SMTP_REQUIRE_TLS`
+- `MEETING_SENDCLOUD_API_BASE_URL`、`MEETING_SENDCLOUD_API_USER`、`MEETING_SENDCLOUD_API_KEY`
+- `MEETING_SENDCLOUD_FROM_ADDRESS`、`MEETING_SENDCLOUD_FROM_NAME`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
 
-### 生产环境 SMTP Relay
+### 生产环境邮件发送
 
-Docker 生产部署建议把 SMTP 凭据放在仓库外、发布包外的独立环境文件中，由运维手工创建和维护。
+Docker 生产部署建议把 SendCloud API 凭据放在仓库外、发布包外的独立环境文件中，由运维手工创建和维护。
 
 - `docker-compose.yml` 现在会为 `meeting-backend` 读取一个可选的外部 env 文件
-- 默认路径：`/etc/meeting/meeting-backend.env`
+- 默认路径：`/data/07c2.com.cn/meeting/meeting-backend.env`
 - 如需自定义路径，可在执行 `./start.sh`、`./update.sh` 或 `./crontab.sh add` 前设置 `MEETING_BACKEND_ENV_FILE=/你的路径/backend.env`
 
-示例 `/etc/meeting/meeting-backend.env`：
+示例 `/data/07c2.com.cn/meeting/meeting-backend.env`：
 
 ```env
-MEETING_MAILER_MODE=smtp
-MEETING_SMTP_HOST=smtp.sendcloud.net
-MEETING_SMTP_PORT=587
-MEETING_SMTP_USERNAME=your_smtp_username
-MEETING_SMTP_PASSWORD=your_smtp_password
-MEETING_SMTP_FROM_ADDRESS=notice@example.com
-MEETING_SMTP_FROM_NAME=meeting
-MEETING_SMTP_REQUIRE_TLS=true
+MEETING_MAILER_MODE=sendcloud_api
+MEETING_SENDCLOUD_API_BASE_URL=https://api.sendcloud.net/apiv2
+MEETING_SENDCLOUD_API_USER=your_sendcloud_api_user
+MEETING_SENDCLOUD_API_KEY=your_sendcloud_api_key
+MEETING_SENDCLOUD_FROM_ADDRESS=no-reply@mail.07c2.com.cn
+MEETING_SENDCLOUD_FROM_NAME=meeting
 MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
 ```
 
-仓库内同时提供了生产配置模版 [scripts/env.example](scripts/env.example)。每次发布打包时，这个文件也会一并进入压缩包根目录，文件名保持为 `env.example`，便于运维复制到 `/etc/meeting/meeting-backend.env` 后再手工填写真实凭据。
+仓库内同时提供了生产配置模版 [scripts/env.example](scripts/env.example)。每次发布打包时，这个文件也会一并进入压缩包根目录，文件名保持为 `env.example`，便于运维复制到 `/data/07c2.com.cn/meeting/meeting-backend.env` 后再手工填写真实凭据。SMTP 仍然保留为备选模式，但生产环境优先推荐 SendCloud API。
 
 ### 前端
 
@@ -197,13 +198,14 @@ make clean
 - `make build`：构建后端二进制和前端静态资源，产物写入 `build/`
 - 后端构建输出：`build/backend/meeting`
 - 前端构建输出：`build/frontend/`
-- `make linux`：构建用于 Docker 运行的 Linux/amd64 发布产物
+- `make linux`：构建用于 Docker 运行的 Linux/amd64 发布产物；前端生产包默认按同源 `/api` 和 `/ws` 生成，依赖外层 Nginx 反代，只有确实需要跨域部署时才应显式传入 `FRONTEND_API_BASE_URL` / `FRONTEND_SIGNAL_BASE_URL`
 - `make pack`：将 `scripts/`、`docker-compose.yml`、后端、前端和 coturn 资源打入 `meeting_${commit}.tar.gz` 与 `latest.txt`
 - `make upload`：先上传 `meeting_${commit}.tar.gz`，再上传 `latest.txt`
 - `make publish`：执行标准 `clean -> linux -> pack -> upload` 发布流程
 - `make run-backend`：启动后端服务，并将运行期日志和 SQLite 数据写入 `build/run/`
 - `make run-frontend`：启动前端开发服务器
-- 根目录 `scripts/` 放置 Docker 运行辅助脚本（`start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh`、`crontab.sh`）以及 SMTP 配置模版 [`env.example`](scripts/env.example)，并且会被每次发布一起打包；其中 `env.example` 会平铺到压缩包根目录
+- 根目录 `scripts/` 放置 Docker 运行辅助脚本（`start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh`、`crontab.sh`）以及邮件发送配置模版 [`env.example`](scripts/env.example)，并且会被每次发布一起打包；其中 `env.example` 会平铺到压缩包根目录
+- 发布包里的前端 Nginx 现在会把同源 `/api/` 和 `/ws/` 请求转发到 `meeting-backend`，因此生产环境只要把 `meeting.07c2.com.cn` 反代到 `meeting-frontend`，认证接口和信令都可以继续走同源，不需要后端额外启用 CORS
 - 前端运行期日志默认输出到浏览器控制台；`warn`/`error` 和关键 `info` 事件会批量上报到后端 `POST /api/client-logs`，并进入后端 JSON 日志；浏览器本地不再持久化保存这些日志
 - `make clean`：删除 `build/` 目录
 

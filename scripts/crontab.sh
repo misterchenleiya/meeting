@@ -201,7 +201,7 @@ cmd_check() {
   if [[ -n "${MEETING_BACKEND_ENV_FILE}" ]]; then
     echo "backend env file: ${MEETING_BACKEND_ENV_FILE}"
   else
-    echo "backend env file: (use compose default /etc/meeting/meeting-backend.env)"
+    echo "backend env file: (use compose default ${SERVICE_DIR}/meeting-backend.env)"
   fi
 
   if crontab -l 2>/dev/null | awk -v begin="${CRON_BEGIN}" -v end="${CRON_END}" '

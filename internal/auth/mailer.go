@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	MailerModeDebug = "debug"
-	MailerModeSMTP  = "smtp"
+	MailerModeDebug        = "debug"
+	MailerModeSMTP         = "smtp"
+	MailerModeSendCloudAPI = "sendcloud_api"
 )
 
 type Mailer interface {
@@ -32,16 +33,21 @@ type MailDelivery struct {
 }
 
 type MailerConfig struct {
-	Mode            string
-	SMTPHost        string
-	SMTPPort        int
-	SMTPUsername    string
-	SMTPPassword    string
-	SMTPFromAddress string
-	SMTPFromName    string
-	SMTPRequireTLS  bool
-	SubjectPrefix   string
-	Timeout         time.Duration
+	Mode                 string
+	SMTPHost             string
+	SMTPPort             int
+	SMTPUsername         string
+	SMTPPassword         string
+	SMTPFromAddress      string
+	SMTPFromName         string
+	SMTPRequireTLS       bool
+	SendCloudAPIBaseURL  string
+	SendCloudAPIUser     string
+	SendCloudAPIKey      string
+	SendCloudFromAddress string
+	SendCloudFromName    string
+	SubjectPrefix        string
+	Timeout              time.Duration
 }
 
 func NewMailer(logger *slog.Logger, config MailerConfig) (Mailer, error) {
@@ -55,6 +61,8 @@ func NewMailer(logger *slog.Logger, config MailerConfig) (Mailer, error) {
 		return NewDebugMailer(logger), nil
 	case MailerModeSMTP:
 		return NewSMTPMailer(logger, config)
+	case MailerModeSendCloudAPI:
+		return NewSendCloudAPIMailer(logger, config)
 	default:
 		return nil, fmt.Errorf("unsupported mailer mode %q", config.Mode)
 	}
