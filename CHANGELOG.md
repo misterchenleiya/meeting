@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `make publish` 和 `make upload` 现在会优先读取当前本地环境中的 `UPLOAD_BASE`、`UPLOAD_USERNAME` 和 `UPLOAD_PASSWORD`；当这些变量未提供时，才会回退到交互式输入，便于本地通过环境变量复用上传配置。
 - 微信小程序接入方案文档已从草案推进到第一阶段已实现状态，并明确当前采用显式 Bearer token 而不是 Cookie 维持小程序登录态。
 - 生产环境配置模版 `env.example` 现在同时补充了 `MEETING_WECHAT_MINIPROGRAM_APP_ID`、`MEETING_WECHAT_MINIPROGRAM_APP_SECRET` 和微信接口基地址，便于后端启用小程序快捷登录。
 - 发布包现在会额外携带脱敏的邮件发送配置模版 `env.example`；仓库源码位于 `scripts/env.example`，打包后会平铺到压缩包根目录，便于生产环境复制成外部 `meeting-backend.env` 后手工维护真实凭据。

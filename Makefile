@@ -15,7 +15,7 @@ ARCHIVE_FILE := $(PROJECT_NAME)_$(shell git rev-parse --short=12 HEAD).tar.gz
 ARCHIVE_PATH := $(BUILD_DIR)/$(ARCHIVE_FILE)
 LATEST_FILE := $(BUILD_DIR)/latest.txt
 CURRENT_FILE := $(RELEASE_ROOT)/current.txt
-UPLOAD_BASE := https://upload.07c2.com
+UPLOAD_BASE ?=
 UPLOAD_PATH := /$(PROJECT_NAME)
 UPLOAD_TIMEOUT_SECONDS ?= 30
 UPLOAD_MAX_RETRIES ?= 5
@@ -128,32 +128,47 @@ upload:
 		exit 1; \
 	fi; \
 	[[ "$$sha_actual" == "$$sha_expected" ]] || { echo "sha256 mismatch for $$artifact_path" >&2; echo "expected=$$sha_expected actual=$$sha_actual" >&2; exit 1; }; \
-	if [[ -z "$${deploy_username:-}" ]]; then \
-		printf 'deploy username: '; \
-		IFS= read -r deploy_username; \
+	upload_base="$${UPLOAD_BASE:-}"; \
+	if [[ -z "$$upload_base" ]]; then \
+		printf 'upload base: '; \
+		IFS= read -r upload_base; \
 	fi; \
-	if [[ -z "$${deploy_username:-}" ]]; then \
-		echo "deploy username is empty" >&2; \
+	if [[ -z "$$upload_base" ]]; then \
+		echo "upload base is empty" >&2; \
 		exit 1; \
 	fi; \
-	if [[ -z "$${deploy_password:-}" ]]; then \
-		printf 'deploy password: '; \
+	upload_username="$${UPLOAD_USERNAME:-$${deploy_username:-}}"; \
+	if [[ -z "$$upload_username" ]]; then \
+		printf 'upload username: '; \
+		IFS= read -r upload_username; \
+	fi; \
+	if [[ -z "$$upload_username" ]]; then \
+		echo "upload username is empty" >&2; \
+		exit 1; \
+	fi; \
+	upload_password="$${UPLOAD_PASSWORD:-$${deploy_password:-}}"; \
+	if [[ -z "$$upload_password" ]]; then \
+		printf 'upload password: '; \
 		stty -echo; \
-		IFS= read -r deploy_password; \
+		IFS= read -r upload_password; \
 		stty echo; \
 		printf '\n'; \
 	fi; \
-	if [[ -z "$${deploy_password:-}" ]]; then \
-		echo "deploy password is empty" >&2; \
+	if [[ -z "$$upload_password" ]]; then \
+		echo "upload password is empty" >&2; \
 		exit 1; \
 	fi; \
-	export deploy_username deploy_password; \
-	UPLOAD_BASE="$(UPLOAD_BASE)" \
+	export upload_base upload_username upload_password; \
+	UPLOAD_BASE="$$upload_base" \
+	deploy_username="$$upload_username" \
+	deploy_password="$$upload_password" \
 	UPLOAD_TIMEOUT_SECONDS="$(UPLOAD_TIMEOUT_SECONDS)" \
 	UPLOAD_MAX_RETRIES="$(UPLOAD_MAX_RETRIES)" \
 	UPLOAD_RETRY_DELAY_SECONDS="$(UPLOAD_RETRY_DELAY_SECONDS)" \
 	./scripts/upload.sh "$$artifact_path" "$(UPLOAD_PATH)"; \
-	UPLOAD_BASE="$(UPLOAD_BASE)" \
+	UPLOAD_BASE="$$upload_base" \
+	deploy_username="$$upload_username" \
+	deploy_password="$$upload_password" \
 	UPLOAD_TIMEOUT_SECONDS="$(UPLOAD_TIMEOUT_SECONDS)" \
 	UPLOAD_MAX_RETRIES="$(UPLOAD_MAX_RETRIES)" \
 	UPLOAD_RETRY_DELAY_SECONDS="$(UPLOAD_RETRY_DELAY_SECONDS)" \
@@ -161,29 +176,51 @@ upload:
 
 publish:
 	@set -euo pipefail; \
-	if [[ -z "$${deploy_username:-}" ]]; then \
-		printf 'deploy username: '; \
-		IFS= read -r deploy_username; \
+	upload_base="$${UPLOAD_BASE:-}"; \
+	if [[ -z "$$upload_base" ]]; then \
+		printf 'upload base: '; \
+		IFS= read -r upload_base; \
 	fi; \
-	if [[ -z "$${deploy_username:-}" ]]; then \
-		echo "deploy username is empty" >&2; \
+	if [[ -z "$$upload_base" ]]; then \
+		echo "upload base is empty" >&2; \
 		exit 1; \
 	fi; \
-	if [[ -z "$${deploy_password:-}" ]]; then \
-		printf 'deploy password: '; \
+	upload_username="$${UPLOAD_USERNAME:-$${deploy_username:-}}"; \
+	if [[ -z "$$upload_username" ]]; then \
+		printf 'upload username: '; \
+		IFS= read -r upload_username; \
+	fi; \
+	if [[ -z "$$upload_username" ]]; then \
+		echo "upload username is empty" >&2; \
+		exit 1; \
+	fi; \
+	upload_password="$${UPLOAD_PASSWORD:-$${deploy_password:-}}"; \
+	if [[ -z "$$upload_password" ]]; then \
+		printf 'upload password: '; \
 		stty -echo; \
-		IFS= read -r deploy_password; \
+		IFS= read -r upload_password; \
 		stty echo; \
 		printf '\n'; \
 	fi; \
-	if [[ -z "$${deploy_password:-}" ]]; then \
-		echo "deploy password is empty" >&2; \
+	if [[ -z "$$upload_password" ]]; then \
+		echo "upload password is empty" >&2; \
 		exit 1; \
 	fi; \
-	export deploy_username deploy_password; \
+	UPLOAD_BASE="$$upload_base" \
+	UPLOAD_USERNAME="$$upload_username" \
+	UPLOAD_PASSWORD="$$upload_password" \
 	$(MAKE) --no-print-directory clean && \
+	UPLOAD_BASE="$$upload_base" \
+	UPLOAD_USERNAME="$$upload_username" \
+	UPLOAD_PASSWORD="$$upload_password" \
 	$(MAKE) --no-print-directory linux && \
+	UPLOAD_BASE="$$upload_base" \
+	UPLOAD_USERNAME="$$upload_username" \
+	UPLOAD_PASSWORD="$$upload_password" \
 	$(MAKE) --no-print-directory pack && \
+	UPLOAD_BASE="$$upload_base" \
+	UPLOAD_USERNAME="$$upload_username" \
+	UPLOAD_PASSWORD="$$upload_password" \
 	$(MAKE) --no-print-directory upload
 
 clean:
