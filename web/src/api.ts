@@ -1,5 +1,28 @@
 import { createClientLogger } from "./logger";
-import type { ChatMessage, Meeting, Participant, ReadyCheckRound, WhiteboardAction } from "./types";
+import { resolveApiUrl } from "./runtime-config";
+import type {
+  AuthUser,
+  ChatMessage,
+  Meeting,
+  Participant,
+  ReadyCheckRound,
+  WhiteboardAction
+} from "./types";
+
+export type AuthCodeDelivery = {
+  email: string;
+  purpose: "register" | "login";
+  debugCode?: string;
+  expiresAt: string;
+  resendAfter: string;
+  deliveryMode: string;
+};
+
+export type AuthLoginResponse = {
+  status: string;
+  user: AuthUser;
+  autoRegistered?: boolean;
+};
 
 type CreateMeetingResponse = {
   meeting: Meeting;
@@ -26,16 +49,17 @@ export type MeetingMinutesSnapshot = {
 
 const logger = createClientLogger("frontend.api");
 
-async function requestJSON<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
+async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? "GET";
-  const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : "request";
+  const url = resolveApiUrl(path);
   logger.debug("request.started", {
     method,
     url
   });
 
-  const response = await fetch(input, {
+  const response = await fetch(url, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
@@ -72,6 +96,63 @@ export async function createMeeting(input: {
   return requestJSON<CreateMeetingResponse>("/api/meetings", {
     method: "POST",
     body: JSON.stringify(input)
+  });
+}
+
+export async function requestRegisterCode(input: {
+  email: string;
+  nickname: string;
+}): Promise<AuthCodeDelivery> {
+  return requestJSON<AuthCodeDelivery>("/api/auth/register/code", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function completeRegister(input: {
+  email: string;
+  code: string;
+}): Promise<{ status: string; user: AuthUser }> {
+  return requestJSON<{ status: string; user: AuthUser }>("/api/auth/register/verify", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function requestLoginCode(input: { email: string }): Promise<AuthCodeDelivery> {
+  return requestJSON<AuthCodeDelivery>("/api/auth/login/code", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function completeLogin(input: {
+  email: string;
+  code: string;
+}): Promise<AuthLoginResponse> {
+  return requestJSON<AuthLoginResponse>("/api/auth/login/verify", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function completePasswordLogin(input: {
+  email: string;
+  password: string;
+}): Promise<AuthLoginResponse> {
+  return requestJSON<AuthLoginResponse>("/api/auth/login/password", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function fetchCurrentUser(): Promise<{ user: AuthUser; sessionEndsAt: string }> {
+  return requestJSON<{ user: AuthUser; sessionEndsAt: string }>("/api/auth/me");
+}
+
+export async function logout(): Promise<{ status: string }> {
+  return requestJSON<{ status: string }>("/api/auth/logout", {
+    method: "POST"
   });
 }
 
@@ -158,9 +239,10 @@ export async function getMeetingMinutes(input: {
   meetingId: string;
   participantId: string;
 }): Promise<MeetingMinutesSnapshot> {
-  const url = new URL(`/api/meetings/${input.meetingId}/minutes`, window.location.origin);
-  url.searchParams.set("participantId", input.participantId);
-  return requestJSON<MeetingMinutesSnapshot>(url.toString());
+  const query = new URLSearchParams({
+    participantId: input.participantId
+  });
+  return requestJSON<MeetingMinutesSnapshot>(`/api/meetings/${input.meetingId}/minutes?${query.toString()}`);
 }
 
 export async function reportAudit(input: {

@@ -39,7 +39,8 @@
 | 配置模块 | `internal/config` | 加载服务地址、SQLite 路径、日志目录等运行配置 | 已实现 |
 | 日志模块 | `internal/logging` | 初始化 JSON 日志、按天轮转和保留策略 | 已实现 |
 | 存储模块 | `internal/storage/sqlite` | 持久化审计事件和注册用户默认媒体偏好 | 已实现，未承载会议运行态 |
-| 会议领域模块 | `internal/meeting` | 房间、参与者、权限、白板、临时聊天、就位确认、纪要等运行态管理 | 已实现核心能力，仍待补完整登录体系和多人 Mesh 优化 |
+| 会议领域模块 | `internal/meeting` | 房间、参与者、权限、白板、临时聊天、就位确认、纪要等运行态管理 | 已实现核心能力，仍待继续完善多人 Mesh 稳定性 |
+| 认证领域模块 | `internal/auth` | 管理注册 / 登录验证码、会话、密码登录校验和邮件发送 | 已实现 |
 | HTTP API 模块 | `internal/httpapi` | 提供创建/加入/离会/结束会议、昵称修改、纪要查询、审计上报等接口 | 已实现基础 API |
 | 信令模块 | `internal/signaling` | WebSocket 会话管理、房间广播、能力申请/授权、SDP/ICE 转发、协作事件广播 | 已实现 |
 | 前端 API 层 | `web/src/api.ts` | 封装 REST 请求 | 已实现 |
@@ -48,6 +49,7 @@
 | 前端录制层 | `web/src/recording.ts` | 本地录制缓存、下载保存、丢弃缓存 | 已实现 |
 | 前端白板模块 | `web/src/whiteboard.tsx` | 白板绘制与显示 | 已实现 |
 | 前端会议控制台 | `web/src/App.tsx` | 产品化登录壳层、入会流程、主舞台、右侧抽屉和会中辅助协作面板 | 已实现 |
+| 微信小程序客户端 | `wechat/miniprogram` | 提供小程序登录壳层、显式 token 鉴权封装、入会壳层和基础会中占位页 | 第一阶段已实现 |
 
 ## 需求实现状态
 
@@ -76,24 +78,28 @@
 - [~] 多人视频会议
   当前已具备 1v1 主链路和基础 Mesh 结构，仍需继续做多人 Mesh 稳定性、弱网和退化策略优化。
 - [~] 产品化登录与预定会议流程
-  当前前端已经落地黑色风格登录壳层、快速会议、预定会议表单和带密码弹窗的加入会议流程，但真实登录、验证码和真正的预定会议持久化仍未实现。
+  当前已实现黑色风格登录壳层、邮箱验证码登录、验证码自动注册、最小密码登录提示、快速会议、预定会议表单和带密码弹窗的加入会议流程；预定会议仍复用当前创建会议接口，尚未拆分成独立持久化调度模型。
 - [~] 会议纪要
   当前支持会中临时纪要、聊天记录、白板数量和就位确认摘要导出；“会议结束时提示主持人保存纪要”尚未补齐。
 - [~] 审计日志
   当前已上报延迟、丢包、帧率、码率和连接摘要；仍可继续丰富设备指纹和更细粒度网络信息。
+- [~] 微信小程序客户端
+  当前第一阶段已实现：支持微信快捷登录、显式 token 登录态保持、会议查询、带密码加入会议和基础会中壳层；音视频和更完整的会中协作能力仍待继续补齐。
 
 ### 未实现
 
-- [ ] `TURN` / 穿透失败自动退化链路的真实接入
+- [ ] `TURN` / coturn 部署与穿透失败自动退化链路的生产验证
 - [ ] 多人 Mesh 的动态管理和性能优化
-- [ ] 微信注册、扫码登录、邮箱验证码登录
+- [ ] 微信扫码登录与更完整的账号绑定流程
 - [ ] 打开邀请链接后自动回填会议号与密码
 - [ ] 会议结束时主持人的纪要保存提示流
 
 ## 当前 UI 流程
 
 - 入会前的登录页已经切换为全屏单卡布局：顶部是大号 `meeting` 字标，下方是聚焦光斑，再往下是居中的登录卡片，整体与会中页保持同一套 macOS dark 风格。
-- 主持人流程：先走本地邮箱登录 UI，再回到黑色产品壳层中选择快速会议或预定会议；当前测试模式下任意非空邮箱和密码都可以登录，页面会默认填充 `meeting@07c2.com.cn / helloworld`；其中预定会议表单当前仍复用现有创建会议接口，提交后会立即进入会议。
+- 登录流程已经拆成两个独立入口：`注册` 和 `登录`。注册时先填邮箱、昵称和验证码，验证成功后会自动返回登录页；登录时支持邮箱验证码登录和最小密码登录两种模式，其中验证码登录会在首次成功时自动注册账号。开发模式下验证码仍可自动回填，便于本地联调。
+- 验证码请求现在会在服务端执行 `60` 秒冷却：既限制同一邮箱，也限制同一匿名客户端，因此刷新页面或临时修改邮箱都不能立即绕过；同时保留一个更宽松的 IP 兜底限流，避免被恶意批量请求打爆。
+- 主持人流程：先登录，再回到黑色产品壳层中选择快速会议或预定会议；其中预定会议表单当前仍复用现有创建会议接口，提交后会立即进入会议。
 - 加入会议流程：先输入公开 `9` 位会议号并做预检，只有会议需要密码时才会弹出密码悬浮窗继续加入；带空格的 `3-3-3` 会议号也会自动规范化。
 - 会中流程：会议房间已经切换为单屏全舞台布局，顶部是标题栏，底部是 dock 工具栏，主持人工具 / 会议工具 / 设置 / 应用 / 结束会议通过贴附式子窗口展开，成员和聊天默认收纳到右侧抽屉。无人开视频 / 共享时显示头像墙；存在活动媒体时切为主画面 + 右侧缩略窗。
 - 分享窗口会显示公开 `9` 位会议号、分享二维码和复制入口；会议号按 `3-3-3` 形式分组显示，内部 room id 不再直接暴露给用户。
@@ -119,6 +125,9 @@
 
 说明：
 
+- `POST /api/auth/register/code`、`POST /api/auth/register/verify`、`POST /api/auth/login/code`、`POST /api/auth/login/verify`、`GET /api/auth/me`、`POST /api/auth/logout`：注册 / 登录 / 当前用户 / 退出登录接口
+- `POST /api/auth/login/password`：最小密码登录接口；未设置密码的账号会返回“请使用邮箱验证码登录”的明确提示
+- `POST /api/auth/wechat/mini/login`：微信小程序快捷登录接口；后端使用 `wx.login` 返回的 code 换取 `openid`，并返回显式 `sessionToken`
 - `POST /api/meetings` 返回的会议对象现在同时包含内部 `id` 和公开 `meetingNumber`。
 - `GET /api/meetings/{meetingID}` 与 `POST /api/meetings/{meetingID}/join` 等会议级接口现在同时接受内部运行态 ID 和公开 `9` 位会议号。
 - `GET /ws/meetings/{meetingID}` 仍继续使用内部运行态 ID，以减少对现有信令链路的影响。
@@ -136,6 +145,49 @@ go run ./cmd/server
 - `MEETING_HTTP_ADDR`，默认 `:5180`
 - `MEETING_SQLITE_PATH`，默认 `./data/meeting.db`
 - `MEETING_LOG_DIR`，默认 `./logs`
+- `MEETING_MAILER_MODE`，默认 `debug`，生产环境推荐使用 `sendcloud_api`
+- `MEETING_SMTP_HOST`、`MEETING_SMTP_PORT`、`MEETING_SMTP_USERNAME`、`MEETING_SMTP_PASSWORD`
+- `MEETING_SMTP_FROM_ADDRESS`、`MEETING_SMTP_FROM_NAME`、`MEETING_SMTP_REQUIRE_TLS`
+- `MEETING_SENDCLOUD_API_BASE_URL`、`MEETING_SENDCLOUD_API_USER`、`MEETING_SENDCLOUD_API_KEY`
+- `MEETING_SENDCLOUD_FROM_ADDRESS`、`MEETING_SENDCLOUD_FROM_NAME`
+- `MEETING_WECHAT_MINIPROGRAM_APP_ID`、`MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
+- `MEETING_WECHAT_MINIPROGRAM_API_BASE_URL`
+- `MEETING_AUTH_CODE_SUBJECT_PREFIX`
+
+### 生产环境邮件发送
+
+Docker 生产部署建议把 SendCloud API 凭据放在仓库外、发布包外的独立环境文件中，由运维手工创建和维护。
+
+- `docker-compose.yml` 现在会为 `meeting-backend` 读取一个可选的外部 env 文件
+- 默认路径：`/data/07c2.com.cn/meeting/meeting-backend.env`
+- 如需自定义路径，可在执行 `./start.sh`、`./update.sh` 或 `./crontab.sh add` 前设置 `MEETING_BACKEND_ENV_FILE=/你的路径/backend.env`
+
+示例 `/data/07c2.com.cn/meeting/meeting-backend.env`：
+
+```env
+MEETING_MAILER_MODE=sendcloud_api
+MEETING_SENDCLOUD_API_BASE_URL=https://api.sendcloud.net/apiv2
+MEETING_SENDCLOUD_API_USER=your_sendcloud_api_user
+MEETING_SENDCLOUD_API_KEY=your_sendcloud_api_key
+MEETING_SENDCLOUD_FROM_ADDRESS=no-reply@mail.07c2.com.cn
+MEETING_SENDCLOUD_FROM_NAME=meeting
+MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+MEETING_WECHAT_MINIPROGRAM_APP_ID=your_wechat_miniprogram_app_id
+MEETING_WECHAT_MINIPROGRAM_APP_SECRET=your_wechat_miniprogram_app_secret
+MEETING_WECHAT_MINIPROGRAM_API_BASE_URL=https://api.weixin.qq.com
+```
+
+仓库内同时提供了生产配置模版 [scripts/env.example](scripts/env.example)。每次发布打包时，这个文件也会一并进入压缩包根目录，文件名保持为 `env.example`，便于运维复制到 `/data/07c2.com.cn/meeting/meeting-backend.env` 后再手工填写真实凭据。SMTP 仍然保留为备选模式，但生产环境优先推荐 SendCloud API。
+
+### 微信小程序
+
+- 小程序源码位于 `wechat/`
+- 用微信开发者工具打开 [wechat/project.config.json](wechat/project.config.json)，并使用对应的小程序 `AppID`
+- 需要在微信公众平台配置合法 request 域名，例如 `https://meeting.07c2.com.cn`
+- 后端必须配置：
+  - `MEETING_WECHAT_MINIPROGRAM_APP_ID`
+  - `MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
+- 当前第一阶段采用 `wx.login -> POST /api/auth/wechat/mini/login` 的方式完成快捷登录；后端负责调用微信 `jscode2session` 换取 `openid`，必要时自动创建用户，并把显式 `sessionToken` 返回给小程序端，本地保存后通过 `Authorization: Bearer ...` 继续访问认证与会议接口
 
 ### 前端
 
@@ -151,6 +203,10 @@ npm run dev
 
 ```bash
 make build
+make linux
+make pack
+make upload
+make publish
 make run-backend
 make run-frontend
 make clean
@@ -161,8 +217,14 @@ make clean
 - `make build`：构建后端二进制和前端静态资源，产物写入 `build/`
 - 后端构建输出：`build/backend/meeting`
 - 前端构建输出：`build/frontend/`
+- `make linux`：构建用于 Docker 运行的 Linux/amd64 发布产物；前端生产包默认按同源 `/api` 和 `/ws` 生成，依赖外层 Nginx 反代，只有确实需要跨域部署时才应显式传入 `FRONTEND_API_BASE_URL` / `FRONTEND_SIGNAL_BASE_URL`
+- `make pack`：将 `scripts/`、`docker-compose.yml`、后端、前端和 coturn 资源打入 `meeting_${commit}.tar.gz` 与 `latest.txt`
+- `make upload`：先上传 `meeting_${commit}.tar.gz`，再上传 `latest.txt`
+- `make publish`：执行标准 `clean -> linux -> pack -> upload` 发布流程
 - `make run-backend`：启动后端服务，并将运行期日志和 SQLite 数据写入 `build/run/`
 - `make run-frontend`：启动前端开发服务器
+- 根目录 `scripts/` 放置 Docker 运行辅助脚本（`start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh`、`crontab.sh`）以及邮件发送配置模版 [`env.example`](scripts/env.example)，并且会被每次发布一起打包；其中 `env.example` 会平铺到压缩包根目录
+- 发布包里的前端 Nginx 现在会把同源 `/api/` 和 `/ws/` 请求转发到 `meeting-backend`，因此生产环境只要把 `meeting.07c2.com.cn` 反代到 `meeting-frontend`，认证接口和信令都可以继续走同源，不需要后端额外启用 CORS
 - 前端运行期日志默认输出到浏览器控制台；`warn`/`error` 和关键 `info` 事件会批量上报到后端 `POST /api/client-logs`，并进入后端 JSON 日志；浏览器本地不再持久化保存这些日志
 - `make clean`：删除 `build/` 目录
 
@@ -189,5 +251,6 @@ make build
 
 - 架构决策：`docs/adr/ADR-0001-20260325-meeting-architecture.md`
 - Issue 清单：`docs/issues/README.md`
+- TURN 部署说明：`docs/deploy/coturn.md`
 - 前端设计资产：`docs/design/`
 - UI 落地记录：`docs/design/20260325-product-ui-rollout.md`

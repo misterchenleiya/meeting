@@ -1,0 +1,19 @@
+<navigation-bar title="meeting" back="{{false}}" color="white" background="transparent"></navigation-bar>
+
+<view class="page">
+  <view class="hero">
+    <view class="hero-title">欢迎回来</view>
+    <view class="hero-subtitle">小程序端当前已支持微信快捷登录与基础入会壳层。</view>
+  </view>
+
+  <view class="card">
+    <view wx:if="{{loading}}" class="loading-text">正在读取账号信息...</view>
+    <block wx:else>
+      <view class="profile-name">{{nickname}}</view>
+      <view class="profile-email">{{email}}</view>
+
+      <button class="primary-button" bindtap="handleJoinMeeting">加入会议</button>
+      <button class="secondary-button" bindtap="handleLogout">退出登录</button>
+    </block>
+  </view>
+</view>

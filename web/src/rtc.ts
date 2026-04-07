@@ -1,3 +1,5 @@
+import { resolveIceServers } from "./runtime-config";
+
 type MeshCallbacks = {
   onRemoteStream: (participantId: string, stream: MediaStream) => void;
   onRemoteStreamRemoved: (participantId: string) => void;
@@ -22,6 +24,9 @@ type PeerState = {
   ignoreOffer: boolean;
   polite: boolean;
   isSettingRemoteAnswerPending: boolean;
+  iceRestartRequested: boolean;
+  iceRestartAttempts: number;
+  iceRestartTimer: number | null;
 };
 
 export type PeerStatsSnapshot = {
@@ -38,16 +43,20 @@ export type PeerStatsSnapshot = {
   remoteCandidateType: string | null;
 };
 
+export type MediaQualityProfile = "stable" | "balanced" | "conservative";
+
+export type MediaQualityPolicy = {
+  profile: MediaQualityProfile;
+  maxVideoBitrateKbps: number;
+  maxVideoFramerate: number;
+};
+
 type CandidateStatsLike = {
   candidateType?: string;
 };
 
 const defaultRTCConfiguration: RTCConfiguration = {
-  iceServers: [
-    {
-      urls: ["stun:stun.l.google.com:19302"]
-    }
-  ]
+  iceServers: resolveIceServers()
 };
 
 export class PeerMesh {
@@ -132,6 +141,12 @@ export class PeerMesh {
     return snapshots;
   }
 
+  async applyMediaPolicy(policy: MediaQualityPolicy): Promise<void> {
+    for (const peer of this.peers.values()) {
+      await this.applyPeerMediaPolicy(peer, policy);
+    }
+  }
+
   private async ensurePeer(participantId: string): Promise<PeerState> {
     const existing = this.peers.get(participantId);
     if (existing) {
@@ -148,7 +163,10 @@ export class PeerMesh {
       makingOffer: false,
       ignoreOffer: false,
       polite: this.localParticipantId.localeCompare(participantId) > 0,
-      isSettingRemoteAnswerPending: false
+      isSettingRemoteAnswerPending: false,
+      iceRestartRequested: false,
+      iceRestartAttempts: 0,
+      iceRestartTimer: null
     };
 
     pc.onicecandidate = (event) => {
@@ -174,8 +192,30 @@ export class PeerMesh {
 
     pc.onconnectionstatechange = () => {
       this.callbacks.onPeerStateChange(participantId, pc.connectionState);
-      if (pc.connectionState === "closed" || pc.connectionState === "failed") {
-        this.callbacks.onRemoteStreamRemoved(participantId);
+      if (pc.connectionState === "connected") {
+        this.clearPeerRecovery(peer);
+        return;
+      }
+
+      if (pc.connectionState === "closed") {
+        this.clearPeerRecovery(peer);
+        this.removePeer(participantId);
+        return;
+      }
+
+      if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+        this.schedulePeerRecovery(peer);
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        this.clearPeerRecovery(peer);
+        return;
+      }
+
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        this.schedulePeerRecovery(peer);
       }
     };
 
@@ -188,6 +228,57 @@ export class PeerMesh {
     this.peers.set(participantId, peer);
     await this.syncPeerTracks(peer);
     return peer;
+  }
+
+  private clearPeerRecovery(peer: PeerState): void {
+    if (peer.iceRestartTimer !== null) {
+      window.clearTimeout(peer.iceRestartTimer);
+      peer.iceRestartTimer = null;
+    }
+    peer.iceRestartRequested = false;
+    peer.iceRestartAttempts = 0;
+  }
+
+  private schedulePeerRecovery(peer: PeerState): void {
+    if (
+      peer.pc.connectionState === "closed" ||
+      peer.pc.signalingState === "closed" ||
+      peer.iceRestartTimer !== null ||
+      peer.iceRestartRequested
+    ) {
+      return;
+    }
+
+    const delayMs =
+      peer.pc.iceConnectionState === "failed"
+        ? 0
+        : Math.min(10000, 1000 * 2 ** peer.iceRestartAttempts);
+    peer.iceRestartAttempts += 1;
+    peer.iceRestartTimer = window.setTimeout(() => {
+      peer.iceRestartTimer = null;
+      if (
+        peer.pc.connectionState === "closed" ||
+        peer.pc.signalingState === "closed" ||
+        peer.iceRestartRequested
+      ) {
+        return;
+      }
+
+      peer.iceRestartRequested = true;
+      try {
+        if (typeof peer.pc.restartIce === "function") {
+          peer.pc.restartIce();
+          return;
+        }
+
+        void this.handleNegotiationNeeded(peer, true);
+      } catch (error) {
+        peer.iceRestartRequested = false;
+        this.callbacks.onError(
+          asMessage(error, `无法重启与 ${peer.participantId} 的 ICE 连接`)
+        );
+      }
+    }, delayMs);
   }
 
   private async syncPeerTracks(peer: PeerState): Promise<void> {
@@ -225,10 +316,15 @@ export class PeerMesh {
     }
   }
 
-  private async handleNegotiationNeeded(peer: PeerState): Promise<void> {
+  private async handleNegotiationNeeded(peer: PeerState, iceRestart = false): Promise<void> {
+    if (peer.pc.signalingState === "closed") {
+      return;
+    }
+
     peer.makingOffer = true;
+    const useIceRestart = iceRestart || peer.iceRestartRequested;
     try {
-      const offer = await peer.pc.createOffer();
+      const offer = await peer.pc.createOffer(useIceRestart ? { iceRestart: true } : undefined);
       await peer.pc.setLocalDescription(offer);
 
       if (!peer.pc.localDescription) {
@@ -244,6 +340,9 @@ export class PeerMesh {
       });
     } finally {
       peer.makingOffer = false;
+      if (useIceRestart) {
+        peer.iceRestartRequested = false;
+      }
     }
   }
 
@@ -390,6 +489,41 @@ export class PeerMesh {
       localCandidateType,
       remoteCandidateType
     };
+  }
+
+  private async applyPeerMediaPolicy(peer: PeerState, policy: MediaQualityPolicy): Promise<void> {
+    const senders = peer.pc.getSenders().filter((sender) => sender.track?.kind === "video");
+    if (senders.length === 0) {
+      return;
+    }
+
+    for (const sender of senders) {
+      const parameters = sender.getParameters();
+      const nextEncodings =
+        parameters.encodings.length > 0
+          ? parameters.encodings.map((encoding) => ({
+              ...encoding,
+              maxBitrate: policy.maxVideoBitrateKbps * 1000,
+              maxFramerate: policy.maxVideoFramerate
+            }))
+          : [
+              {
+                maxBitrate: policy.maxVideoBitrateKbps * 1000,
+                maxFramerate: policy.maxVideoFramerate
+              }
+            ];
+
+      try {
+        await sender.setParameters({
+          ...parameters,
+          encodings: nextEncodings
+        });
+      } catch (error) {
+        this.callbacks.onError(
+          asMessage(error, `无法应用视频策略 ${policy.profile} 到 ${peer.participantId}`)
+        );
+      }
+    }
   }
 }
 

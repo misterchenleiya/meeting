@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增独立的 `wechat/` 微信小程序客户端工程第一阶段实现，支持微信快捷登录、显式 `sessionToken` 持久化、基础首页、会议查询、带密码加入会议和基础会中占位页。
+- 新增小程序快捷登录后端接口 `POST /api/auth/wechat/mini/login`，服务端会使用 `wx.login` 返回的 code 调用微信 `jscode2session` 接口换取 `openid`，并基于现有 `auth_sessions` 返回 Bearer 会话。
+- 新增黑色风格的 `meeting` 主图标 SVG 资产 `docs/design/meeting-logo-black.svg`，保留 `me` 两个小写字母和底部聚光灯效果，适用于移动 APP、微信和网站 Logo。
+- 新增根目录 `scripts/` 发布脚本目录，包含 `start.sh`、`stop.sh`、`restart.sh`、`status.sh`、`update.sh`、`upload.sh` 和 `crontab.sh`，并纳入标准发布包。
+- 新增 `docker-compose.yml`、前端 Nginx 配置和 coturn 配置草案，为 Docker 化运行的后端、前端和 TURN 服务提供统一编排。
+- 新增标准发布流程 `make linux`、`make pack`、`make upload` 和 `make publish`，最终产物固定为 `meeting_${commit}.tar.gz` 与 `latest.txt`。
 - 初始化 `Meeting` 项目骨架，明确 P2P 优先、TURN 兜底、会议数据会后清理的架构方向。
 - 新增架构 ADR、后端服务入口、SQLite 审计/偏好存储和前端基础会议控制台骨架。
 - 新增基础 WSS 信令通道，支持房间欢迎消息、在线状态广播、聊天消息、能力申请/授权和 SDP/ICE 消息转发。
@@ -33,9 +39,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增前端结构化调试日志：浏览器控制台输出 JSON 日志，并在会中页提供“复制前端日志”入口，便于排查创建会议、入会、信令、结束会议和扫码问题。
 - 新增前端日志接收接口 `POST /api/client-logs`，用于接收浏览器侧关键 JSON 日志并写入现有后端日志体系。
 - 新增 `docs/api/` 接口文档目录，使用 OpenAPI 和 WebSocket 协议文档补齐 REST 与信令接口契约说明。
+- 新增 `docs/proposals/20260331-media-reliability-and-identity-plan.md`，整理媒体可靠性与身份体系两条主线的实施计划、范围、风险与验证思路。
+- 新增 `docs/proposals/20260331-docker-release-and-update-flow.md`，整理 Docker 化运行、根目录发布脚本、原地更新流程与标准打包发布方案。
+- 新增 `docs/issues/README.md` 的 20260331 方案执行拆解，补充媒体可靠性与身份体系两条主线的可执行 issue 列表。
+- 新增 `docs/deploy/coturn.md` 和 `web/.env.example`，补齐 TURN / coturn 的部署样例和前端环境配置示例。
 
 ### Changed
 
+- `make publish` 和 `make upload` 现在会优先读取当前本地环境中的 `UPLOAD_BASE`、`UPLOAD_USERNAME` 和 `UPLOAD_PASSWORD`；当这些变量未提供时，才会回退到交互式输入，便于本地通过环境变量复用上传配置。
+- 微信小程序接入方案文档已从草案推进到第一阶段已实现状态，并明确当前采用显式 Bearer token 而不是 Cookie 维持小程序登录态。
+- 生产环境配置模版 `env.example` 现在同时补充了 `MEETING_WECHAT_MINIPROGRAM_APP_ID`、`MEETING_WECHAT_MINIPROGRAM_APP_SECRET` 和微信接口基地址，便于后端启用小程序快捷登录。
+- 发布包现在会额外携带脱敏的邮件发送配置模版 `env.example`；仓库源码位于 `scripts/env.example`，打包后会平铺到压缩包根目录，便于生产环境复制成外部 `meeting-backend.env` 后手工维护真实凭据。
+- Docker 生产部署现在支持通过外部 env 文件为 `meeting-backend` 注入外部邮件服务配置；默认读取部署根目录下的 `meeting-backend.env`，该文件不入库、不进入发布包，便于人工维护并避免后续升级覆盖凭据。
+- `start.sh` 现在会在未显式指定时自动加载部署根目录下的 `meeting-backend.env`，生产环境可直接在 `/data/07c2.com.cn/meeting/meeting-backend.env` 维护 SendCloud 等外部邮件配置。
+- 身份体系升级为“邮箱验证码优先”：未注册邮箱现在可直接获取登录验证码，验证成功后会自动完成注册并建立会话；同时新增最小密码登录接口，无密码账号尝试密码登录时会收到“请使用邮箱验证码登录”的明确提示。
+- 验证码发送限流已加固：同一邮箱和同一匿名客户端现在都受 60 秒冷却约束，刷新页面或临时修改邮箱不能立即绕过；服务端同时增加宽松的 IP 兜底限流，并把限流提示统一收口为中文提示。
+- 后端新增 `debug` / `smtp` / `sendcloud_api` 三种 mailer，生产环境可直接通过 SendCloud API 发送验证码邮件；中英文 README 与认证方案文档同步更新为当前事实。
+- Docker 化发布链路继续收口：coturn relay 端口范围默认调整为 `52000-52048`，并在 `docker-compose.yml` 与发布时生成的 `turnserver.conf` 中统一对齐；`update.sh` 现在支持空目录首装时跳过停止旧栈，并在失败时记录具体步骤、退出码和失败命令。
+- `make publish` / `make upload` 的职责边界按标准发布流程重新收敛：`publish` 现在严格按 `clean -> linux -> pack -> upload` 线性执行，`upload` 只校验并上传现成产物，不再隐式触发重新构建或重新打包；上传阶段同时对齐 `gobot` 的进度条逻辑，优先使用 `pv`，否则回退到 `curl --progress-bar`。
+- 发布包中的运维脚本改为在解压后直接平铺到当前目录，不再额外保留 `scripts/` 子目录；仓库内的 `scripts/` 源码仍保留不变，并补齐了根目录与 `scripts/` 两种布局下的路径兼容逻辑。
+- Makefile 现在同时支持本地开发构建和 Docker 化发布打包，`build` 继续面向本地开发，`linux` / `pack` / `upload` / `publish` 面向标准发布流程。
 - 固化权限模型：`participant` 默认仅有文字聊天权限，其他能力需主持人授权。
 - 固化录制策略：录屏/录音默认本地录制，不上传服务器。
 - 会中聊天改为服务端临时保存，断线重连后仍可通过房间快照恢复，会议结束后统一删除。
@@ -66,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 继续收紧会中预览页的交互细节：主持人默认昵称改为 `主持人`、其他未改名参会者默认显示为 `匿名用户`，顶栏补充 `设置` 和 `进入全屏` 入口，网络状态窗口移除关闭按钮，聊天改为右侧抽屉并在打开时同步压缩主舞台宽度，同时让结束会议菜单贴近底部工具栏显示。
 - 继续优化会中预览页的全屏入口：鼠标悬停时显示 `进入全屏模式` / `退出全屏模式` 提示，进入全屏后同步切换图标样式与提示文案。
 - 修复会中预览里结束会议菜单的定位裁切问题：该菜单改为固定定位并继续贴合工具栏顶部，避免在靠近底部时只显示一部分。
+
+### Fixed
+
+- 修复登录页的卡片切换：`去注册` 现在保持在同一套全屏登录壳层中无缝切换到注册卡片，`加入会议` 不再被认证初始化流程立即打回登录卡片。
 - 调整登录预览页为全窗口展示，左侧仅保留 `meeting` 标识，右侧邮箱和密码提示改为输入框占位文案 `请输入邮箱` 和 `请输入密码`。
 - 进一步收紧登录预览页内容：右侧登录框改为居中悬浮卡片，仅保留邮箱登录标题、邮箱与密码输入框、获取临时验证码按钮、登录 / 加入会议按钮以及右下角的忘记密码入口。
 - 修正登录预览页的居中方式：登录卡片在登录态下改为全屏浮层居中，不再受右侧栏宽度约束。
@@ -102,9 +129,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make build` 的产物路径调整为：后端输出到 `build/backend/meeting`，前端输出到 `build/frontend/`，便于区分前后端构建结果。
 - 前端结构化日志改为仅保留浏览器控制台输出和当前页面内存中的最近日志，不再写入浏览器 `sessionStorage`；`warn`/`error` 和关键 `info` 事件会按批次上报到后端日志。
 - 前端开发态 `WebSocket` 信令改为直接连接后端 `:5180`，不再经过 Vite 的 `/ws` 代理；主舞台头像墙仅展示自己和当前在线的参会者，减少断线残留对会中视图的干扰。
+- 前端 RTC 链路改为可配置的 ICE / STUN / TURN 目标，并在信令断开后支持指数退避自动重连，减少弱网下手动刷新页面的需求。
+- 前端审计统计开始驱动媒体质量档位，会根据延迟、丢包、码率和 peer 数自动调整视频上限，并在审计面板中展示当前档位和视频限制。
+- 前端 Mesh 连接在 ICE 失败或断开时会自动触发重协商恢复，减少多人房间里个别 peer 短暂掉线后的人工介入。
+- 登录入口拆分为独立的注册和登录路径，注册完成后会返回登录页并要求重新用验证码登录。
+- 新增生产环境 Nginx 配置草案，并修正 `api.07c2.com.cn/meeting` 的反代规则为前缀剥离模式，确保后端收到的是原始 `/api/...` 与 `/ws/...` 路径。
 
 ### Fixed
 
+- 修复微信小程序上传校验对空值合并与可选链语法的兼容问题；小程序工程编译目标已下调到 `ES2019`，并移除了当前登录请求封装中的 `??` 与 `?.` 用法，避免上传时出现 `Unexpected token ?`。
+- 修复生产发布包默认将前端 API / WSS 地址硬编码到 `api.07c2.com.cn/meeting` 的问题；`make linux` 现在默认生成同源 `/api` 与 `/ws` 的前端包，避免在未配置 CORS 的生产环境中触发浏览器 `Failed to fetch`。
+- 修复生产同源前端包在 `meeting-frontend` 容器内仍将 `/api/...` 当成静态路由返回 `index.html` 的问题；打包随附的前端 Nginx 现在会把 `/api/` 和 `/ws/` 代理到 `meeting-backend`，避免验证码登录时报 `Unexpected token '<'`。
+- 修复 Docker 化前端 `nginx.conf` 的 `/healthz` 配置语法，避免 `meeting-frontend` 容器因无效的 `Content-Type` 参数而持续重启。
 - 后端日志输出统一为包含 `level`、`time`、`message` 的 JSON 格式，并将 `level` 调整为小写，满足项目全局日志规范。
 - 后端日志文件补齐 24 小时轮转和最近 3 天保留策略，避免长时间运行时单文件持续增长且依赖重启才清理旧日志。
 - 后端启动早期的日志初始化失败场景改为使用同一套 JSON 日志格式输出到标准错误，避免绕过项目日志规范。

@@ -1,0 +1,11 @@
+<navigation-bar title="会议中" color="white" background="transparent"></navigation-bar>
+
+<view class="page">
+  <view class="stage-card">
+    <view class="meeting-title">{{meetingTitle}}</view>
+    <view class="meeting-number">会议号：{{meetingNumber}}</view>
+    <view class="participant-line">当前身份：{{participantNickname}} · {{participantRole}}</view>
+    <view class="placeholder">小程序端音视频会中能力正在开发中，当前版本先提供微信快捷登录与基础入会壳层。</view>
+    <button class="leave-button" bindtap="handleLeaveMeeting" loading="{{leaving}}">离开会议</button>
+  </view>
+</view>

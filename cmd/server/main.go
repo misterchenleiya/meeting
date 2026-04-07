@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/misterchenleiya/meeting/internal/auth"
 	"github.com/misterchenleiya/meeting/internal/config"
 	"github.com/misterchenleiya/meeting/internal/httpapi"
 	"github.com/misterchenleiya/meeting/internal/logging"
@@ -17,8 +18,12 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
 	bootstrapLogger := logging.NewBootstrapLogger(os.Stderr)
+	cfg, err := config.Load()
+	if err != nil {
+		bootstrapLogger.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
 
 	logger, closeLogger, err := logging.NewLogger(cfg.LogDir)
 	if err != nil {
@@ -40,11 +45,47 @@ func main() {
 		}
 	}()
 
+	mailer, err := auth.NewMailer(logger, auth.MailerConfig{
+		Mode:                 cfg.MailerMode,
+		SMTPHost:             cfg.SMTPHost,
+		SMTPPort:             cfg.SMTPPort,
+		SMTPUsername:         cfg.SMTPUsername,
+		SMTPPassword:         cfg.SMTPPassword,
+		SMTPFromAddress:      cfg.SMTPFromAddress,
+		SMTPFromName:         cfg.SMTPFromName,
+		SMTPRequireTLS:       cfg.SMTPRequireTLS,
+		SendCloudAPIBaseURL:  cfg.SendCloudAPIBaseURL,
+		SendCloudAPIUser:     cfg.SendCloudAPIUser,
+		SendCloudAPIKey:      cfg.SendCloudAPIKey,
+		SendCloudFromAddress: cfg.SendCloudFromAddress,
+		SendCloudFromName:    cfg.SendCloudFromName,
+		SubjectPrefix:        cfg.AuthCodeSubjectPrefix,
+	})
+	if err != nil {
+		logger.Error("failed to initialize auth mailer", "error", err)
+		os.Exit(1)
+	}
+
+	var authOptions []auth.ServiceOption
+	if cfg.WechatMiniProgramAppID != "" && cfg.WechatMiniProgramAppSecret != "" {
+		wechatClient, wechatErr := auth.NewWechatMiniProgramClient(logger, auth.WechatMiniProgramClientConfig{
+			AppID:      cfg.WechatMiniProgramAppID,
+			AppSecret:  cfg.WechatMiniProgramAppSecret,
+			APIBaseURL: cfg.WechatMiniProgramAPIBaseURL,
+		})
+		if wechatErr != nil {
+			logger.Error("failed to initialize wechat mini program auth client", "error", wechatErr)
+			os.Exit(1)
+		}
+		authOptions = append(authOptions, auth.WithWechatMiniProgramCodeExchanger(wechatClient))
+	}
+
+	authService := auth.NewService(store, mailer, authOptions...)
 	meetingService := meeting.NewService(logger, store)
 	signalingHub := signaling.NewHub(logger, meetingService)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewServer(logger, meetingService, store, signalingHub).Routes(),
+		Handler:           httpapi.NewServer(logger, authService, meetingService, store, signalingHub).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

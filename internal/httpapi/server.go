@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/misterchenleiya/meeting/internal/auth"
 	"github.com/misterchenleiya/meeting/internal/meeting"
 	"github.com/misterchenleiya/meeting/internal/signaling"
 	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
@@ -18,15 +19,17 @@ import (
 
 type Server struct {
 	logger    *slog.Logger
+	auth      *auth.Service
 	meetings  *meeting.Service
 	store     *sqlite.Store
 	signaling *signaling.Hub
 	mux       *http.ServeMux
 }
 
-func NewServer(logger *slog.Logger, meetings *meeting.Service, store *sqlite.Store, signalingHub *signaling.Hub) *Server {
+func NewServer(logger *slog.Logger, authService *auth.Service, meetings *meeting.Service, store *sqlite.Store, signalingHub *signaling.Hub) *Server {
 	server := &Server{
 		logger:    logger,
+		auth:      authService,
 		meetings:  meetings,
 		store:     store,
 		signaling: signalingHub,
@@ -43,6 +46,14 @@ func (s *Server) Routes() http.Handler {
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
 	s.mux.HandleFunc("POST /api/client-logs", s.handleClientLogs)
+	s.mux.HandleFunc("POST /api/auth/register/code", s.handleRegisterCode)
+	s.mux.HandleFunc("POST /api/auth/register/verify", s.handleRegisterVerify)
+	s.mux.HandleFunc("POST /api/auth/login/code", s.handleLoginCode)
+	s.mux.HandleFunc("POST /api/auth/login/verify", s.handleLoginVerify)
+	s.mux.HandleFunc("POST /api/auth/login/password", s.handlePasswordLogin)
+	s.mux.HandleFunc("POST /api/auth/wechat/mini/login", s.handleWechatMiniProgramLogin)
+	s.mux.HandleFunc("GET /api/auth/me", s.handleMe)
+	s.mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	s.mux.HandleFunc("POST /api/meetings", s.handleCreateMeeting)
 	s.mux.HandleFunc("GET /api/meetings/{meetingID}", s.handleGetMeeting)
 	s.mux.HandleFunc("GET /api/meetings/{meetingID}/minutes", s.handleGetMeetingMinutes)
@@ -120,16 +131,21 @@ func (s *Server) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if request.Title == "" || request.HostUserID == "" || request.HostNickname == "" {
-		writeError(w, http.StatusBadRequest, "title, hostUserId and hostNickname are required")
+	if request.Title == "" {
+		writeError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+
+	currentUser, ok := s.requireAuthenticatedUser(w, r)
+	if !ok {
 		return
 	}
 
 	meetingValue, host, err := s.meetings.CreateMeeting(r.Context(), meeting.CreateMeetingInput{
 		Title:        request.Title,
 		Password:     request.Password,
-		HostUserID:   request.HostUserID,
-		HostNickname: request.HostNickname,
+		HostUserID:   currentUser.ID,
+		HostNickname: currentUser.Nickname,
 		DeviceType:   request.DeviceType,
 		IPAddress:    clientIP(r),
 	})
@@ -208,6 +224,14 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(request.Nickname) == "" {
 		writeError(w, http.StatusBadRequest, "nickname is required")
 		return
+	}
+
+	if request.UserID == "" && s.auth != nil {
+		if currentUser, _, err := s.currentAuthenticatedUser(r); err == nil {
+			request.UserID = currentUser.ID
+			request.Nickname = strings.TrimSpace(request.Nickname)
+			request.IsAnonymous = false
+		}
 	}
 
 	meetingValue, participant, err := s.meetings.JoinMeeting(r.Context(), meeting.JoinMeetingInput{
@@ -426,6 +450,15 @@ func (s *Server) handleSaveUserPreference(w http.ResponseWriter, r *http.Request
 
 	if userID == "" {
 		writeError(w, http.StatusBadRequest, "userID is required")
+		return
+	}
+
+	currentUser, ok := s.requireAuthenticatedUser(w, r)
+	if !ok {
+		return
+	}
+	if currentUser.ID != userID {
+		writeError(w, http.StatusForbidden, "userID does not match current session")
 		return
 	}
 

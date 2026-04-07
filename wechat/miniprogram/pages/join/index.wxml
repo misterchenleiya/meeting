@@ -1,0 +1,20 @@
+<navigation-bar title="加入会议" color="white" background="transparent"></navigation-bar>
+
+<view class="page">
+  <view class="card">
+    <view class="card-title">输入会议号</view>
+    <input class="input" placeholder="例如 821 503 974" bindinput="onMeetingNumberInput" value="{{meetingNumberInput}}" />
+    <button class="primary-button" bindtap="handleLookupMeeting" loading="{{loading}}">查询会议</button>
+
+    <view wx:if="{{meetingId}}" class="meeting-summary">
+      <view class="meeting-title">{{meetingTitle}}</view>
+      <view class="meeting-number">会议号：{{meetingNumber}}</view>
+
+      <input wx:if="{{passwordRequired}}" class="input password-input" password="{{true}}" placeholder="请输入会议密码" bindinput="onPasswordInput" value="{{passwordInput}}" />
+
+      <button class="secondary-button" bindtap="handleJoinMeeting" loading="{{loading}}">加入会议</button>
+    </view>
+
+    <view wx:if="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
+  </view>
+</view>

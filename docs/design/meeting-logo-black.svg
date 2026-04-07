@@ -1,0 +1,76 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Meeting logo black</title>
+  <desc id="desc">A lowercase me logo in the same black spotlight style as the login screen.</desc>
+  <defs>
+    <linearGradient id="bg" x1="118" y1="72" x2="914" y2="956" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#050507" />
+      <stop offset="0.52" stop-color="#12141A" />
+      <stop offset="1" stop-color="#090A0D" />
+    </linearGradient>
+    <radialGradient id="ambientTop" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(240 208) rotate(42) scale(316 332)">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.16" />
+      <stop offset="0.64" stop-color="#FFFFFF" stop-opacity="0.05" />
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="ambientBottom" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(742 778) rotate(32) scale(312 294)">
+      <stop offset="0" stop-color="#000000" stop-opacity="0.30" />
+      <stop offset="0.72" stop-color="#000000" stop-opacity="0.10" />
+      <stop offset="1" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="spotGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 858) rotate(90) scale(248 92)">
+      <stop offset="0" stop-color="#F6F8FC" stop-opacity="0.70" />
+      <stop offset="0.42" stop-color="#D9DEEA" stop-opacity="0.34" />
+      <stop offset="0.74" stop-color="#D9DEEA" stop-opacity="0.12" />
+      <stop offset="1" stop-color="#D9DEEA" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="spotBeam" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(512 828) rotate(90) scale(188 268)">
+      <stop offset="0" stop-color="#F8FAFF" stop-opacity="0.30" />
+      <stop offset="0.56" stop-color="#F8FAFF" stop-opacity="0.12" />
+      <stop offset="1" stop-color="#F8FAFF" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="letters" x1="398" y1="320" x2="642" y2="716" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7F8FC" />
+      <stop offset="0.48" stop-color="#D7DBE4" />
+      <stop offset="1" stop-color="#8A909C" />
+    </linearGradient>
+    <linearGradient id="lettersShadow" x1="398" y1="320" x2="642" y2="716" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A0A6B2" />
+      <stop offset="1" stop-color="#5B616C" />
+    </linearGradient>
+    <filter id="blur24" x="200" y="150" width="624" height="724" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="24" />
+    </filter>
+    <filter id="blur48" x="128" y="560" width="768" height="352" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="36" />
+    </filter>
+    <filter id="lettersShadowFilter" x="300" y="276" width="424" height="492" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="16" flood-color="#000000" flood-opacity="0.50"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#FFFFFF" flood-opacity="0.05"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="236" fill="url(#bg)" />
+  <rect x="56" y="56" width="912" height="912" rx="192" fill="none" stroke="#232630" stroke-width="4" />
+  <rect x="56" y="56" width="912" height="912" rx="192" fill="url(#ambientTop)" />
+  <rect x="56" y="56" width="912" height="912" rx="192" fill="url(#ambientBottom)" />
+
+  <circle cx="248" cy="220" r="190" fill="#FFFFFF" fill-opacity="0.04" />
+  <circle cx="772" cy="772" r="214" fill="#000000" fill-opacity="0.14" />
+
+  <g filter="url(#blur48)">
+    <ellipse cx="512" cy="846" rx="306" ry="86" fill="url(#spotGlow)" />
+  </g>
+
+  <g filter="url(#blur24)">
+    <path d="M354 806C394 720 449 662 512 650C575 662 630 720 670 806C625 784 576 774 512 774C448 774 399 784 354 806Z" fill="url(#spotBeam)" />
+  </g>
+
+  <rect x="286" y="782" width="452" height="40" rx="20" fill="#F6F8FC" fill-opacity="0.09" />
+  <circle cx="394" cy="802" r="14" fill="#F6F8FC" fill-opacity="0.38" />
+  <circle cx="512" cy="802" r="18" fill="#F6F8FC" fill-opacity="0.92" />
+  <circle cx="630" cy="802" r="14" fill="#F6F8FC" fill-opacity="0.38" />
+
+  <g filter="url(#lettersShadowFilter)">
+    <text x="512" y="534" text-anchor="middle" font-family="Inter, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="282" font-weight="800" letter-spacing="-22" fill="url(#letters)" stroke="url(#lettersShadow)" stroke-width="6" paint-order="stroke fill">me</text>
+  </g>
+</svg>

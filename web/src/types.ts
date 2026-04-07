@@ -7,6 +7,15 @@ export type Capability =
   | "record"
   | "ready_check";
 
+export type AuthUser = {
+  id: string;
+  email: string;
+  nickname: string;
+  emailVerifiedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Participant = {
   id: string;
   userId?: string;

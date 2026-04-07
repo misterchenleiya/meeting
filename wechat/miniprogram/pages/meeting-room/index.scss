@@ -1,0 +1,45 @@
+.page {
+  min-height: 100vh;
+  padding: 140rpx 48rpx 64rpx;
+  box-sizing: border-box;
+}
+
+.stage-card {
+  padding: 48rpx 40rpx;
+  border-radius: 32rpx;
+  background: rgba(18, 22, 28, 0.88);
+  border: 1rpx solid rgba(255, 255, 255, 0.08);
+}
+
+.meeting-title {
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.meeting-number,
+.participant-line {
+  margin-top: 16rpx;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 24rpx;
+}
+
+.placeholder {
+  margin-top: 36rpx;
+  color: rgba(255, 255, 255, 0.76);
+  line-height: 1.7;
+  font-size: 28rpx;
+}
+
+.leave-button {
+  margin-top: 48rpx;
+  border-radius: 24rpx;
+  height: 88rpx;
+  line-height: 88rpx;
+  background: #ff5f57;
+  color: #ffffff;
+  font-size: 28rpx;
+}
+
+.leave-button::after {
+  border: none;
+}

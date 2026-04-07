@@ -1,0 +1,49 @@
+services:
+  meeting-backend:
+    container_name: meeting-backend
+    image: debian:bookworm-slim
+    restart: unless-stopped
+    env_file:
+      - path: ${MEETING_BACKEND_ENV_FILE:-./meeting-backend.env}
+        required: false
+    ports:
+      - "127.0.0.1:5180:5180"
+    volumes:
+      - ./backend:/app/backend:ro
+      - ./data:/data
+      - ./logs:/logs
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+    environment:
+      MEETING_HTTP_ADDR: ":5180"
+      MEETING_SQLITE_PATH: /data/meeting.db
+      MEETING_LOG_DIR: /logs
+    command:
+      - /app/backend/meeting
+
+  meeting-frontend:
+    container_name: meeting-frontend
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5188:80"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  meeting-coturn:
+    container_name: meeting-coturn
+    image: ${COTURN_IMAGE:-coturn/coturn:latest}
+    restart: unless-stopped
+    command:
+      - turnserver
+      - -c
+      - /etc/coturn/turnserver.conf
+    ports:
+      - "${COTURN_LISTEN_PORT:-3478}:3478/tcp"
+      - "${COTURN_LISTEN_PORT:-3478}:3478/udp"
+      - "${COTURN_TLS_LISTEN_PORT:-5349}:5349/tcp"
+      - "${COTURN_MIN_PORT:-52000}-${COTURN_MAX_PORT:-52048}:${COTURN_MIN_PORT:-52000}-${COTURN_MAX_PORT:-52048}/tcp"
+      - "${COTURN_MIN_PORT:-52000}-${COTURN_MAX_PORT:-52048}:${COTURN_MIN_PORT:-52000}-${COTURN_MAX_PORT:-52048}/udp"
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro

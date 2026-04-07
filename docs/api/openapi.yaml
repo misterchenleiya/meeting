@@ -8,6 +8,7 @@ servers:
 tags:
   - name: Health
   - name: Logs
+  - name: Auth
   - name: Meetings
   - name: Preferences
 paths:
@@ -46,10 +47,179 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/register/code:
+    post:
+      tags: [Auth]
+      summary: Request a registration verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRegisterCodeRequest"
+      responses:
+        "200":
+          description: Registration code issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthCodeDelivery"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email is already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Code requested too frequently
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/register/verify:
+    post:
+      tags: [Auth]
+      summary: Complete registration with a verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthVerifyRequest"
+      responses:
+        "201":
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid or expired code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Email is not registered for this flow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/login/code:
+    post:
+      tags: [Auth]
+      summary: Request a login verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLoginCodeRequest"
+      responses:
+        "200":
+          description: Login code issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthCodeDelivery"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Email is not registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Code requested too frequently
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/login/verify:
+    post:
+      tags: [Auth]
+      summary: Complete login with a verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthVerifyRequest"
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid or expired code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Email is not registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthMeResponse"
+        "401":
+          description: Session is missing, invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout the current session
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
   /api/meetings:
     post:
       tags: [Meetings]
       summary: Create a meeting
+      description: Requires an authenticated session. The backend ignores hostUserId and hostNickname from the request body and binds the meeting to the current login session.
       requestBody:
         required: true
         content:
@@ -65,6 +235,12 @@ paths:
                 $ref: "#/components/schemas/CreateMeetingResponse"
         "400":
           description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
           content:
             application/json:
               schema:
@@ -327,6 +503,7 @@ paths:
     put:
       tags: [Preferences]
       summary: Save default media preferences for a registered user
+      description: Requires an authenticated session and the path userID must match the current user.
       parameters:
         - $ref: "#/components/parameters/UserID"
       requestBody:
@@ -344,6 +521,18 @@ paths:
                 $ref: "#/components/schemas/StatusResponse"
         "400":
           description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: userID does not match the current session
           content:
             application/json:
               schema:
@@ -452,9 +641,97 @@ components:
         accepted:
           type: integer
           minimum: 1
+    AuthRegisterCodeRequest:
+      type: object
+      required: [email, nickname]
+      properties:
+        email:
+          type: string
+        nickname:
+          type: string
+    AuthLoginCodeRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+    AuthVerifyRequest:
+      type: object
+      required: [email, code]
+      properties:
+        email:
+          type: string
+        code:
+          type: string
+    AuthCodeDelivery:
+      type: object
+      required: [email, purpose, expiresAt, resendAfter, deliveryMode]
+      properties:
+        email:
+          type: string
+        purpose:
+          type: string
+          enum: [register, login]
+        debugCode:
+          type: string
+          description: Development-only debug code returned by the current stub delivery path.
+        expiresAt:
+          type: string
+          format: date-time
+        resendAfter:
+          type: string
+          format: date-time
+        deliveryMode:
+          type: string
+    RegisterResponse:
+      type: object
+      required: [status, user]
+      properties:
+        status:
+          type: string
+          example: registered
+        user:
+          $ref: "#/components/schemas/AuthUser"
+    LoginResponse:
+      type: object
+      required: [status, user]
+      properties:
+        status:
+          type: string
+          example: logged_in
+        user:
+          $ref: "#/components/schemas/AuthUser"
+    AuthMeResponse:
+      type: object
+      required: [user, sessionEndsAt]
+      properties:
+        user:
+          $ref: "#/components/schemas/AuthUser"
+        sessionEndsAt:
+          type: string
+          format: date-time
+    AuthUser:
+      type: object
+      required: [id, email, nickname, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        nickname:
+          type: string
+        emailVerifiedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     CreateMeetingRequest:
       type: object
-      required: [title, hostUserId, hostNickname]
+      required: [title]
       properties:
         title:
           type: string
@@ -463,8 +740,10 @@ components:
           description: Optional meeting password. Empty string means no password.
         hostUserId:
           type: string
+          description: Ignored by the backend; the current authenticated session is used instead.
         hostNickname:
           type: string
+          description: Ignored by the backend; the current authenticated session nickname is used instead.
         deviceType:
           type: string
           description: Browser or client label. The backend stores it as-is.

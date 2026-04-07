@@ -25,6 +25,7 @@
 - `meeting-room-preview-desktop.png`：会中产品预览桌面图，本地生成，不入库
 - `meeting-room-preview-mobile.png`：会中产品预览移动图，本地生成，不入库
 - `meeting-host-login-preview.png`：主持人视角的登录页独立渲染图，本地生成，不入库
+- `meeting-logo-black.svg`：黑色风格的 `meeting` 主图标，保留 `me` 两个小写字母并带有底部聚光灯效果，适用于移动 APP、微信和网站 Logo
 - `meeting-host-create-preview.png`：主持人视角的创建会议页独立渲染图，本地生成，不入库
 - `meeting-host-room-preview.png`：主持人视角的进入会议页独立渲染图，本地生成，不入库
 

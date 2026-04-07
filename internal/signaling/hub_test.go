@@ -37,7 +37,7 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 	meetingService := meeting.NewService(logger, stubStore{})
 	hub := signaling.NewHub(logger, meetingService)
 
-	server := httptest.NewServer(httpapi.NewServer(logger, meetingService, nil, hub).Routes())
+	server := httptest.NewServer(httpapi.NewServer(logger, nil, meetingService, nil, hub).Routes())
 	defer server.Close()
 
 	ctx := context.Background()
