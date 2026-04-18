@@ -1,6 +1,6 @@
 {
   "libVersion": "2.32.3",
-  "projectname": "%E6%9D%A5meeting",
+  "projectname": "meeting",
   "setting": {
     "urlCheck": false,
     "coverView": false,
@@ -17,5 +17,6 @@
     "bigPackageSizeSupport": false,
     "checkInvalidKey": true,
     "ignoreDevUnusedFiles": true
-  }
+  },
+  "condition": {}
 }

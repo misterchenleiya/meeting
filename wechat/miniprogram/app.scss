@@ -7,4 +7,11 @@ page {
 
 button {
   border: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  text-align: center;
+  line-height: 1.2;
 }

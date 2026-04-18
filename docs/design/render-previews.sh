@@ -85,16 +85,48 @@ render_room_desktop() {
   render_page "meeting-room-preview.html" "1440,2200" "meeting-room-preview-desktop.png" "meeting-preview-room-desktop"
 }
 
-render_room_mobile() {
-  render_page "meeting-room-preview.html" "430,3200" "meeting-room-preview-mobile.png" "meeting-preview-room-mobile"
+render_h5_room_phone() {
+  render_page "h5-room-preview.html" "430,3000" "h5-room-preview-phone.png" "meeting-preview-h5-room-phone"
 }
 
 render_auth_desktop() {
   render_page "meeting-auth-preview.html" "1440,1800" "meeting-auth-preview-desktop.png" "meeting-preview-auth-desktop"
 }
 
-render_auth_mobile() {
-  render_page "meeting-auth-preview.html" "430,2600" "meeting-auth-preview-mobile.png" "meeting-preview-auth-mobile"
+render_h5_room_pad() {
+  render_page "h5-room-preview.html" "900,2400" "h5-room-preview-pad.png" "meeting-preview-h5-room-pad"
+}
+
+render_h5_auth_phone() {
+  render_page "h5-auth-preview.html" "430,2600" "h5-auth-preview-phone.png" "meeting-preview-h5-auth-phone"
+}
+
+render_h5_auth_pad() {
+  render_page "h5-auth-preview.html" "900,2200" "h5-auth-preview-pad.png" "meeting-preview-h5-auth-pad"
+}
+
+render_h5_prejoin_phone() {
+  render_page "h5-auth-preview.html#preview" "430,2600" "h5-prejoin-preview-phone.png" "meeting-preview-h5-prejoin-phone"
+}
+
+render_h5_prejoin_pad() {
+  render_page "h5-auth-preview.html#preview" "900,2200" "h5-prejoin-preview-pad.png" "meeting-preview-h5-prejoin-pad"
+}
+
+render_wechat_auth_phone() {
+  render_page "wechat-auth-preview.html" "430,2800" "wechat-auth-preview-phone.png" "meeting-preview-wechat-auth-phone"
+}
+
+render_wechat_auth_pad() {
+  render_page "wechat-auth-preview.html" "900,2400" "wechat-auth-preview-pad.png" "meeting-preview-wechat-auth-pad"
+}
+
+render_wechat_room_phone() {
+  render_page "wechat-room-preview.html" "430,2800" "wechat-room-preview-phone.png" "meeting-preview-wechat-room-phone"
+}
+
+render_wechat_room_pad() {
+  render_page "wechat-room-preview.html" "900,2400" "wechat-room-preview-pad.png" "meeting-preview-wechat-room-pad"
 }
 
 render_auth_join_preview() {
@@ -116,9 +148,17 @@ render_host_room_preview() {
 case "${MODE}" in
   all)
     render_auth_desktop
-    render_auth_mobile
     render_room_desktop
-    render_room_mobile
+    render_h5_auth_phone
+    render_h5_auth_pad
+    render_h5_prejoin_phone
+    render_h5_prejoin_pad
+    render_h5_room_phone
+    render_h5_room_pad
+    render_wechat_auth_phone
+    render_wechat_auth_pad
+    render_wechat_room_phone
+    render_wechat_room_pad
     render_host_login_preview
     render_host_create_preview
     render_host_room_preview
@@ -130,28 +170,68 @@ case "${MODE}" in
     ;;
   auth)
     render_auth_desktop
-    render_auth_mobile
     ;;
   auth-join)
     render_auth_join_preview
     ;;
   room)
     render_room_desktop
-    render_room_mobile
     ;;
   desktop)
     render_auth_desktop
     render_room_desktop
     ;;
   mobile)
-    render_auth_mobile
-    render_room_mobile
+    render_h5_auth_phone
+    render_h5_room_phone
+    ;;
+  h5)
+    render_h5_auth_phone
+    render_h5_auth_pad
+    render_h5_prejoin_phone
+    render_h5_prejoin_pad
+    render_h5_room_phone
+    render_h5_room_pad
+    ;;
+  h5-auth)
+    render_h5_auth_phone
+    render_h5_auth_pad
+    ;;
+  h5-prejoin)
+    render_h5_prejoin_phone
+    render_h5_prejoin_pad
+    ;;
+  h5-room)
+    render_h5_room_phone
+    render_h5_room_pad
+    ;;
+  h5-phone)
+    render_h5_auth_phone
+    render_h5_room_phone
+    ;;
+  h5-pad)
+    render_h5_auth_pad
+    render_h5_room_pad
+    ;;
+  wechat)
+    render_wechat_auth_phone
+    render_wechat_auth_pad
+    render_wechat_room_phone
+    render_wechat_room_pad
+    ;;
+  wechat-auth)
+    render_wechat_auth_phone
+    render_wechat_auth_pad
+    ;;
+  wechat-room)
+    render_wechat_room_phone
+    render_wechat_room_pad
     ;;
   auth-desktop)
     render_auth_desktop
     ;;
   auth-mobile)
-    render_auth_mobile
+    render_h5_auth_phone
     ;;
   host-login)
     render_host_login_preview
@@ -166,11 +246,11 @@ case "${MODE}" in
     render_room_desktop
     ;;
   room-mobile)
-    render_room_mobile
+    render_h5_room_phone
     ;;
   *)
     echo "Unsupported mode: ${MODE}" >&2
-    echo "Supported modes: all, host-flow, host-login, host-create, host-room, auth, auth-join, room, desktop, mobile, auth-desktop, auth-mobile, room-desktop, room-mobile" >&2
+    echo "Supported modes: all, host-flow, host-login, host-create, host-room, auth, auth-join, room, desktop, mobile, h5, h5-auth, h5-prejoin, h5-room, h5-phone, h5-pad, wechat, wechat-auth, wechat-room, auth-desktop, auth-mobile, room-desktop, room-mobile" >&2
     exit 1
     ;;
 esac

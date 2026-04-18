@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 微信小程序加入会议页新增会议号输入框内嵌扫码入口，可直接调用摄像头识别会议二维码，并自动回填会议号与二维码中附带的会议密码。
+- 新增独立的 `微信小程序` 设计资产：`docs/design/wechat-auth-preview.html`、`docs/design/wechat-auth-preview.css`、`docs/design/wechat-room-preview.html`、`docs/design/wechat-room-preview.css` 和 `docs/design/wechat-ui-spec.md`，用于在保留 `H5 / PC` 黑色舞台风格的前提下，适配小程序导航栏、安全区和会中壳层。
+- 新增独立的 `H5` 设计资产：`docs/design/h5-auth-preview.html`、`docs/design/h5-auth-preview.css`、`docs/design/h5-room-preview.html`、`docs/design/h5-room-preview.css` 和 `docs/design/h5-ui-spec.md`，用于覆盖手机浏览器与 `iPad` 的登录到入会首屏方案，并与 `PC` 端保持同一套深色产品风格。
 - 新增独立的 `wechat/` 微信小程序客户端工程第一阶段实现，支持微信快捷登录、显式 `sessionToken` 持久化、基础首页、会议查询、带密码加入会议和基础会中占位页。
 - 新增小程序快捷登录后端接口 `POST /api/auth/wechat/mini/login`，服务端会使用 `wx.login` 返回的 code 调用微信 `jscode2session` 接口换取 `openid`，并基于现有 `auth_sessions` 返回 Bearer 会话。
 - 新增黑色风格的 `meeting` 主图标 SVG 资产 `docs/design/meeting-logo-black.svg`，保留 `me` 两个小写字母和底部聚光灯效果，适用于移动 APP、微信和网站 Logo。
@@ -46,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `web/src/App.tsx` 现在把 `H5` 入会预览落成了真实流程节点：快速会议、预定会议和加入会议都会先进入预览页，再正式进入会议；同时首页补上最近会议摘要，移动端预览页按手机 / `iPad` 的信息密度重新排布。
+- `wechat/miniprogram` 现在把小程序主路径补齐为“登录 -> 首页 -> 加入会议 -> 密码确认 -> 入会预览 -> 会中壳层”，并增加最近会议摘要、入会偏好透传和会中成员 / 聊天 / 更多面板壳层。
+- `docs/design/render-previews.sh` 和设计目录说明已补齐 `wechat` 专用渲染与索引，便于并行维护 `PC`、`H5` 和 `微信小程序` 三套同风格设计稿。
+- 现有 `docs/design/meeting-auth-preview.css` 和 `docs/design/meeting-room-preview.css` 不再继续承载 `H5` 专项断点；手机与 `iPad` 适配已迁移到独立的 `h5-` 设计稿中，设计目录说明和渲染脚本也同步切换为 `H5` 专用输出。
 - `make publish` 和 `make upload` 现在会优先读取当前本地环境中的 `UPLOAD_BASE`、`UPLOAD_USERNAME` 和 `UPLOAD_PASSWORD`；当这些变量未提供时，才会回退到交互式输入，便于本地通过环境变量复用上传配置。
 - 微信小程序接入方案文档已从草案推进到第一阶段已实现状态，并明确当前采用显式 Bearer token 而不是 Cookie 维持小程序登录态。
 - 生产环境配置模版 `env.example` 现在同时补充了 `MEETING_WECHAT_MINIPROGRAM_APP_ID`、`MEETING_WECHAT_MINIPROGRAM_APP_SECRET` 和微信接口基地址，便于后端启用小程序快捷登录。
@@ -137,6 +144,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复微信小程序登录、首页、加入会议、入会预览和会中页残留设计稿说明性文案的问题，页面文案已收敛为实际产品文案，避免模拟器中出现大量实现说明。
+- 修复微信小程序多个页面按钮仅左右居中而未稳定垂直居中的问题，统一改为基于 `flex` 的按钮居中布局，并补齐多行按钮与工具栏控件的对齐样式。
 - 修复微信小程序上传校验对空值合并与可选链语法的兼容问题；小程序工程编译目标已下调到 `ES2019`，并移除了当前登录请求封装中的 `??` 与 `?.` 用法，避免上传时出现 `Unexpected token ?`。
 - 修复生产发布包默认将前端 API / WSS 地址硬编码到 `api.07c2.com.cn/meeting` 的问题；`make linux` 现在默认生成同源 `/api` 与 `/ws` 的前端包，避免在未配置 CORS 的生产环境中触发浏览器 `Failed to fetch`。
 - 修复生产同源前端包在 `meeting-frontend` 容器内仍将 `/api/...` 当成静态路由返回 `index.html` 的问题；打包随附的前端 Nginx 现在会把 `/api/` 和 `/ws/` 代理到 `meeting-backend`，避免验证码登录时报 `Unexpected token '<'`。

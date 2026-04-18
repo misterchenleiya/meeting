@@ -1,0 +1,44 @@
+<navigation-bar title="入会预览" color="white" background="transparent"></navigation-bar>
+
+<view class="page">
+  <view class="card">
+    <view class="card-title">入会预览</view>
+
+    <view class="preview-stage">
+      <view class="preview-badge">本地预览</view>
+      <view class="preview-avatar">{{nicknameInitial}}</view>
+      <view class="preview-name">{{nicknameInput}}</view>
+      <view class="preview-meta">{{requestCameraEnabled ? '摄像头开启' : '摄像头关闭'}} · {{requestMicrophoneEnabled ? '麦克风开启' : '麦克风静音'}}</view>
+    </view>
+
+    <view class="meeting-summary">
+      <view class="summary-title">{{meetingTitle}}</view>
+      <view class="summary-number">{{meetingNumber}}</view>
+      <view class="summary-meta">{{passwordRequired ? '密码已确认' : '无需会议密码'}}</view>
+    </view>
+
+    <view class="toggle-grid">
+      <button class="toggle-card {{requestCameraEnabled ? 'active' : ''}}" bindtap="handleToggleCameraPreference">
+        <view class="toggle-title">摄像头</view>
+        <view class="toggle-copy">{{requestCameraEnabled ? '入会开启' : '入会关闭'}}</view>
+      </button>
+      <button class="toggle-card {{requestMicrophoneEnabled ? 'active' : ''}}" bindtap="handleToggleMicrophonePreference">
+        <view class="toggle-title">麦克风</view>
+        <view class="toggle-copy">{{requestMicrophoneEnabled ? '入会开启' : '入会静音'}}</view>
+      </button>
+    </view>
+
+    <view class="check-card">
+      <view class="check-title">入会检查</view>
+      <view class="check-item">会议号与密码状态已确认</view>
+      <view class="check-item">昵称：{{nicknameInput}}</view>
+      <view class="check-item">媒体偏好已保存</view>
+    </view>
+
+    <button class="primary-button" bindtap="handleEnterMeeting" loading="{{joining}}">进入会议</button>
+    <button class="secondary-button" bindtap="handleBackToJoin">返回修改</button>
+
+    <view wx:if="{{statusMessage}}" class="status-text">{{statusMessage}}</view>
+    <view wx:if="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
+  </view>
+</view>

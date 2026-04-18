@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting WeChat Mini Program Auth Preview</title>
+    <link rel="stylesheet" href="./wechat-auth-preview.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="preview-toolbar" aria-label="微信小程序预览控制">
+        <div class="preview-caption">
+          <strong>Meeting / WeChat Mini Program Preview</strong>
+          <p>基于 H5 设计稿做小程序适配：保留黑色舞台与聚光灯品牌区，但改成更贴近微信小程序的导航栏、安全区和卡片组织方式。</p>
+        </div>
+
+        <div class="preview-controls">
+          <div class="control-group">
+            <span>设备</span>
+            <button class="preview-switch active" data-device-target="phone" type="button">手机</button>
+            <button class="preview-switch" data-device-target="pad" type="button">Pad</button>
+          </div>
+
+          <div class="control-group">
+            <span>页面</span>
+            <button class="preview-switch active" data-view-target="login" type="button">登录</button>
+            <button class="preview-switch" data-view-target="home" type="button">首页</button>
+            <button class="preview-switch" data-view-target="join" type="button">加入会议</button>
+            <button class="preview-switch" data-view-target="join-password" type="button">密码确认</button>
+            <button class="preview-switch" data-view-target="preview" type="button">入会预览</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="wechat-auth-preview" data-device="phone" data-view="login">
+        <div class="wechat-device">
+          <div class="device-shell">
+            <div class="device-camera" aria-hidden="true"></div>
+
+            <div class="device-screen">
+              <header class="mini-nav">
+                <button class="nav-back ghost" type="button" aria-label="返回">
+                  <svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" /></svg>
+                </button>
+                <strong>meeting</strong>
+                <button class="nav-more ghost" type="button" aria-label="更多">
+                  <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="18" cy="12" r="1.6" /></svg>
+                </button>
+              </header>
+
+              <section class="content-stage">
+                <header class="brand-stage">
+                  <div class="brand-wordmark">meeting</div>
+                  <div class="brand-spotlight" aria-hidden="true"></div>
+                  <p>小程序端与 H5 同步使用一套深色品牌基线，但保留微信容器感和页面切换语义。</p>
+                  <div class="brand-tags">
+                    <span>微信快捷登录</span>
+                    <span>公开 9 位会议号</span>
+                    <span>同风格不同容器</span>
+                  </div>
+                </header>
+
+                <section class="surface-card" data-card-view="login">
+                  <div class="section-copy">
+                    <div class="eyebrow">WeChat Login</div>
+                    <h2>登录 meeting</h2>
+                    <p>登录动作仍然是微信快捷登录，但卡片的层级、文案和品牌表现尽量与 H5 / PC 统一。</p>
+                  </div>
+
+                  <div class="wechat-login-panel">
+                    <button class="wechat-login-button" type="button">
+                      <span class="wechat-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                          <circle cx="9" cy="10" r="6.5" fill="#09b83e" />
+                          <circle cx="15.2" cy="13.6" r="5.4" fill="#09b83e" />
+                          <circle cx="7.3" cy="9.7" r="0.9" fill="#ffffff" />
+                          <circle cx="10.4" cy="9.7" r="0.9" fill="#ffffff" />
+                          <circle cx="13.8" cy="13.2" r="0.75" fill="#ffffff" />
+                          <circle cx="16.6" cy="13.2" r="0.75" fill="#ffffff" />
+                          <path d="M8.3 14.2 7.1 15.4v-1.7" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1" />
+                        </svg>
+                      </span>
+                      微信快捷登录
+                    </button>
+                    <p class="support-copy">首次登录自动建号，继续沿用后端会话体系与公开会议号语义。</p>
+                  </div>
+
+                  <div class="status-card">
+                    <strong>状态提示</strong>
+                    <p>正在恢复登录状态 / 登录失败 / 首次自动建号，都在当前卡片内就地反馈，不跳额外页面。</p>
+                  </div>
+                </section>
+
+                <section class="surface-card" data-card-view="home">
+                  <div class="section-copy">
+                    <div class="eyebrow">Home</div>
+                    <h2>首页</h2>
+                    <p>小程序首页收口为账号信息、最近会议和加入会议入口，不强行复制浏览器端的大量入口密度。</p>
+                  </div>
+
+                  <div class="profile-card">
+                    <strong>设计评审嘉宾</strong>
+                    <span>meeting@07c2.com.cn</span>
+                    <p>当前是微信小程序会话，后续可以继续补邮箱绑定或更多账号管理。</p>
+                  </div>
+
+                  <div class="meeting-hub">
+                    <article class="hub-card primary-hub">
+                      <div>
+                        <strong>加入会议</strong>
+                        <p>输入公开 9 位会议号并继续密码确认、入会预览和会议壳层。</p>
+                      </div>
+                      <button class="button primary" data-view-target="join" type="button">进入加入流程</button>
+                    </article>
+
+                    <article class="hub-card">
+                      <div>
+                        <strong>最近会议</strong>
+                        <p>821 503 974 · 全球产品评审会 · 需要会议密码</p>
+                      </div>
+                      <button class="button secondary" data-view-target="join" type="button">继续加入</button>
+                    </article>
+                  </div>
+                </section>
+
+                <section class="surface-card" data-card-view="join">
+                  <div class="section-copy">
+                    <div class="eyebrow">Join Meeting</div>
+                    <h2>加入会议</h2>
+                    <p>保留 H5 的两段式加入流程，但更贴近小程序的分步页面和卡片语义。</p>
+                  </div>
+
+                  <form class="form-stack">
+                    <label>
+                      会议号
+                      <input type="text" value="821 503 974" />
+                    </label>
+
+                    <label>
+                      昵称
+                      <input type="text" value="设计评审嘉宾" />
+                    </label>
+
+                    <div class="toggle-grid">
+                      <label class="toggle-card">
+                        <span>入会后申请摄像头</span>
+                        <span class="toggle on"></span>
+                      </label>
+                      <label class="toggle-card">
+                        <span>入会后申请麦克风</span>
+                        <span class="toggle"></span>
+                      </label>
+                    </div>
+                  </form>
+
+                  <div class="action-stack">
+                    <button class="button primary" data-view-target="join-password" type="button">验证会议号</button>
+                    <button class="button ghost" data-view-target="home" type="button">返回首页</button>
+                  </div>
+                </section>
+
+                <section class="surface-card" data-card-view="preview">
+                  <div class="section-copy">
+                    <div class="eyebrow">Prejoin</div>
+                    <h2>入会预览</h2>
+                    <p>微信小程序也可以延续 H5 的入会预览步骤，但容器和动作更偏向原生卡片与开关。</p>
+                  </div>
+
+                  <div class="prejoin-layout">
+                    <article class="preview-stage-card">
+                      <div class="preview-stage">
+                        <span class="preview-badge">本地预览</span>
+                        <div class="preview-avatar">设</div>
+                        <div class="preview-copy">
+                          <strong>设计评审嘉宾</strong>
+                          <span>摄像头开启 · 麦克风静音</span>
+                        </div>
+                      </div>
+                    </article>
+
+                    <div class="prejoin-settings">
+                      <label class="toggle-card">
+                        <span>进入会议时开启摄像头</span>
+                        <span class="toggle on"></span>
+                      </label>
+                      <label class="toggle-card">
+                        <span>进入会议时开启麦克风</span>
+                        <span class="toggle"></span>
+                      </label>
+                      <div class="status-card">
+                        <strong>入会前检查</strong>
+                        <p>会议号与密码已确认，当前网络可用，可以先静音进入会议房间。</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="action-stack">
+                    <a class="button primary" href="./wechat-room-preview.html">进入会议</a>
+                    <button class="button ghost" data-view-target="join" type="button">返回修改</button>
+                  </div>
+                </section>
+              </section>
+
+              <div class="password-layer">
+                <div class="sheet-scrim"></div>
+                <section class="password-sheet">
+                  <div class="sheet-badge">会议号 821 503 974 已确认</div>
+                  <div class="section-copy compact-copy">
+                    <div class="eyebrow">Password</div>
+                    <h3>输入会议密码</h3>
+                    <p>小程序保留底部抽屉确认模式，既和 H5 一致，又符合移动端手势与页面节奏。</p>
+                  </div>
+
+                  <form class="form-stack compact-form">
+                    <label>
+                      会议密码
+                      <input type="password" value="stage2026" />
+                    </label>
+                  </form>
+
+                  <div class="action-stack">
+                    <button class="button primary" data-view-target="preview" type="button">加入并进入预览</button>
+                    <button class="button ghost" data-view-target="join" type="button">返回修改</button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const preview = document.querySelector(".wechat-auth-preview");
+        if (!preview) {
+          return;
+        }
+
+        const deviceButtons = Array.from(document.querySelectorAll("[data-device-target]"));
+        const viewButtons = Array.from(document.querySelectorAll("[data-view-target]"));
+        const supportedViews = new Set(["login", "home", "join", "join-password", "preview"]);
+
+        function setDevice(nextDevice) {
+          if (nextDevice !== "phone" && nextDevice !== "pad") {
+            return;
+          }
+
+          preview.dataset.device = nextDevice;
+          for (const button of deviceButtons) {
+            button.classList.toggle("active", button.dataset.deviceTarget === nextDevice);
+          }
+        }
+
+        function setView(nextView) {
+          if (!supportedViews.has(nextView)) {
+            return;
+          }
+
+          preview.dataset.view = nextView;
+          for (const button of viewButtons) {
+            button.classList.toggle("active", button.dataset.viewTarget === nextView);
+          }
+        }
+
+        function resolveView() {
+          const hashView = window.location.hash.replace(/^#/, "");
+          if (supportedViews.has(hashView)) {
+            return hashView;
+          }
+          return preview.dataset.view || "login";
+        }
+
+        for (const button of deviceButtons) {
+          button.addEventListener("click", () => {
+            const nextDevice = button.dataset.deviceTarget;
+            if (nextDevice) {
+              setDevice(nextDevice);
+            }
+          });
+        }
+
+        for (const button of viewButtons) {
+          button.addEventListener("click", () => {
+            const nextView = button.dataset.viewTarget;
+            if (nextView) {
+              setView(nextView);
+            }
+          });
+        }
+
+        window.addEventListener("hashchange", () => {
+          setView(resolveView());
+        });
+
+        setDevice(preview.dataset.device || "phone");
+        setView(resolveView());
+      })();
+    </script>
+  </body>
+</html>

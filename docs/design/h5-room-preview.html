@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting H5 Room Preview</title>
+    <link rel="stylesheet" href="./h5-room-preview.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="preview-toolbar" aria-label="H5 会中预览控制">
+        <div class="preview-caption">
+          <strong>Meeting / H5 Room Preview</strong>
+          <p>H5 会中页保持 PC 端的深色舞台气质与图标语言，但把成员、聊天和会议工具重排为手机底部抽屉 / iPad 侧边浮层。</p>
+        </div>
+
+        <div class="preview-controls">
+          <div class="control-group">
+            <span>设备</span>
+            <button class="preview-switch active" data-device-target="phone" type="button">手机</button>
+            <button class="preview-switch" data-device-target="pad" type="button">iPad</button>
+          </div>
+
+          <div class="control-group">
+            <span>舞台</span>
+            <button class="preview-switch active" data-stage-target="active" type="button">主画面</button>
+            <button class="preview-switch" data-stage-target="idle" type="button">头像墙</button>
+          </div>
+
+          <div class="control-group">
+            <span>面板</span>
+            <button class="preview-switch active" data-panel-target="none" type="button">关闭</button>
+            <button class="preview-switch" data-panel-target="chat" type="button">聊天</button>
+            <button class="preview-switch" data-panel-target="members" type="button">成员</button>
+            <button class="preview-switch" data-panel-target="actions" type="button">会议工具</button>
+            <button class="preview-switch" data-panel-target="share" type="button">邀请</button>
+          </div>
+
+          <div class="control-group">
+            <span>聊天红点</span>
+            <button class="preview-switch" data-unread-target="off" type="button">无</button>
+            <button class="preview-switch active" data-unread-target="on" type="button">显示</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="h5-room-preview" data-device="phone" data-stage="active" data-panel="none" data-chat-unread="on">
+        <div class="device-frame">
+          <div class="device-shell">
+            <div class="device-camera" aria-hidden="true"></div>
+
+            <div class="device-screen">
+              <div class="device-statusbar" aria-hidden="true">
+                <span>9:41</span>
+                <div class="status-icons">
+                  <span></span>
+                  <span></span>
+                  <span class="battery"></span>
+                </div>
+              </div>
+
+              <section class="room-stage-shell">
+                <header class="room-topbar">
+                  <button class="icon-button" type="button" aria-label="返回">
+                    <svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" /></svg>
+                  </button>
+
+                  <div class="meeting-meta">
+                    <strong>全球产品评审会</strong>
+                    <span>821 503 974 · 01:19</span>
+                  </div>
+
+                  <div class="topbar-actions">
+                    <button class="status-pill" type="button">
+                      <span class="status-dot"></span>
+                      正常
+                    </button>
+                    <button class="icon-button" type="button" aria-label="分享">
+                      <svg viewBox="0 0 24 24"><path d="M12 4v11M8 8l4-4 4 4M5 20h14" /></svg>
+                    </button>
+                  </div>
+                </header>
+
+                <main class="room-stage">
+                  <section class="stage-view active-stage" aria-label="主画面">
+                    <article class="focus-tile">
+                      <div class="focus-gradient"></div>
+                      <div class="focus-meta">
+                        <span class="speaker-pill">正在讲话</span>
+                        <div class="speaker-copy">
+                          <strong>主持人</strong>
+                          <span>视频开启 · 共享屏幕已授权</span>
+                        </div>
+                      </div>
+                    </article>
+                  </section>
+
+                  <section class="stage-view idle-stage" aria-label="头像墙">
+                    <div class="avatar-wall">
+                      <article class="avatar-tile host">
+                        <div class="avatar-circle">主</div>
+                        <div class="avatar-meta">
+                          <strong>主持人</strong>
+                          <span>静音</span>
+                        </div>
+                      </article>
+
+                      <article class="avatar-tile">
+                        <div class="avatar-circle">设</div>
+                        <div class="avatar-meta">
+                          <strong>设计评审嘉宾</strong>
+                          <span>发言中</span>
+                        </div>
+                      </article>
+
+                      <article class="avatar-tile">
+                        <div class="avatar-circle">运</div>
+                        <div class="avatar-meta">
+                          <strong>运维同学</strong>
+                          <span>静音</span>
+                        </div>
+                      </article>
+
+                      <article class="avatar-tile">
+                        <div class="avatar-circle">产</div>
+                        <div class="avatar-meta">
+                          <strong>产品负责人</strong>
+                          <span>静音</span>
+                        </div>
+                      </article>
+                    </div>
+                  </section>
+
+                  <section class="participant-strip" aria-label="参会者缩略条">
+                    <article class="participant-chip active">
+                      <div class="chip-avatar">主</div>
+                      <div class="chip-copy">
+                        <strong>主持人</strong>
+                        <span>主画面</span>
+                      </div>
+                    </article>
+                    <article class="participant-chip">
+                      <div class="chip-avatar">设</div>
+                      <div class="chip-copy">
+                        <strong>设计评审嘉宾</strong>
+                        <span>摄像头关闭</span>
+                      </div>
+                    </article>
+                    <article class="participant-chip">
+                      <div class="chip-avatar">产</div>
+                      <div class="chip-copy">
+                        <strong>产品负责人</strong>
+                        <span>共享屏幕</span>
+                      </div>
+                    </article>
+                  </section>
+                </main>
+
+                <nav class="room-toolbar" aria-label="H5 会中工具栏">
+                  <button class="tool-button">
+                    <span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 1 3 3v4a3 3 0 1 1-6 0V7a3 3 0 0 1 3-3ZM5 11a7 7 0 0 0 14 0M12 18v2M8 20h8" /></svg></span>
+                    <span class="tool-label">麦克风</span>
+                  </button>
+                  <button class="tool-button">
+                    <span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M4 8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM16 10l4-2v8l-4-2" /></svg></span>
+                    <span class="tool-label">摄像头</span>
+                  </button>
+                  <button class="tool-button">
+                    <span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M8 5H5v3M16 5h3v3M8 19H5v-3M16 19h3v-3" /></svg></span>
+                    <span class="tool-label">共享</span>
+                  </button>
+                  <button class="tool-button" data-panel-target="chat">
+                    <span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M5 7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 3v-3a2 2 0 0 1-2-2z" /></svg></span>
+                    <span class="tool-label">聊天</span>
+                    <span class="unread-dot"></span>
+                  </button>
+                  <button class="tool-button" data-panel-target="members">
+                    <span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM20 21v-2a4 4 0 0 0-3-3.87M14 3.13A4 4 0 0 1 14 11" /></svg></span>
+                    <span class="tool-label">成员</span>
+                  </button>
+                  <button class="tool-button" data-panel-target="actions">
+                    <span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></span>
+                    <span class="tool-label">更多</span>
+                  </button>
+                  <button class="tool-button danger">
+                    <span class="tool-icon"><svg viewBox="0 0 24 24"><path d="M18 8 6 16M6 8l12 8" /></svg></span>
+                    <span class="tool-label">结束</span>
+                  </button>
+                </nav>
+
+                <div class="panel-layer">
+                  <div class="panel-scrim"></div>
+
+                  <section class="room-panel" data-panel-view="chat">
+                    <div class="panel-head">
+                      <div>
+                        <div class="eyebrow">Chat</div>
+                        <h3>聊天</h3>
+                      </div>
+                      <button class="icon-button small" data-panel-target="none" type="button" aria-label="关闭聊天">
+                        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                    <div class="message-list">
+                      <article class="message-card mine">
+                        <strong>主持人</strong>
+                        <p>先看主画面，再决定是否给共享屏幕权限。</p>
+                        <span>09:38</span>
+                      </article>
+                      <article class="message-card">
+                        <strong>设计评审嘉宾</strong>
+                        <p>收到，我先走聊天和纪要协作，不抢占主舞台。</p>
+                        <span>09:39</span>
+                      </article>
+                    </div>
+                    <div class="composer">
+                      <input type="text" value="输入消息…" />
+                      <button class="button primary compact-button" type="button">发送</button>
+                    </div>
+                  </section>
+
+                  <section class="room-panel" data-panel-view="members">
+                    <div class="panel-head">
+                      <div>
+                        <div class="eyebrow">Members</div>
+                        <h3>成员</h3>
+                      </div>
+                      <button class="icon-button small" data-panel-target="none" type="button" aria-label="关闭成员列表">
+                        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                    <div class="member-list">
+                      <article class="member-card">
+                        <strong>主持人</strong>
+                        <span>host · 摄像头 / 麦克风 / 白板 / 录制</span>
+                      </article>
+                      <article class="member-card">
+                        <strong>设计评审嘉宾</strong>
+                        <span>participant · 已申请共享屏幕</span>
+                      </article>
+                      <article class="member-card">
+                        <strong>产品负责人</strong>
+                        <span>participant · 聊天可用</span>
+                      </article>
+                    </div>
+                  </section>
+
+                  <section class="room-panel" data-panel-view="actions">
+                    <div class="panel-head">
+                      <div>
+                        <div class="eyebrow">Actions</div>
+                        <h3>会议工具</h3>
+                      </div>
+                      <button class="icon-button small" data-panel-target="none" type="button" aria-label="关闭会议工具">
+                        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                    <div class="action-grid">
+                      <button class="sheet-action" type="button">邀请参会者</button>
+                      <button class="sheet-action" type="button">申请录制</button>
+                      <button class="sheet-action" type="button">白板与纪要</button>
+                      <button class="sheet-action" type="button">主持人工具</button>
+                    </div>
+                  </section>
+
+                  <section class="room-panel" data-panel-view="share">
+                    <div class="panel-head">
+                      <div>
+                        <div class="eyebrow">Invite</div>
+                        <h3>邀请</h3>
+                      </div>
+                      <button class="icon-button small" data-panel-target="none" type="button" aria-label="关闭邀请面板">
+                        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                    <div class="share-card">
+                      <div class="share-copy">
+                        <strong>821 503 974</strong>
+                        <p>复制公开会议号和二维码，沿用 PC 端分享语义。</p>
+                      </div>
+                      <div class="share-qr" aria-hidden="true"></div>
+                      <div class="action-grid single">
+                        <button class="sheet-action" type="button">复制全部信息</button>
+                        <button class="sheet-action" type="button">复制会议二维码</button>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const preview = document.querySelector(".h5-room-preview");
+        if (!preview) {
+          return;
+        }
+
+        const deviceButtons = Array.from(document.querySelectorAll("[data-device-target]"));
+        const stageButtons = Array.from(document.querySelectorAll("[data-stage-target]"));
+        const panelButtons = Array.from(document.querySelectorAll("[data-panel-target]"));
+        const unreadButtons = Array.from(document.querySelectorAll("[data-unread-target]"));
+
+        function setDevice(nextDevice) {
+          if (nextDevice !== "phone" && nextDevice !== "pad") {
+            return;
+          }
+          preview.dataset.device = nextDevice;
+          for (const button of deviceButtons) {
+            button.classList.toggle("active", button.dataset.deviceTarget === nextDevice);
+          }
+        }
+
+        function setStage(nextStage) {
+          if (nextStage !== "active" && nextStage !== "idle") {
+            return;
+          }
+          preview.dataset.stage = nextStage;
+          for (const button of stageButtons) {
+            button.classList.toggle("active", button.dataset.stageTarget === nextStage);
+          }
+        }
+
+        function setPanel(nextPanel) {
+          const supportedPanels = new Set(["none", "chat", "members", "actions", "share"]);
+          if (!supportedPanels.has(nextPanel)) {
+            return;
+          }
+          preview.dataset.panel = nextPanel;
+          for (const button of panelButtons) {
+            button.classList.toggle("active", button.dataset.panelTarget === nextPanel);
+          }
+        }
+
+        function setUnread(nextState) {
+          if (nextState !== "off" && nextState !== "on") {
+            return;
+          }
+          preview.dataset.chatUnread = nextState;
+          for (const button of unreadButtons) {
+            button.classList.toggle("active", button.dataset.unreadTarget === nextState);
+          }
+        }
+
+        for (const button of deviceButtons) {
+          button.addEventListener("click", () => {
+            const nextDevice = button.dataset.deviceTarget;
+            if (nextDevice) {
+              setDevice(nextDevice);
+            }
+          });
+        }
+
+        for (const button of stageButtons) {
+          button.addEventListener("click", () => {
+            const nextStage = button.dataset.stageTarget;
+            if (nextStage) {
+              setStage(nextStage);
+            }
+          });
+        }
+
+        for (const button of panelButtons) {
+          button.addEventListener("click", () => {
+            const nextPanel = button.dataset.panelTarget;
+            if (nextPanel) {
+              setPanel(nextPanel);
+            }
+          });
+        }
+
+        for (const button of unreadButtons) {
+          button.addEventListener("click", () => {
+            const nextState = button.dataset.unreadTarget;
+            if (nextState) {
+              setUnread(nextState);
+            }
+          });
+        }
+
+        setDevice(preview.dataset.device || "phone");
+        setStage(preview.dataset.stage || "active");
+        setPanel(preview.dataset.panel || "none");
+        setUnread(preview.dataset.chatUnread || "on");
+      })();
+    </script>
+  </body>
+</html>

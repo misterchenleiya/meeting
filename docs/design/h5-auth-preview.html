@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting H5 Auth Preview</title>
+    <link rel="stylesheet" href="./h5-auth-preview.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="preview-toolbar" aria-label="H5 登录与入会预览控制">
+        <div class="preview-caption">
+          <strong>Meeting / H5 Auth Preview</strong>
+          <p>独立的 H5 设计稿，覆盖登录、登录后入口、预定会议、加入会议和密码确认，统一沿用 PC 端黑色风格。</p>
+        </div>
+
+        <div class="preview-controls">
+          <div class="control-group">
+            <span>设备</span>
+            <button class="preview-switch active" data-device-target="phone" type="button">手机</button>
+            <button class="preview-switch" data-device-target="pad" type="button">iPad</button>
+          </div>
+
+          <div class="control-group">
+            <span>页面</span>
+            <button class="preview-switch active" data-auth-target="login" type="button">登录</button>
+            <button class="preview-switch" data-auth-target="home" type="button">登录后入口</button>
+            <button class="preview-switch" data-auth-target="schedule" type="button">预定会议</button>
+            <button class="preview-switch" data-auth-target="join" type="button">加入会议</button>
+            <button class="preview-switch" data-auth-target="join-password" type="button">密码确认</button>
+            <button class="preview-switch" data-auth-target="preview" type="button">入会预览</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="h5-auth-preview" data-device="phone" data-auth-view="login">
+        <div class="device-frame">
+          <div class="device-shell">
+            <div class="device-camera" aria-hidden="true"></div>
+
+            <div class="device-screen">
+              <div class="device-statusbar" aria-hidden="true">
+                <span>9:41</span>
+                <div class="status-icons">
+                  <span></span>
+                  <span></span>
+                  <span class="battery"></span>
+                </div>
+              </div>
+
+              <section class="auth-stage">
+                <header class="brand-stage">
+                  <div class="brand-mark">
+                    <h1 class="wordmark">meeting</h1>
+                    <div class="brand-spotlight" aria-hidden="true"></div>
+                    <p>把 PC 端黑色舞台压缩成适合拇指操作的 H5 单列壳层。</p>
+                  </div>
+
+                  <div class="brand-badges">
+                    <span class="badge">P2P 优先</span>
+                    <span class="badge">WSS 信令</span>
+                    <span class="badge">H5 / iPad</span>
+                  </div>
+                </header>
+
+                <section class="surface-card" data-view="login">
+                  <div class="section-copy">
+                    <div class="eyebrow">Sign in</div>
+                    <h2>登录 meeting</h2>
+                    <p>保持和 PC 端一致的品牌、色彩和玻璃面板质感，但把输入与操作收敛成单手可达的纵向结构。</p>
+                  </div>
+
+                  <div class="mode-strip" aria-label="登录方式">
+                    <button class="mode-chip active" type="button">验证码登录</button>
+                    <button class="mode-chip" type="button">密码登录</button>
+                  </div>
+
+                  <form class="form-stack">
+                    <label>
+                      邮箱
+                      <input type="email" placeholder="请输入邮箱" value="meeting@07c2.com.cn" />
+                    </label>
+
+                    <label>
+                      验证码
+                      <div class="inline-field">
+                        <input type="text" placeholder="请输入验证码" value="682914" />
+                        <button class="field-action" type="button">获取验证码</button>
+                      </div>
+                    </label>
+
+                    <label>
+                      密码
+                      <input type="password" placeholder="使用密码登录时填写" value="helloworld" />
+                    </label>
+                  </form>
+
+                  <div class="action-stack">
+                    <button class="button primary" data-auth-target="home" type="button">登录</button>
+                    <button class="button secondary wechat-button" type="button">
+                      <span class="wechat-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                          <circle cx="9" cy="10" r="6.5" fill="#09b83e" />
+                          <circle cx="15.2" cy="13.6" r="5.4" fill="#09b83e" />
+                          <circle cx="7.3" cy="9.7" r="0.9" fill="#ffffff" />
+                          <circle cx="10.4" cy="9.7" r="0.9" fill="#ffffff" />
+                          <circle cx="13.8" cy="13.2" r="0.75" fill="#ffffff" />
+                          <circle cx="16.6" cy="13.2" r="0.75" fill="#ffffff" />
+                          <path d="M8.3 14.2 7.1 15.4v-1.7" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1" />
+                        </svg>
+                      </span>
+                      微信快捷登录
+                    </button>
+                  </div>
+
+                  <div class="footer-links">
+                    <button type="button">忘记密码</button>
+                    <button data-auth-target="join" type="button">加入会议</button>
+                  </div>
+                </section>
+
+                <section class="surface-card" data-view="home">
+                  <div class="section-copy">
+                    <div class="eyebrow">Home</div>
+                    <h2>快速会议 / 预定会议</h2>
+                    <p>H5 不复制 PC 的双栏排布，改为单列卡片；到 iPad 时再扩展成双列，但视觉语言保持同一套暗色产品壳层。</p>
+                  </div>
+
+                  <div class="feature-grid">
+                    <article class="feature-card">
+                      <div>
+                        <strong>快速会议</strong>
+                        <p>先进入 H5 入会预览，再决定是否打开摄像头和麦克风。</p>
+                      </div>
+                      <button class="button primary link-button" data-auth-target="preview" type="button">立即开始</button>
+                    </article>
+
+                    <article class="feature-card">
+                      <div>
+                        <strong>预定会议</strong>
+                        <p>先确认主题、时间和密码，适合正式安排。</p>
+                      </div>
+                      <button class="button secondary" data-auth-target="schedule" type="button">进入预定流程</button>
+                    </article>
+                  </div>
+
+                  <div class="meeting-summary">
+                    <span class="summary-tag">最近会议</span>
+                    <strong>821 503 974</strong>
+                    <p>全球产品评审会 · 今晚 19:30 · 需要会议密码</p>
+                  </div>
+
+                  <div class="action-stack compact">
+                    <button class="button ghost" data-auth-target="join" type="button">已有会议号，直接加入</button>
+                  </div>
+                </section>
+
+                <section class="surface-card" data-view="schedule">
+                  <div class="section-copy">
+                    <div class="eyebrow">Schedule</div>
+                    <h2>预定会议</h2>
+                    <p>手机端保持单列填写；iPad 端扩展为双列字段区，但仍保留相同的顶部说明和底部主次按钮。</p>
+                  </div>
+
+                  <form class="form-stack schedule-grid">
+                    <label>
+                      会议主题
+                      <input type="text" value="全球产品评审会" />
+                    </label>
+
+                    <label>
+                      会议时间
+                      <input type="datetime-local" value="2026-04-18T19:30" />
+                    </label>
+
+                    <label>
+                      时区
+                      <select>
+                        <option>Asia/Shanghai (UTC+08:00)</option>
+                        <option>UTC</option>
+                        <option>America/Los_Angeles (UTC-07:00)</option>
+                      </select>
+                    </label>
+
+                    <label>
+                      会议密码（可选）
+                      <input type="text" value="stage2026" />
+                    </label>
+
+                    <label class="wide-field">
+                      备注
+                      <textarea rows="3">保留主持人工具、纪要导出和屏幕共享权限审批。</textarea>
+                    </label>
+                  </form>
+
+                  <div class="action-stack compact">
+                    <button class="button primary" data-auth-target="preview" type="button">预定并进入预览</button>
+                    <button class="button ghost" data-auth-target="home" type="button">返回</button>
+                  </div>
+                </section>
+
+                <section class="surface-card" data-view="join">
+                  <div class="section-copy">
+                    <div class="eyebrow">Join</div>
+                    <h2>加入会议</h2>
+                    <p>保持和 PC 一致的“先查会，再确认密码”两段式流程，但在 H5 中把扫码、昵称和媒体申请入口排成一列。</p>
+                  </div>
+
+                  <form class="form-stack">
+                    <label>
+                      会议号
+                      <input type="text" value="821 503 974" />
+                    </label>
+
+                    <label>
+                      昵称
+                      <input type="text" value="设计评审嘉宾" />
+                    </label>
+
+                    <div class="toggle-grid">
+                      <label class="toggle-card">
+                        <span>入会后申请摄像头</span>
+                        <span class="toggle on"></span>
+                      </label>
+                      <label class="toggle-card">
+                        <span>入会后申请麦克风</span>
+                        <span class="toggle"></span>
+                      </label>
+                    </div>
+                  </form>
+
+                  <div class="scan-tip">
+                    <strong>扫码加入</strong>
+                    <p>保留与 PC 一致的公开 9 位会议号和二维码语义，H5 端把扫码入口收进主卡片底部的快捷入口。</p>
+                  </div>
+
+                  <div class="action-stack compact">
+                    <button class="button primary" data-auth-target="join-password" type="button">验证会议号</button>
+                    <button class="button ghost" data-auth-target="login" type="button">返回登录</button>
+                  </div>
+                </section>
+
+                <section class="surface-card preview-card" data-view="preview">
+                  <div class="section-copy">
+                    <div class="eyebrow">Preview</div>
+                    <h2>进入会议前预览</h2>
+                    <p>补齐和 PC 端一致的“入会前检查”步骤：先看本地预览、确认设备状态，再正式进入会议。</p>
+                  </div>
+
+                  <div class="preview-layout">
+                    <article class="local-preview-card">
+                      <div class="local-preview-stage">
+                        <span class="preview-badge">本地预览</span>
+                        <div class="preview-avatar">设</div>
+                        <div class="preview-copy">
+                          <strong>设计评审嘉宾</strong>
+                          <span>摄像头已开启 · 麦克风静音</span>
+                        </div>
+                      </div>
+
+                      <div class="device-pill-row">
+                        <span class="device-pill active">前置摄像头</span>
+                        <span class="device-pill">蓝牙耳机</span>
+                        <span class="device-pill">局域网环境</span>
+                      </div>
+                    </article>
+
+                    <div class="preview-settings">
+                      <label class="toggle-card">
+                        <span>进入会议时开启摄像头</span>
+                        <span class="toggle on"></span>
+                      </label>
+
+                      <label class="toggle-card">
+                        <span>进入会议时开启麦克风</span>
+                        <span class="toggle"></span>
+                      </label>
+
+                      <div class="checklist-card">
+                        <strong>入会前检查</strong>
+                        <ul>
+                          <li>会议号与密码已确认</li>
+                          <li>网络状态可用</li>
+                          <li>可以先静音进入，再申请权限</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="action-stack compact">
+                    <a class="button primary link-button" href="./h5-room-preview.html">进入会议</a>
+                    <button class="button ghost" data-auth-target="join" type="button">返回修改入会信息</button>
+                  </div>
+                </section>
+              </section>
+
+              <div class="join-password-layer">
+                <div class="sheet-scrim"></div>
+                <section class="password-sheet">
+                  <div class="sheet-badge">会议号 821 503 974 已确认</div>
+                  <div class="section-copy compact-copy">
+                    <div class="eyebrow">Password</div>
+                    <h3>输入会议密码</h3>
+                    <p>手机端用底部抽屉，iPad 端切换为居中悬浮卡片；与 PC 的深色材质和层级保持一致。</p>
+                  </div>
+
+                  <form class="form-stack compact-form">
+                    <label>
+                      会议密码
+                      <input type="password" value="stage2026" />
+                    </label>
+                  </form>
+
+                  <div class="action-stack compact">
+                    <button class="button primary link-button" data-auth-target="preview" type="button">加入并进入预览</button>
+                    <button class="button ghost" data-auth-target="join" type="button">返回修改</button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const preview = document.querySelector(".h5-auth-preview");
+        if (!preview) {
+          return;
+        }
+
+        const viewButtons = Array.from(document.querySelectorAll("[data-auth-target]"));
+        const deviceButtons = Array.from(document.querySelectorAll("[data-device-target]"));
+        const supportedViews = new Set(["login", "home", "schedule", "join", "join-password", "preview"]);
+
+        function setView(nextView) {
+          if (!supportedViews.has(nextView)) {
+            return;
+          }
+
+          preview.dataset.authView = nextView;
+          for (const button of viewButtons) {
+            button.classList.toggle("active", button.dataset.authTarget === nextView);
+          }
+        }
+
+        function setDevice(nextDevice) {
+          if (nextDevice !== "phone" && nextDevice !== "pad") {
+            return;
+          }
+
+          preview.dataset.device = nextDevice;
+          for (const button of deviceButtons) {
+            button.classList.toggle("active", button.dataset.deviceTarget === nextDevice);
+          }
+        }
+
+        function resolveView() {
+          const hashView = window.location.hash.replace(/^#/, "");
+          if (supportedViews.has(hashView)) {
+            return hashView;
+          }
+          return preview.dataset.authView || "login";
+        }
+
+        for (const button of viewButtons) {
+          button.addEventListener("click", () => {
+            const nextView = button.dataset.authTarget;
+            if (nextView) {
+              setView(nextView);
+            }
+          });
+        }
+
+        for (const button of deviceButtons) {
+          button.addEventListener("click", () => {
+            const nextDevice = button.dataset.deviceTarget;
+            if (nextDevice) {
+              setDevice(nextDevice);
+            }
+          });
+        }
+
+        window.addEventListener("hashchange", () => {
+          setView(resolveView());
+        });
+
+        setDevice(preview.dataset.device || "phone");
+        setView(resolveView());
+      })();
+    </script>
+  </body>
+</html>
