@@ -1,11 +1,86 @@
 <navigation-bar title="会议中" color="white" background="transparent"></navigation-bar>
 
 <view class="page">
-  <view class="stage-card">
-    <view class="meeting-title">{{meetingTitle}}</view>
-    <view class="meeting-number">会议号：{{meetingNumber}}</view>
-    <view class="participant-line">当前身份：{{participantNickname}} · {{participantRole}}</view>
-    <view class="placeholder">小程序端音视频会中能力正在开发中，当前版本先提供微信快捷登录与基础入会壳层。</view>
-    <button class="leave-button" bindtap="handleLeaveMeeting" loading="{{leaving}}">离开会议</button>
+  <view class="top-card">
+    <view class="top-copy">
+      <view class="meeting-title">{{meetingTitle}}</view>
+      <view class="meeting-number">{{meetingNumber}}</view>
+      <view class="participant-line">当前身份：{{participantNickname}} · {{participantRole}}</view>
+    </view>
+    <button class="status-pill" bindtap="handleToggleStageMode">{{stageMode === 'shell' ? '舞台视图' : '会议概览'}}</button>
   </view>
+
+  <view wx:if="{{stageMode === 'shell'}}" class="stage-card">
+    <view class="stage-avatar">{{participantInitial}}</view>
+    <view class="stage-title">已加入会议</view>
+    <view class="stage-copy">当前设备将按已选偏好加入会议。</view>
+
+    <view class="info-grid">
+      <view class="info-card">
+        <view class="info-label">摄像头偏好</view>
+        <view class="info-value">{{requestCameraEnabled ? '开启' : '关闭'}}</view>
+      </view>
+      <view class="info-card">
+        <view class="info-label">麦克风偏好</view>
+        <view class="info-value">{{requestMicrophoneEnabled ? '开启' : '静音'}}</view>
+      </view>
+      <view class="info-card">
+        <view class="info-label">参会身份</view>
+        <view class="info-value">{{participantRole}}</view>
+      </view>
+      <view class="info-card">
+        <view class="info-label">网络状态</view>
+        <view class="info-value">正常</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:else class="stage-card future-stage">
+    <view class="future-pill">视频区域</view>
+    <view class="future-title">视频区域预留</view>
+    <view class="future-copy">视频内容会显示在这里。</view>
+  </view>
+
+  <view class="toolbar">
+    <button class="tool-button {{currentPanel === 'members' ? 'active' : ''}}" data-panel="members" bindtap="handleTogglePanel">成员</button>
+    <button class="tool-button {{currentPanel === 'chat' ? 'active' : ''}}" data-panel="chat" bindtap="handleTogglePanel">聊天</button>
+    <button class="tool-button {{currentPanel === 'actions' ? 'active' : ''}}" data-panel="actions" bindtap="handleTogglePanel">更多</button>
+    <button class="tool-button danger" bindtap="handleLeaveMeeting" loading="{{leaving}}">离开</button>
+  </view>
+
+  <view wx:if="{{currentPanel !== 'none'}}" class="panel-layer">
+    <view class="panel-scrim" bindtap="handleClosePanel"></view>
+    <view class="panel-card">
+      <view class="panel-head">
+        <view class="panel-title">
+          {{currentPanel === 'members' ? '成员列表' : currentPanel === 'chat' ? '聊天' : '更多'}}
+        </view>
+        <button class="panel-close" bindtap="handleClosePanel">关闭</button>
+      </view>
+
+      <view wx:if="{{currentPanel === 'members'}}" class="panel-list">
+        <view class="panel-item">
+          <view class="item-title">{{participantNickname}}</view>
+          <view class="item-copy">{{participantRole}}</view>
+        </view>
+      </view>
+
+      <view wx:elif="{{currentPanel === 'chat'}}" class="panel-list">
+        <view class="panel-item">
+          <view class="item-title">暂时没有消息</view>
+          <view class="item-copy">新消息会显示在这里。</view>
+        </view>
+      </view>
+
+      <view wx:else class="panel-list">
+        <button class="sheet-action" data-action="copy" bindtap="handleActionTap">复制会议号</button>
+        <button class="sheet-action" data-action="invite" bindtap="handleActionTap">邀请参会者</button>
+        <button class="sheet-action" data-action="profile" bindtap="handleActionTap">查看身份信息</button>
+        <button class="sheet-action" data-action="settings" bindtap="handleActionTap">更多设置</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{statusMessage}}" class="status-text">{{statusMessage}}</view>
+  <view wx:if="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
 </view>

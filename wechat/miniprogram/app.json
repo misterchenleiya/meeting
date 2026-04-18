@@ -3,6 +3,7 @@
     "pages/index/index",
     "pages/home/index",
     "pages/join/index",
+    "pages/prejoin/index",
     "pages/meeting-room/index"
   ],
   "window": {

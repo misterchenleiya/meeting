@@ -2,19 +2,52 @@
 
 <view class="page">
   <view class="card">
-    <view class="card-title">输入会议号</view>
-    <input class="input" placeholder="例如 821 503 974" bindinput="onMeetingNumberInput" value="{{meetingNumberInput}}" />
-    <button class="primary-button" bindtap="handleLookupMeeting" loading="{{loading}}">查询会议</button>
+    <view class="card-title">加入会议</view>
 
-    <view wx:if="{{meetingId}}" class="meeting-summary">
-      <view class="meeting-title">{{meetingTitle}}</view>
-      <view class="meeting-number">会议号：{{meetingNumber}}</view>
+    <view class="input-row">
+      <input
+        class="input meeting-number-input"
+        placeholder="例如 821 503 974"
+        bindinput="onMeetingNumberInput"
+        value="{{meetingNumberInput}}"
+      />
+      <button class="scan-button" bindtap="handleScanMeetingQRCode">扫码</button>
+    </view>
+    <input class="input" placeholder="请输入昵称" bindinput="onNicknameInput" value="{{nicknameInput}}" />
 
-      <input wx:if="{{passwordRequired}}" class="input password-input" password="{{true}}" placeholder="请输入会议密码" bindinput="onPasswordInput" value="{{passwordInput}}" />
-
-      <button class="secondary-button" bindtap="handleJoinMeeting" loading="{{loading}}">加入会议</button>
+    <view class="toggle-grid">
+      <button class="toggle-card {{requestCameraEnabled ? 'active' : ''}}" bindtap="handleToggleCameraPreference">
+        <view class="toggle-title">摄像头</view>
+        <view class="toggle-copy">{{requestCameraEnabled ? '入会开启' : '入会关闭'}}</view>
+      </button>
+      <button class="toggle-card {{requestMicrophoneEnabled ? 'active' : ''}}" bindtap="handleToggleMicrophonePreference">
+        <view class="toggle-title">麦克风</view>
+        <view class="toggle-copy">{{requestMicrophoneEnabled ? '入会开启' : '入会静音'}}</view>
+      </button>
     </view>
 
+    <button class="primary-button" bindtap="handleLookupMeeting" loading="{{loading}}">验证会议号</button>
+    <button class="secondary-button" bindtap="handleBackHome">返回首页</button>
+
+    <view wx:if="{{meetingId}}" class="meeting-summary">
+      <view class="summary-badge">会议号已确认</view>
+      <view class="meeting-title">{{meetingTitle}}</view>
+      <view class="meeting-number">{{meetingNumber}}</view>
+      <view class="meeting-meta">{{passwordRequired ? '需要会议密码' : '无需会议密码'}}</view>
+    </view>
+
+    <view wx:if="{{statusMessage}}" class="status-text">{{statusMessage}}</view>
     <view wx:if="{{errorMessage}}" class="error-text">{{errorMessage}}</view>
+  </view>
+
+  <view wx:if="{{showPasswordSheet}}" class="sheet-layer">
+    <view class="sheet-scrim" bindtap="handleClosePasswordSheet"></view>
+    <view class="sheet-card">
+      <view class="sheet-badge">会议号 {{meetingNumber}} 已确认</view>
+      <view class="sheet-title">输入会议密码</view>
+      <input class="input password-input" password="{{true}}" placeholder="请输入会议密码" bindinput="onPasswordInput" value="{{passwordInput}}" />
+      <button class="primary-button" bindtap="handleContinueToPreview">加入并进入预览</button>
+      <button class="secondary-button" bindtap="handleClosePasswordSheet">返回修改</button>
+    </view>
   </view>
 </view>

@@ -82,7 +82,8 @@ type AuditSummary = {
   updatedAt: string;
 };
 
-type EntryView = "login" | "register" | "home" | "schedule" | "join";
+type EntryView = "login" | "register" | "home" | "schedule" | "join" | "preview";
+type PrejoinOriginView = "home" | "schedule" | "join";
 type SidebarView = "none" | "members" | "chat";
 type MenuView = "none" | "host" | "participant";
 type AttachedPanelView = "none" | "settings" | "apps" | "end";
@@ -147,6 +148,8 @@ type PersistedAppState = {
   scheduleForm: ScheduleFormState;
   joinForm: JoinFormState;
   meetingAccessPassword: string;
+  prejoinSession: SessionState | null;
+  prejoinOriginView: PrejoinOriginView | null;
   meetingSession: SessionState | null;
   returnAfterMeetingView: EntryView;
 };
@@ -263,6 +266,12 @@ function App() {
   const [meetingAccessPassword, setMeetingAccessPassword] = useState(
     initialPersistedState?.meetingAccessPassword ?? ""
   );
+  const [prejoinSession, setPrejoinSession] = useState<SessionState | null>(
+    initialPersistedState?.prejoinSession ?? null
+  );
+  const [prejoinOriginView, setPrejoinOriginView] = useState<PrejoinOriginView | null>(
+    initialPersistedState?.prejoinOriginView ?? null
+  );
   const [returnAfterMeetingView, setReturnAfterMeetingView] = useState<EntryView>(
     initialPersistedState?.returnAfterMeetingView ?? "home"
   );
@@ -297,6 +306,14 @@ function App() {
   useEffect(() => {
     setNicknameDraft(meetingSession?.participant.nickname ?? "");
   }, [meetingSession?.participant.id, meetingSession?.participant.nickname]);
+
+  useEffect(() => {
+    if (meetingSession || entryView !== "preview" || prejoinSession) {
+      return;
+    }
+
+    setEntryView(isAuthenticated ? "home" : "login");
+  }, [entryView, isAuthenticated, meetingSession, prejoinSession]);
 
   useEffect(() => {
     recordingAssetRef.current = recordingAsset;
@@ -494,6 +511,8 @@ function App() {
       scheduleForm,
       joinForm,
       meetingAccessPassword,
+      prejoinSession,
+      prejoinOriginView,
       meetingSession: currentModal === "meeting_ended" ? null : meetingSession,
       returnAfterMeetingView
     });
@@ -505,6 +524,8 @@ function App() {
     joinForm,
     loginForm,
     meetingAccessPassword,
+    prejoinOriginView,
+    prejoinSession,
     meetingSession,
     registerForm,
     returnAfterMeetingView,
@@ -775,6 +796,8 @@ function App() {
     setFeaturedStageId(null);
     setJoinLookupMeeting(null);
     setShowJoinPasswordModal(false);
+    setPrejoinSession(null);
+    setPrejoinOriginView(null);
     setWsConnected(false);
     setMeetingAccessPassword("");
     setJoinForm((current) => ({
@@ -1283,10 +1306,25 @@ function App() {
     setFeaturedStageId(null);
     setJoinLookupMeeting(null);
     setShowJoinPasswordModal(false);
+    setPrejoinSession(null);
+    setPrejoinOriginView(null);
     setStatusMessage(nextStatus);
     setErrorMessage("");
     scrollViewportToTop();
   });
+
+  const openPrejoinSession = useEffectEvent(
+    (meeting: Meeting, participant: Participant, originView: PrejoinOriginView, nextStatus: string) => {
+      setPrejoinSession({ meeting, participant });
+      setPrejoinOriginView(originView);
+      setJoinLookupMeeting(meeting);
+      setShowJoinPasswordModal(false);
+      setEntryView("preview");
+      setStatusMessage(nextStatus);
+      setErrorMessage("");
+      scrollViewportToTop();
+    }
+  );
 
   const syncBaseMediaPreference = useEffectEvent(async (nextPreference: { camera: boolean; microphone: boolean }) => {
     if (!meetingSession) {
@@ -1611,7 +1649,7 @@ function App() {
         meetingId: getMeetingPublicNumber(response.meeting),
         password
       }));
-      enterMeetingSession(response.meeting, response.host, "会议已创建，正在接入信令");
+      openPrejoinSession(response.meeting, response.host, "schedule", "会议已创建，请先确认入会预览");
       appendEvent("meeting.created", `会议 ${response.meeting.title} 已创建`);
       logger.info("meeting.schedule_create_succeeded", {
         meetingId: response.meeting.id,
@@ -1654,7 +1692,7 @@ function App() {
         meetingId: getMeetingPublicNumber(response.meeting),
         password
       }));
-      enterMeetingSession(response.meeting, response.host, "快速会议已创建，正在接入信令");
+      openPrejoinSession(response.meeting, response.host, "home", "快速会议已创建，请先确认入会预览");
       appendEvent("meeting.created", `快速会议 ${response.meeting.title} 已创建`);
       logger.info("meeting.quick_create_succeeded", {
         meetingId: response.meeting.id,
@@ -1686,7 +1724,8 @@ function App() {
       requestMicrophoneEnabled: joinForm.requestMicrophoneEnabled
     });
     setMeetingAccessPassword(password);
-    enterMeetingSession(response.meeting, response.participant, "已加入会议，正在接入信令");
+    setReturnAfterMeetingView(isAuthenticated ? "home" : "login");
+    openPrejoinSession(response.meeting, response.participant, "join", "已加入会议，请先确认入会预览");
     appendEvent("meeting.joined", `${response.participant.nickname} 已加入会议`);
     logger.info("meeting.join_succeeded", {
       meetingId: response.meeting.id,
@@ -1761,6 +1800,79 @@ function App() {
     } catch (error) {
       setErrorMessage(asMessage(error));
     }
+  });
+
+  const handleUpdatePrejoinPreference = useEffectEvent((nextPreference: {
+    camera: boolean;
+    microphone: boolean;
+  }) => {
+    setJoinForm((current) => ({
+      ...current,
+      requestCameraEnabled: nextPreference.camera,
+      requestMicrophoneEnabled: nextPreference.microphone
+    }));
+    setPrejoinSession((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        participant: {
+          ...current.participant,
+          requestedMediaPreference: {
+            ...current.participant.requestedMediaPreference,
+            cameraEnabled: nextPreference.camera,
+            microphoneEnabled: nextPreference.microphone
+          }
+        }
+      };
+    });
+    setStatusMessage("入会偏好已更新，进入会议后会按当前选择继续");
+    setErrorMessage("");
+  });
+
+  const handleReturnFromPrejoin = useEffectEvent(async () => {
+    if (!prejoinSession) {
+      setEntryView(prejoinOriginView ?? "home");
+      return;
+    }
+
+    try {
+      if (prejoinOriginView === "join") {
+        await leaveMeeting({
+          meetingId: prejoinSession.meeting.id,
+          participantId: prejoinSession.participant.id,
+          deviceType
+        });
+      } else if (prejoinOriginView === "home" || prejoinOriginView === "schedule") {
+        await endMeeting({
+          meetingId: prejoinSession.meeting.id,
+          hostParticipantId: prejoinSession.participant.id,
+          deviceType
+        });
+      }
+    } catch (error) {
+      setErrorMessage(asMessage(error));
+      return;
+    }
+
+    setPrejoinSession(null);
+    setPrejoinOriginView(null);
+    setJoinLookupMeeting(null);
+    setStatusMessage("已返回上一页，可继续修改入会信息");
+    setErrorMessage("");
+    setEntryView(prejoinOriginView ?? "home");
+    scrollViewportToTop();
+  });
+
+  const handleEnterMeetingFromPrejoin = useEffectEvent(() => {
+    if (!prejoinSession) {
+      setErrorMessage("当前没有待进入的会议");
+      return;
+    }
+
+    enterMeetingSession(prejoinSession.meeting, prejoinSession.participant, "已进入会议，正在接入信令");
   });
 
   const handleScannedJoinQRCode = useEffectEvent((payloadText: string) => {
@@ -2449,6 +2561,13 @@ function App() {
   const canRecord = meetingSession ? hasCapability(meetingSession, "record") : false;
   const canWhiteboard = meetingSession ? hasCapability(meetingSession, "whiteboard") : false;
   const canReadyCheck = meetingSession ? hasCapability(meetingSession, "ready_check") : false;
+  const prejoinPreference = {
+    camera: joinForm.requestCameraEnabled,
+    microphone: joinForm.requestMicrophoneEnabled
+  };
+  const prejoinMeetingNumberLabel = prejoinSession
+    ? formatMeetingNumberDisplay(getMeetingPublicNumber(prejoinSession.meeting))
+    : "";
   const localReadyCheckStatus = activeReadyCheck && meetingSession
     ? activeReadyCheck.results[meetingSession.participant.id]?.status
     : undefined;
@@ -2518,6 +2637,14 @@ function App() {
               <h1 className="wordmark">
                 <span>meeting</span>
               </h1>
+              <p className="brand-description">
+                把 PC 端黑色舞台压缩成更适合手机浏览器和 iPad 的会议壳层，同时保留同一套品牌、聚光灯和按钮层级。
+              </p>
+              <div className="brand-badge-row" aria-label="品牌能力标签">
+                <span className="brand-badge">P2P 优先</span>
+                <span className="brand-badge">WSS 信令</span>
+                <span className="brand-badge">H5 / iPad</span>
+              </div>
             </div>
           </section>
 
@@ -2684,12 +2811,19 @@ function App() {
             {entryView === "home" ? (
               <section className="panel auth-card" data-view="home">
                 <div className="login-header-copy">
-                  <div className="login-mode-title">预定会议 / 快速会议</div>
+                  <div className="login-mode-title">快速会议 / 预定会议</div>
                   <button className="login-switch-link" onClick={handleLogoutAndReturnToLogin} type="button">
                     退出登录 &gt;
                   </button>
                 </div>
                 <div className="quick-list">
+                  <article className="quick-card">
+                    <strong>快速会议</strong>
+                    <span>先进入入会预览，再决定是否开启摄像头和麦克风，适合站会、短会和临时沟通。</span>
+                    <button className="primary-button" onClick={() => void handleStartQuickMeeting()} type="button">
+                      立即开始
+                    </button>
+                  </article>
                   <article className="quick-card">
                     <strong>预定会议</strong>
                     <span>填写主题、时间、时区和可选密码，适合提前安排的正式会议。</span>
@@ -2697,13 +2831,11 @@ function App() {
                       进入预定流程
                     </button>
                   </article>
-                  <article className="quick-card">
-                    <strong>快速会议</strong>
-                    <span>立即创建并开始会议，适合站会、短会和临时沟通。</span>
-                    <button className="primary-button" onClick={() => void handleStartQuickMeeting()} type="button">
-                      立即开始
-                    </button>
-                  </article>
+                </div>
+                <div className="meeting-summary-card">
+                  <span className="meeting-badge">最近会议</span>
+                  <strong>821 503 974</strong>
+                  <p>全球产品评审会 · 今晚 19:30 · 需要会议密码</p>
                 </div>
                 <button className="ghost-button" onClick={() => setEntryView("join")} type="button">
                   已有会议号？加入会议
@@ -2718,7 +2850,7 @@ function App() {
                   <h2>预定会议</h2>
                 </div>
                 <p className="section-copy">
-                  当前后端还没有真正的预约会议模型，本轮会按预定表单创建可立即进入的会议，同时保留未来扩展所需字段。
+                  当前后端还没有真正的预约会议模型，本轮会按预定表单创建可立即进入的会议，再进入 H5 入会预览确认。
                 </p>
                 {showEntryFeedback ? (
                   <div className="status-stack compact">
@@ -2773,7 +2905,7 @@ function App() {
                   </label>
                   <div className="button-row">
                     <button className="primary-button" type="submit">
-                      预定会议
+                      预定并进入预览
                     </button>
                     <button className="ghost-button" onClick={() => setEntryView("home")} type="button">
                       返回
@@ -2894,7 +3026,7 @@ function App() {
                       </label>
                       <div className="button-row">
                         <button className="primary-button" onClick={() => void handleConfirmJoinMeeting()} type="button">
-                          加入并进入会议
+                          加入并进入预览
                         </button>
                         <button className="ghost-button" onClick={() => setShowJoinPasswordModal(false)} type="button">
                           返回
@@ -2940,6 +3072,105 @@ function App() {
                     </div>
                   </div>
                 ) : null}
+              </section>
+            ) : null}
+
+            {entryView === "preview" && prejoinSession ? (
+              <section className="panel auth-card auth-card-preview" data-view="preview">
+                <div className="section-copy">
+                  <p className="eyebrow">Preview</p>
+                  <h2>进入会议前预览</h2>
+                  <p>
+                    先确认会议信息、昵称和入会偏好，再正式接入会议房间。当前这一步优先收口 H5 的流程与布局，媒体权限继续沿用现有会中模型。
+                  </p>
+                </div>
+
+                <div className="prejoin-layout">
+                  <article className="prejoin-stage-card">
+                    <div className="prejoin-stage-shell">
+                      <span className="meeting-badge">本地预览</span>
+                      <StreamFrame
+                        className="prejoin-stage-media"
+                        muted
+                        placeholder={renderStreamFallback(prejoinSession.participant.nickname, "camera")}
+                        stream={localStream}
+                      />
+                      <div className="prejoin-stage-copy">
+                        <strong>{prejoinSession.participant.nickname}</strong>
+                        <span>
+                          {prejoinPreference.camera ? "摄像头申请开启" : "摄像头默认关闭"} ·{" "}
+                          {prejoinPreference.microphone ? "麦克风申请开启" : "麦克风默认静音"}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+
+                  <div className="prejoin-preferences">
+                    <div className="prejoin-pill-row">
+                      <span className="meeting-badge">会议号 {prejoinMeetingNumberLabel}</span>
+                      <span className={`prejoin-status-chip ${supportsUserMediaCapture() ? "is-live" : ""}`}>
+                        {supportsUserMediaCapture() ? "当前环境支持媒体采集" : "当前环境需要 HTTPS 或 localhost"}
+                      </span>
+                    </div>
+
+                    <div className="prejoin-toggle-grid">
+                      <button
+                        className={`prejoin-toggle-card ${prejoinPreference.camera ? "is-active" : ""}`}
+                        onClick={() =>
+                          handleUpdatePrejoinPreference({
+                            camera: !prejoinPreference.camera,
+                            microphone: prejoinPreference.microphone
+                          })
+                        }
+                        type="button"
+                      >
+                        <strong>摄像头</strong>
+                        <span>{prejoinPreference.camera ? "进入会议后申请开启" : "进入会议后默认关闭"}</span>
+                      </button>
+                      <button
+                        className={`prejoin-toggle-card ${prejoinPreference.microphone ? "is-active" : ""}`}
+                        onClick={() =>
+                          handleUpdatePrejoinPreference({
+                            camera: prejoinPreference.camera,
+                            microphone: !prejoinPreference.microphone
+                          })
+                        }
+                        type="button"
+                      >
+                        <strong>麦克风</strong>
+                        <span>{prejoinPreference.microphone ? "进入会议后申请开启" : "进入会议后默认静音"}</span>
+                      </button>
+                    </div>
+
+                    <div className="prejoin-checklist">
+                      <article className="prejoin-check-item">
+                        <strong>会议主题</strong>
+                        <span>{prejoinSession.meeting.title}</span>
+                      </article>
+                      <article className="prejoin-check-item">
+                        <strong>密码状态</strong>
+                        <span>{prejoinSession.meeting.passwordRequired ? "已完成密码校验" : "该会议无需密码"}</span>
+                      </article>
+                      <article className="prejoin-check-item">
+                        <strong>入会前检查</strong>
+                        <span>
+                          {supportsUserMediaCapture()
+                            ? "网络与浏览器环境可继续入会，正式媒体能力仍由现有会中权限控制。"
+                            : "当前页面无法直接调用摄像头或麦克风，请优先通过 HTTPS 或 localhost 访问。"}
+                        </span>
+                      </article>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="button-row">
+                  <button className="primary-button" onClick={handleEnterMeetingFromPrejoin} type="button">
+                    进入会议
+                  </button>
+                  <button className="ghost-button" onClick={handleReturnFromPrejoin} type="button">
+                    返回修改入会信息
+                  </button>
+                </div>
               </section>
             ) : null}
           </aside>
@@ -4844,13 +5075,13 @@ function readPersistedAppState(): PersistedAppState | null {
     const parsed = JSON.parse(raw) as Partial<PersistedAppState>;
     const defaultScheduleForm = buildDefaultScheduleForm();
     const currentUser = isPersistedAuthUser(parsed.currentUser) ? parsed.currentUser : null;
+    const prejoinSession = isPersistedSessionState(parsed.prejoinSession) ? parsed.prejoinSession : null;
+    const fallbackEntryView =
+      parsed.isAuthenticated === true || Boolean(currentUser) ? "home" : "login";
     return {
       isAuthenticated: parsed.isAuthenticated === true || Boolean(currentUser),
       currentUser,
-      entryView: normalizeEntryView(
-        parsed.entryView,
-        parsed.isAuthenticated === true || Boolean(currentUser) ? "home" : "login"
-      ),
+      entryView: normalizeEntryView(parsed.entryView, fallbackEntryView, prejoinSession !== null),
       loginForm: {
         mode: parsed.loginForm?.mode === "password" ? "password" : defaultLoginForm.mode,
         email: parsed.loginForm?.email ?? defaultLoginForm.email,
@@ -4878,6 +5109,13 @@ function readPersistedAppState(): PersistedAppState | null {
           parsed.joinForm?.requestMicrophoneEnabled ?? defaultJoinForm.requestMicrophoneEnabled
       },
       meetingAccessPassword: parsed.meetingAccessPassword ?? "",
+      prejoinSession,
+      prejoinOriginView:
+        parsed.prejoinOriginView === "home" ||
+        parsed.prejoinOriginView === "schedule" ||
+        parsed.prejoinOriginView === "join"
+          ? parsed.prejoinOriginView
+          : null,
       meetingSession: isPersistedSessionState(parsed.meetingSession) ? parsed.meetingSession : null,
       returnAfterMeetingView: parsed.returnAfterMeetingView === "schedule" ? "schedule" : "home"
     };
@@ -4898,13 +5136,18 @@ function writePersistedAppState(state: PersistedAppState) {
   }
 }
 
-function normalizeEntryView(value: EntryView | undefined, fallback: EntryView): EntryView {
+function normalizeEntryView(
+  value: EntryView | undefined,
+  fallback: EntryView,
+  allowPreview = false
+): EntryView {
   if (
     value === "login" ||
     value === "register" ||
     value === "home" ||
     value === "schedule" ||
-    value === "join"
+    value === "join" ||
+    (allowPreview && value === "preview")
   ) {
     return value;
   }
