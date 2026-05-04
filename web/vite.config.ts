@@ -1,5 +1,4 @@
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
@@ -7,7 +6,6 @@ import react from "@vitejs/plugin-react";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
 const workspaceRoot = path.resolve(rootDir, "..");
-const packageJSONPath = path.resolve(rootDir, "package.json");
 
 function formatBuildTime(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -23,12 +21,20 @@ function formatBuildTime(date: Date): string {
   )}`;
 }
 
-function readFrontendVersion(): string {
-  const packageJSON = JSON.parse(readFileSync(packageJSONPath, "utf8")) as {
-    version?: string;
-  };
+function readGitTag(): string {
+  try {
+    const tag = execSync("git describe --tags --exact-match HEAD", {
+      cwd: workspaceRoot,
+      stdio: ["ignore", "pipe", "ignore"]
+    })
+      .toString()
+      .trim();
 
-  return packageJSON.version?.trim() || "0.0.0";
+    return tag || "untagged";
+  } catch {
+    // Only use git tag for the version badge; when HEAD is not tagged, show "untagged".
+    return "untagged";
+  }
 }
 
 function readGitCommit(): string {
@@ -48,7 +54,7 @@ function readGitCommit(): string {
 }
 
 const frontendBuildInfo = {
-  version: readFrontendVersion(),
+  version: readGitTag(),
   commit: readGitCommit(),
   buildTime: formatBuildTime(new Date())
 };

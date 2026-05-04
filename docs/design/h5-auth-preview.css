@@ -315,33 +315,6 @@ button {
   transform: translateY(-12px);
 }
 
-.brand-mark p {
-  margin: 0;
-  max-width: 36ch;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.7;
-}
-
-.brand-badges {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  color: #dadade;
-  font-size: 12px;
-}
-
 .surface-card {
   position: relative;
   z-index: 1;
@@ -610,8 +583,6 @@ button {
 .checklist-card strong {
   font-size: 18px;
 }
-
-.feature-card p,
 .meeting-summary p,
 .checklist-card p {
   margin: 0;

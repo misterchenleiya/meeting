@@ -398,16 +398,12 @@ select {
 }
 
 .auth-frame[data-auth-view="home"] .quick-card {
-  gap: 6px;
+  gap: 10px;
   padding: 14px 16px;
 }
 
 .auth-frame[data-auth-view="home"] .quick-card strong {
   font-size: 14px;
-}
-
-.auth-frame[data-auth-view="home"] .quick-card span {
-  font-size: 13px;
 }
 
 .auth-frame[data-auth-view="home"] .quick-card .button,
@@ -567,11 +563,6 @@ select {
   font-size: 15px;
 }
 
-.quick-card span {
-  color: var(--muted);
-  line-height: 1.55;
-}
-
 .quick-card {
   position: relative;
 }
@@ -671,11 +662,6 @@ select {
   border-radius: 50%;
   background: var(--success);
   box-shadow: 0 0 14px rgba(48, 209, 88, 0.65);
-}
-
-.auth-note {
-  font-size: 13px;
-  color: var(--muted);
 }
 
 @media (max-width: 1180px) {

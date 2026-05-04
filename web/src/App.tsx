@@ -181,9 +181,9 @@ const frontendBuildInfo = {
   buildTime: __MEETING_WEB_BUILD_TIME__
 };
 
-function BuildMetadataBadge({ variant }: { variant: "auth" | "room" }) {
+function BuildMetadataBadge() {
   return (
-    <aside className={`build-metadata build-metadata--${variant}`} aria-label="版本信息">
+    <aside className="build-metadata build-metadata--auth" aria-label="版本信息">
       <span>version: {frontendBuildInfo.version}</span>
       <span>commit: {frontendBuildInfo.commit}</span>
       <span>build time: {frontendBuildInfo.buildTime}</span>
@@ -1708,8 +1708,8 @@ function App() {
         meetingId: getMeetingPublicNumber(response.meeting),
         password
       }));
-      openPrejoinSession(response.meeting, response.host, "home", "快速会议已创建，请先确认入会预览");
-      appendEvent("meeting.created", `快速会议 ${response.meeting.title} 已创建`);
+      enterMeetingSession(response.meeting, response.host, "已进入会议，正在接入信令");
+      appendEvent("meeting.created", `快速会议 ${response.meeting.title} 已创建并直接进入会议`);
       logger.info("meeting.quick_create_succeeded", {
         meetingId: response.meeting.id,
         passwordRequired: response.meeting.passwordRequired
@@ -2584,6 +2584,12 @@ function App() {
   const prejoinMeetingNumberLabel = prejoinSession
     ? formatMeetingNumberDisplay(getMeetingPublicNumber(prejoinSession.meeting))
     : "";
+  const prejoinEntryTitle =
+    prejoinOriginView === "schedule"
+      ? "预定会议"
+      : prejoinOriginView === "join"
+        ? "加入会议"
+        : "快速会议";
   const localReadyCheckStatus = activeReadyCheck && meetingSession
     ? activeReadyCheck.results[meetingSession.participant.id]?.status
     : undefined;
@@ -2617,6 +2623,34 @@ function App() {
   const thumbnailItems = featuredStageItem
     ? stageItems.filter((item) => item.id !== featuredStageItem.id)
     : stageItems;
+  const stageItemByParticipantId = new Map(stageItems.map((item) => [item.participantId, item]));
+  const participantStripItems = stageParticipants.map((participant) => {
+    const stageItem = stageItemByParticipantId.get(participant.id);
+    const micEnabled = resolveParticipantMicEnabled(
+      participant,
+      meetingSession?.participant.id ?? "",
+      localMicEnabled
+    );
+    const isFeatured = featuredStageItem?.participantId === participant.id;
+    let statusLabel = micEnabled ? "发言中" : "已静音";
+
+    if (stageItem?.variant === "screen") {
+      statusLabel = isFeatured ? "主画面" : "共享屏幕";
+    } else if (stageItem?.variant === "camera") {
+      statusLabel = isFeatured ? "主画面" : micEnabled ? "发言中" : "摄像头开启";
+    } else if (!micEnabled) {
+      statusLabel = "摄像头关闭";
+    }
+
+    return {
+      id: participant.id,
+      isFeatured,
+      initials: initialsFromName(participant.nickname),
+      nickname: participant.nickname,
+      statusLabel,
+      stageId: stageItem?.id ?? null
+    };
+  });
   const roomClockLabel = meetingSession ? formatElapsedClock(meetingSession.meeting.createdAt) : "00:00";
   const connectionLabel = wsConnected ? "WSS 已连接" : "WSS 已断开";
   const networkStatusLabel = errorMessage ? "异常" : wsConnected ? "正常" : "断开";
@@ -2653,14 +2687,6 @@ function App() {
               <h1 className="wordmark">
                 <span>meeting</span>
               </h1>
-              <p className="brand-description">
-                把 PC 端黑色舞台压缩成更适合手机浏览器和 iPad 的会议壳层，同时保留同一套品牌、聚光灯和按钮层级。
-              </p>
-              <div className="brand-badge-row" aria-label="品牌能力标签">
-                <span className="brand-badge">P2P 优先</span>
-                <span className="brand-badge">WSS 信令</span>
-                <span className="brand-badge">H5 / iPad</span>
-              </div>
             </div>
           </section>
 
@@ -2835,16 +2861,14 @@ function App() {
                 <div className="quick-list">
                   <article className="quick-card">
                     <strong>快速会议</strong>
-                    <span>先进入入会预览，再决定是否开启摄像头和麦克风，适合站会、短会和临时沟通。</span>
                     <button className="primary-button" onClick={() => void handleStartQuickMeeting()} type="button">
-                      立即开始
+                      快速会议
                     </button>
                   </article>
                   <article className="quick-card">
                     <strong>预定会议</strong>
-                    <span>填写主题、时间、时区和可选密码，适合提前安排的正式会议。</span>
                     <button className="secondary-button" onClick={() => setEntryView("schedule")} type="button">
-                      进入预定流程
+                      预定会议
                     </button>
                   </article>
                 </div>
@@ -2865,9 +2889,6 @@ function App() {
                   <p className="eyebrow">Schedule meeting</p>
                   <h2>预定会议</h2>
                 </div>
-                <p className="section-copy">
-                  当前后端还没有真正的预约会议模型，本轮会按预定表单创建可立即进入的会议，再进入 H5 入会预览确认。
-                </p>
                 {showEntryFeedback ? (
                   <div className="status-stack compact">
                     {statusMessage !== defaultEntryStatusMessage ? (
@@ -2937,9 +2958,6 @@ function App() {
                   <p className="eyebrow">Join meeting</p>
                   <h2>加入会议</h2>
                 </div>
-                <p className="section-copy">
-                  先输入会议号和昵称，确认会议存在且可加入后，再弹出固定悬浮窗继续输入密码。
-                </p>
                 {showEntryFeedback ? (
                   <div className="status-stack compact">
                     {statusMessage !== defaultEntryStatusMessage ? (
@@ -3026,9 +3044,6 @@ function App() {
                       </span>
                       <div>
                         <h3>请输入会议密码</h3>
-                        <p className="section-copy">
-                          当前会议需要密码，继续输入后将基于现有后端接口使用 `会议号 + 密码` 加入会议。
-                        </p>
                       </div>
                       <label>
                         会议密码
@@ -3094,11 +3109,7 @@ function App() {
             {entryView === "preview" && prejoinSession ? (
               <section className="panel auth-card auth-card-preview" data-view="preview">
                 <div className="section-copy">
-                  <p className="eyebrow">Preview</p>
-                  <h2>进入会议前预览</h2>
-                  <p>
-                    先确认会议信息、昵称和入会偏好，再正式接入会议房间。当前这一步优先收口 H5 的流程与布局，媒体权限继续沿用现有会中模型。
-                  </p>
+                  <h2>{prejoinEntryTitle}</h2>
                 </div>
 
                 <div className="prejoin-layout">
@@ -3108,10 +3119,15 @@ function App() {
                       <StreamFrame
                         className="prejoin-stage-media"
                         muted
-                        placeholder={renderStreamFallback(prejoinSession.participant.nickname, "camera")}
+                        placeholder={<div className="prejoin-stage-placeholder" aria-hidden="true" />}
                         stream={localStream}
                       />
                       <div className="prejoin-stage-copy">
+                        {!localStream ? (
+                          <div className="prejoin-stage-avatar" aria-hidden="true">
+                            {initialsFromName(prejoinSession.participant.nickname)}
+                          </div>
+                        ) : null}
                         <strong>{prejoinSession.participant.nickname}</strong>
                         <span>
                           {prejoinPreference.camera ? "摄像头申请开启" : "摄像头默认关闭"} ·{" "}
@@ -3140,8 +3156,11 @@ function App() {
                         }
                         type="button"
                       >
-                        <strong>摄像头</strong>
-                        <span>{prejoinPreference.camera ? "进入会议后申请开启" : "进入会议后默认关闭"}</span>
+                        <span className="prejoin-toggle-copy">
+                          <strong>摄像头</strong>
+                          <small>{prejoinPreference.camera ? "进入会议后申请开启" : "进入会议后默认关闭"}</small>
+                        </span>
+                        <span className={`prejoin-toggle-indicator ${prejoinPreference.camera ? "is-on" : ""}`} aria-hidden="true" />
                       </button>
                       <button
                         className={`prejoin-toggle-card ${prejoinPreference.microphone ? "is-active" : ""}`}
@@ -3153,29 +3172,29 @@ function App() {
                         }
                         type="button"
                       >
-                        <strong>麦克风</strong>
-                        <span>{prejoinPreference.microphone ? "进入会议后申请开启" : "进入会议后默认静音"}</span>
+                        <span className="prejoin-toggle-copy">
+                          <strong>麦克风</strong>
+                          <small>{prejoinPreference.microphone ? "进入会议后申请开启" : "进入会议后默认静音"}</small>
+                        </span>
+                        <span
+                          className={`prejoin-toggle-indicator ${prejoinPreference.microphone ? "is-on" : ""}`}
+                          aria-hidden="true"
+                        />
                       </button>
                     </div>
 
-                    <div className="prejoin-checklist">
-                      <article className="prejoin-check-item">
-                        <strong>会议主题</strong>
-                        <span>{prejoinSession.meeting.title}</span>
-                      </article>
-                      <article className="prejoin-check-item">
-                        <strong>密码状态</strong>
-                        <span>{prejoinSession.meeting.passwordRequired ? "已完成密码校验" : "该会议无需密码"}</span>
-                      </article>
-                      <article className="prejoin-check-item">
-                        <strong>入会前检查</strong>
-                        <span>
+                    <article className="prejoin-checklist-card">
+                      <strong>入会前检查</strong>
+                      <ul>
+                        <li>会议主题：{prejoinSession.meeting.title}</li>
+                        <li>密码状态：{prejoinSession.meeting.passwordRequired ? "已完成密码校验" : "该会议无需密码"}</li>
+                        <li>
                           {supportsUserMediaCapture()
-                            ? "网络与浏览器环境可继续入会，正式媒体能力仍由现有会中权限控制。"
-                            : "当前页面无法直接调用摄像头或麦克风，请优先通过 HTTPS 或 localhost 访问。"}
-                        </span>
-                      </article>
-                    </div>
+                            ? "网络与浏览器环境可继续入会"
+                            : "当前页面无法直接调用摄像头或麦克风，请优先通过 HTTPS 或 localhost 访问"}
+                        </li>
+                      </ul>
+                    </article>
                   </div>
                 </div>
 
@@ -3191,7 +3210,7 @@ function App() {
             ) : null}
           </aside>
         </section>
-        <BuildMetadataBadge variant="auth" />
+        <BuildMetadataBadge />
       </main>
     );
   }
@@ -3211,19 +3230,22 @@ function App() {
           <div className="topbar-left">
             <div className="room-brand">
               <div className="room-meta">
-                <strong>会议详情</strong>
-                <span>{roomClockLabel}</span>
+                <strong>{meetingSession.meeting.title}</strong>
+                <span>{inviteMeetingNumberLabel} · {roomClockLabel}</span>
               </div>
             </div>
 
             <div className="topbar-status" aria-label="连接与分享">
               <div className="network-hover-anchor">
                 <button
-                  className="topbar-action topbar-action--plain icon-only"
+                  className="topbar-action topbar-status-pill"
                   type="button"
                   aria-label="网络状态"
                 >
-                  <MeetingIcon name="signal" />
+                  <span className="topbar-icon">
+                    <MeetingIcon name="signal" />
+                  </span>
+                  <span className="topbar-status-text">{networkStatusLabel}</span>
                 </button>
                 <div className="network-hover-card">
                   <div className="network-hover-row">
@@ -3374,8 +3396,8 @@ function App() {
               {currentAttachedPanel === "settings" ? (
                 <div className="attached-panel attached-panel--top attached-panel--settings">
                   <div className="attached-panel-header">
-                    <strong>设置</strong>
-                    <span>{formatMeetingStatus(meetingSession.meeting.status)}</span>
+                    <strong>会议工具</strong>
+                    <span>{meetingSession.participant.nickname}</span>
                   </div>
                   <div className="attached-stat-grid">
                     <div>
@@ -3386,6 +3408,28 @@ function App() {
                       <strong>身份</strong>
                       <span>{meetingSession.participant.nickname} / {formatParticipantRole(meetingSession.participant.role)}</span>
                     </div>
+                  </div>
+                  <div className="attached-action-list">
+                    <AttachedActionButton
+                      description="修改你当前在会议中的显示昵称。"
+                      icon="edit"
+                      onClick={() => openMeetingModal("nickname")}
+                      title="修改昵称"
+                    />
+                    <AttachedActionButton
+                      description={canAccessHostTools ? "管理或处理会中的能力授权。" : "向主持人申请摄像头、麦克风、录制等能力。"}
+                      icon="person"
+                      onClick={() => openMeetingModal("permissions")}
+                      title={canAccessHostTools ? "授权与角色" : "申请权限"}
+                    />
+                    {canReadyCheck ? (
+                      <AttachedActionButton
+                        description="发起点名并查看当前轮次状态。"
+                        icon="members"
+                        onClick={() => openMeetingModal("ready_check_panel")}
+                        title="就位确认"
+                      />
+                    ) : null}
                   </div>
                   <div className="attached-button-stack">
                     <button className="secondary-button" onClick={handleConnectSignal} type="button">
@@ -3436,7 +3480,7 @@ function App() {
                   />
                   <div className="featured-overlay">
                     <strong>{featuredStageItem.variant === "screen" ? "共享内容主舞台" : "视频主舞台"}</strong>
-                    <span>双击右侧缩略窗可以切换主画面。默认优先展示主持人的活动画面。</span>
+                    <span>当前主舞台会优先展示共享或活跃视频画面。</span>
                   </div>
                 </div>
               </section>
@@ -3512,14 +3556,36 @@ function App() {
             </div>
           )}
 
+          <section className="participant-strip" aria-label="参会者缩略条">
+            {participantStripItems.map((item) => (
+              <button
+                className={`participant-chip ${item.isFeatured ? "active" : ""}`}
+                disabled={!item.stageId}
+                key={item.id}
+                onClick={() => {
+                  if (item.stageId) {
+                    setFeaturedStageId(item.stageId);
+                  }
+                }}
+                type="button"
+              >
+                <span className="chip-avatar">{item.initials}</span>
+                <span className="chip-copy">
+                  <strong>{item.nickname}</strong>
+                  <span>{item.statusLabel}</span>
+                </span>
+              </button>
+            ))}
+          </section>
+
           {currentSidebar === "members" ? (
             <aside className="side-drawer">
               <div className="drawer-header">
                 <div>
                   <h3>成员</h3>
-                  <p>默认隐藏，打开后从右侧抽出。</p>
+                  <p>当前在线成员与角色</p>
                 </div>
-                <span className="drawer-pill">{onlineParticipantIds.length} online</span>
+                <span className="drawer-pill">在线 {onlineParticipantIds.length}</span>
               </div>
               <ul className="member-list">
                 {participants.map((participant) => (
@@ -3527,7 +3593,7 @@ function App() {
                     <strong>{participant.nickname}</strong>
                     <div className="member-meta">
                       <span>{formatParticipantRole(participant.role)}</span>
-                      <span>{onlineParticipantIds.includes(participant.id) ? "online" : "offline"}</span>
+                      <span>{onlineParticipantIds.includes(participant.id) ? "在线" : "离线"}</span>
                     </div>
                   </li>
                 ))}
@@ -3543,7 +3609,7 @@ function App() {
               <div className="drawer-header">
                 <div>
                   <h3>聊天</h3>
-                  <p>默认隐藏，打开后贴在舞台右侧。</p>
+                  <p>会议内聊天记录</p>
                 </div>
                 <span className="drawer-pill">{chatMessages.length} 条</span>
               </div>
@@ -3676,7 +3742,7 @@ function App() {
               <div className="modal-card modal-card--compact">
                 <div>
                   <h3>修改昵称</h3>
-                  <p>输入框默认加载当前昵称，保存后会同步更新当前预览中的昵称文本。</p>
+                  <p>修改当前会议中的显示昵称。</p>
                 </div>
                 <label className="form-grid">
                   <span>昵称</span>
@@ -3699,7 +3765,7 @@ function App() {
               <div className="modal-card modal-card--wide">
                 <div>
                   <h3>权限与角色</h3>
-                  <p>参会者默认只拥有基础聊天能力，更多能力由主持人或助理管理。</p>
+                  <p>申请或管理摄像头、麦克风、录制等会中能力。</p>
                 </div>
                 <div className="form-grid">
                   <label>
@@ -3816,7 +3882,7 @@ function App() {
               <div className="modal-card modal-card--wide">
                 <div>
                   <h3>录制与纪要</h3>
-                  <p>在单屏布局下，录制控制和纪要导出收纳到一个覆盖层中处理。</p>
+                  <p>控制录制并导出当前会议的临时纪要。</p>
                 </div>
                 <div className="form-grid">
                   <label>
@@ -4172,7 +4238,6 @@ function App() {
 
         <MeetingIconSprite />
       </section>
-      <BuildMetadataBadge variant="room" />
     </main>
   );
 }

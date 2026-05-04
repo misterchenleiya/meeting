@@ -11,7 +11,7 @@
       <section class="preview-toolbar" aria-label="H5 会中预览控制">
         <div class="preview-caption">
           <strong>Meeting / H5 Room Preview</strong>
-          <p>按当前 `web/src/App.tsx` 会中实现同步的 H5 设计稿，保留黑色舞台，同时把成员、聊天、邀请和应用面板适配到手机与 iPad。</p>
+          <p>按当前 `web/src/App.tsx` 会中实现同步的 H5 设计稿，保留黑色舞台，同时把成员、聊天、邀请、设置和应用面板适配到手机与 iPad。</p>
         </div>
 
         <div class="preview-controls">
@@ -61,12 +61,8 @@
 
               <section class="room-stage-shell">
                 <header class="room-topbar">
-                  <button class="icon-button" type="button" aria-label="返回">
-                    <svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" /></svg>
-                  </button>
-
                   <div class="meeting-meta">
-                    <strong>会议详情</strong>
+                    <strong>全球产品评审会</strong>
                     <span>821 503 974 · 01:19</span>
                   </div>
 
@@ -77,6 +73,9 @@
                     </button>
                     <button class="icon-button" type="button" aria-label="分享">
                       <svg viewBox="0 0 24 24"><path d="M12 4v11M8 8l4-4 4 4M5 20h14" /></svg>
+                    </button>
+                    <button class="icon-button" type="button" aria-label="设置">
+                      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.8v2.1M12 19.1v2.1M4.9 4.9l1.5 1.5M17.6 17.6l1.5 1.5M2.8 12h2.1M19.1 12h2.1M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5" /></svg>
                     </button>
                   </div>
                 </header>
@@ -294,11 +293,6 @@
                   </section>
                 </div>
 
-                <aside class="build-metadata build-metadata--room" aria-label="版本信息">
-                  <span>version: 0.0.1</span>
-                  <span>commit: 9f4c3b2a1d6e</span>
-                  <span>build time: 2026-05-05 21:14:08 +08:00</span>
-                </aside>
               </section>
             </div>
           </div>

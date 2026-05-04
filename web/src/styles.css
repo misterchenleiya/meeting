@@ -73,10 +73,6 @@ button {
   bottom: calc(14px + env(safe-area-inset-bottom, 0px));
 }
 
-.build-metadata--room {
-  bottom: calc(102px + env(safe-area-inset-bottom, 0px));
-}
-
 .auth-page.auth-page-login {
   width: 100vw;
   min-height: 100vh;
@@ -151,7 +147,6 @@ p {
 
 .section-copy,
 .empty-copy,
-.brand-description,
 .meeting-meta p,
 .drawer-header p {
   color: var(--muted);
@@ -483,30 +478,6 @@ p {
   max-width: 760px;
 }
 
-.brand-description {
-  max-width: 38ch;
-  text-align: center;
-}
-
-.brand-badge-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
-
-.brand-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
-  color: #dadade;
-  font-size: 12px;
-}
-
 .wordmark {
   font-size: clamp(76px, 12vw, 160px);
   line-height: 0.9;
@@ -632,16 +603,12 @@ p {
 }
 
 .auth-frame[data-auth-view="home"] .quick-card {
-  gap: 6px;
+  gap: 10px;
   padding: 14px 16px;
 }
 
 .auth-frame[data-auth-view="home"] .quick-card strong {
   font-size: 14px;
-}
-
-.auth-frame[data-auth-view="home"] .quick-card span {
-  font-size: 13px;
 }
 
 .auth-frame[data-auth-view="home"] .quick-card .button,
@@ -783,10 +750,11 @@ p {
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  align-items: start;
 }
 
 .prejoin-stage-card,
-.prejoin-check-item,
+.prejoin-checklist-card,
 .prejoin-toggle-card {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
@@ -801,12 +769,24 @@ p {
 .prejoin-stage-shell {
   position: relative;
   display: grid;
-  align-content: end;
+  place-items: end center;
+  gap: 12px;
   min-height: 280px;
   padding: 18px;
   background:
     radial-gradient(circle at 50% 16%, rgba(255, 255, 255, 0.1), transparent 22%),
     linear-gradient(180deg, rgba(24, 24, 27, 0.96), rgba(18, 18, 20, 0.98));
+  overflow: hidden;
+}
+
+.prejoin-stage-shell::after {
+  content: "";
+  position: absolute;
+  inset: auto 20px 18px;
+  height: 110px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.12), transparent 72%);
+  filter: blur(12px);
 }
 
 .prejoin-stage-media {
@@ -815,7 +795,7 @@ p {
 }
 
 .prejoin-stage-media video,
-.prejoin-stage-media .media-fallback {
+.prejoin-stage-placeholder {
   width: 100%;
   height: 100%;
 }
@@ -824,22 +804,46 @@ p {
   object-fit: cover;
 }
 
-.prejoin-stage-shell > .meeting-badge,
+.prejoin-stage-shell > .meeting-badge {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
+}
+
 .prejoin-stage-copy {
   position: relative;
   z-index: 1;
 }
 
+.prejoin-stage-avatar {
+  width: 108px;
+  height: 108px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.38), rgba(10, 132, 255, 0.16));
+  box-shadow: 0 18px 36px rgba(10, 132, 255, 0.24);
+  font-size: 34px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
 .prejoin-stage-copy {
   display: grid;
-  gap: 6px;
-  padding: 16px 18px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(10, 10, 12, 0.18), rgba(10, 10, 12, 0.76));
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  width: min(100%, 280px);
+}
+
+.prejoin-stage-copy strong {
+  font-size: 18px;
 }
 
 .prejoin-stage-copy span {
   color: rgba(245, 245, 247, 0.78);
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -880,7 +884,9 @@ p {
 
 .prejoin-toggle-card {
   display: grid;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
   padding: 16px 18px;
   border-radius: 18px;
   color: var(--text);
@@ -893,25 +899,68 @@ p {
   background: rgba(10, 132, 255, 0.12);
 }
 
-.prejoin-toggle-card span {
+.prejoin-toggle-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.prejoin-toggle-copy strong {
+  font-size: 14px;
+}
+
+.prejoin-toggle-copy small {
   color: var(--muted);
+  font-size: 12px;
   line-height: 1.6;
 }
 
-.prejoin-checklist {
-  display: grid;
-  gap: 12px;
+.prejoin-toggle-indicator {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
 }
 
-.prejoin-check-item {
+.prejoin-toggle-indicator::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 180ms ease;
+}
+
+.prejoin-toggle-indicator.is-on {
+  background: rgba(48, 209, 88, 0.44);
+}
+
+.prejoin-toggle-indicator.is-on::after {
+  transform: translateX(18px);
+}
+
+.prejoin-checklist-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 22px;
+}
+
+.prejoin-checklist-card strong {
+  font-size: 18px;
+}
+
+.prejoin-checklist-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
   display: grid;
   gap: 8px;
-  padding: 14px 16px;
-  border-radius: 16px;
-}
-
-.prejoin-check-item span {
-  color: var(--muted);
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -1624,10 +1673,6 @@ p {
     font-size: 10px;
   }
 
-  .build-metadata--room {
-    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
-  }
-
   .auth-page.auth-page-login {
     width: 100vw;
     min-height: 100vh;
@@ -1668,10 +1713,6 @@ p {
 }
 
 @media (max-width: 640px) {
-  .build-metadata--room {
-    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
-  }
-
   .brand-stage {
     padding: 32px 24px 260px;
   }
@@ -1795,12 +1836,6 @@ p {
     padding: 0;
   }
 
-  .brand-description {
-    max-width: 30ch;
-    font-size: 14px;
-  }
-
-  .brand-badge-row,
   .prejoin-pill-row {
     justify-content: center;
   }
@@ -1898,6 +1933,21 @@ p {
   gap: 6px;
 }
 
+.room-page .topbar-status-pill {
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border-color: rgba(48, 209, 88, 0.18);
+  background: rgba(48, 209, 88, 0.12);
+}
+
+.room-page .topbar-status-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f4f4f8;
+}
+
 .room-page .network-hover-anchor {
   position: relative;
   display: inline-flex;
@@ -1965,12 +2015,18 @@ p {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .room-page .room-meta span {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .room-page .topbar-action {
@@ -2099,6 +2155,10 @@ p {
   overflow: auto;
 }
 
+.room-page .participant-strip {
+  display: none;
+}
+
 .room-page .idle-stage {
   min-height: 100%;
   display: grid;
@@ -2161,6 +2221,14 @@ p {
   width: 16px;
   height: 16px;
   stroke-width: 2;
+}
+
+.room-page .participant-chip {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
 }
 
 .room-page .nickname-edit-inline {
@@ -2735,18 +2803,228 @@ p {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
+  .room-page .room-topbar,
+  .room-page .room-toolbar {
+    left: 12px;
+    right: 12px;
+  }
+
+  .room-page .room-topbar {
+    top: 12px;
+    height: auto;
+    min-height: 56px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    backdrop-filter: none;
+  }
+
+  .room-page .topbar-left {
+    flex: 1;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .room-page .room-brand {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .room-page .host-tools,
+  .room-page .meeting-tools,
+  .room-page .topbar-right > .topbar-action.icon-only.utility-tools {
+    display: none;
+  }
+
+  .room-page .topbar-right .utility-tools span:not(.topbar-icon) {
+    display: none;
+  }
+
+  .room-page .stage-shell {
+    inset: 78px 0 122px;
+    padding: 0 12px 12px;
+    overflow: visible;
+    background: transparent;
+  }
+
   .room-page .stage-shell.has-side-drawer {
-    padding-right: 18px;
+    padding-right: 12px;
+  }
+
+  .room-page .active-stage-layout {
+    display: block;
+    min-height: 0;
+    height: auto;
+  }
+
+  .room-page .featured-panel {
+    position: relative;
+    min-height: clamp(260px, 48vh, 420px);
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 24px 40px rgba(0, 0, 0, 0.34);
+  }
+
+  .room-page .featured-header {
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    bottom: 18px;
+    z-index: 2;
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .room-page .featured-header > div:first-child {
+    min-width: 0;
+  }
+
+  .room-page .featured-header strong {
+    display: block;
+    font-size: 20px;
+  }
+
+  .room-page .featured-header span {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .room-page .meeting-pill-row {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .room-page .featured-canvas {
+    min-height: inherit;
+    margin: 0;
+    border-radius: inherit;
+  }
+
+  .room-page .featured-overlay,
+  .room-page .thumbnail-rail {
+    display: none;
+  }
+
+  .room-page .idle-stage {
+    min-height: clamp(260px, 48vh, 420px);
+    padding: 0 0 8px;
+    place-items: stretch;
+  }
+
+  .room-page .room-avatar-wall {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .room-page .room-avatar-card {
+    padding: 18px 14px 16px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .room-page .avatar-badge {
+    width: 72px;
+    height: 72px;
+    font-size: 24px;
+  }
+
+  .room-page .room-avatar-copy {
+    gap: 8px;
+  }
+
+  .room-page .participant-strip {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(160px, 1fr);
+    gap: 12px;
+    overflow-x: auto;
+    padding: 16px 0 4px;
+  }
+
+  .room-page .participant-chip {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    min-height: 66px;
+    padding: 12px;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .room-page .participant-chip:disabled {
+    opacity: 0.72;
+    cursor: default;
+  }
+
+  .room-page .participant-chip.active {
+    border-color: rgba(10, 132, 255, 0.34);
+    background: rgba(10, 132, 255, 0.12);
+  }
+
+  .room-page .chip-avatar {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .room-page .chip-copy {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .room-page .chip-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+  }
+
+  .room-page .chip-copy span {
+    color: var(--muted);
+    font-size: 12px;
   }
 
   .room-page .side-drawer {
-    left: 18px;
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: calc(114px + env(safe-area-inset-bottom));
     width: auto;
+    max-height: min(56vh, 460px);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 14px;
+    padding: 18px;
+    border-radius: 26px;
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.34);
+  }
+
+  .room-page .member-list,
+  .room-page .chat-list {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .room-page .chat-composer textarea {
+    min-height: 44px;
+    max-height: 120px;
   }
 
   .room-page .attached-stat-grid,
-  .room-page .room-avatar-wall,
   .room-page .button-row,
   .room-page .info-grid,
   .room-page .info-grid.dense {
@@ -2754,11 +3032,19 @@ p {
   }
 
   .room-page .room-toolbar {
+    bottom: calc(14px + env(safe-area-inset-bottom));
     align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    background: rgba(16, 16, 18, 0.92);
+    box-shadow: 0 24px 40px rgba(0, 0, 0, 0.34);
   }
 
   .room-page .toolbar-center {
     justify-content: flex-start;
+    min-width: 0;
   }
 
   .room-page .invite-layout {
@@ -2769,11 +3055,83 @@ p {
     max-width: 240px;
     justify-self: center;
   }
+
+  .room-page .tool-rack {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(84px, 1fr);
+    gap: 8px;
+    padding: 0;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .room-page .meeting-tool,
+  .room-page .end-call-button {
+    min-width: 84px;
+    min-height: 78px;
+    padding: 12px 10px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .room-page .attached-anchor--bottom {
+    position: static;
+  }
+
+  .room-page .attached-panel--bottom {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(114px + env(safe-area-inset-bottom));
+    width: auto;
+    border-radius: 26px;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .room-page .room-topbar,
+  .room-page .room-toolbar {
+    left: 24px;
+    right: 24px;
+  }
+
+  .room-page .stage-shell {
+    inset: 92px 0 148px;
+    padding: 0 24px 18px;
+  }
+
+  .room-page .stage-shell.has-side-drawer {
+    padding-right: 360px;
+  }
+
+  .room-page .side-drawer {
+    left: auto;
+    right: 24px;
+    top: 92px;
+    bottom: 148px;
+    width: 320px;
+    max-height: none;
+  }
+
+  .room-page .participant-strip {
+    grid-auto-columns: minmax(180px, 220px);
+  }
+
+  .room-page .attached-panel--bottom {
+    left: 24px;
+    right: 24px;
+    bottom: 148px;
+  }
 }
 
 @media (max-width: 640px) {
-  .room-page .room-topbar {
-    padding: 0 10px 0 12px;
+  .room-page .room-topbar,
+  .room-page .room-toolbar {
+    left: 8px;
+    right: 8px;
   }
 
   .room-page .topbar-right {
@@ -2784,35 +3142,88 @@ p {
     padding: 0 8px;
   }
 
-  .room-page .topbar-action span,
-  .room-page .topbar-action small {
-    display: none;
+  .room-page .topbar-status-pill {
+    padding: 0 10px;
+  }
+
+  .room-page .topbar-status-text {
+    font-size: 11px;
+  }
+
+  .room-page .room-meta strong {
+    font-size: 16px;
+  }
+
+  .room-page .room-meta span {
+    font-size: 11px;
   }
 
   .room-page .stage-shell {
-    inset: 54px 0 108px;
-    padding: 18px 12px 12px;
+    inset: 72px 0 112px;
+    padding: 0 8px 12px;
+  }
+
+  .room-page .featured-panel {
+    min-height: min(44vh, 340px);
+  }
+
+  .room-page .featured-header {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .room-page .meeting-pill-row {
+    display: none;
+  }
+
+  .room-page .room-avatar-wall {
+    gap: 10px;
+  }
+
+  .room-page .room-avatar-card {
+    padding: 16px 12px 14px;
+  }
+
+  .room-page .avatar-badge {
+    width: 64px;
+    height: 64px;
+    font-size: 22px;
+  }
+
+  .room-page .participant-strip {
+    grid-auto-columns: minmax(148px, 1fr);
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .room-page .side-drawer,
+  .room-page .attached-panel--bottom {
+    left: 8px;
+    right: 8px;
+    bottom: calc(108px + env(safe-area-inset-bottom));
   }
 
   .room-page .room-toolbar {
-    padding: 10px;
+    padding: 8px;
+    gap: 6px;
   }
 
   .room-page .tool-rack {
-    gap: 8px;
-    justify-content: flex-start;
+    grid-auto-columns: minmax(76px, 1fr);
+    gap: 6px;
   }
 
   .room-page .meeting-tool,
   .room-page .end-call-button {
-    min-width: 72px;
+    min-width: 76px;
+    min-height: 72px;
+    padding: 10px 8px;
   }
 
-  .room-page .featured-header {
-    flex-direction: column;
-  }
-
-  .room-page .thumbnail-rail {
-    grid-template-columns: 1fr;
+  .room-page .tool-label {
+    font-size: 10px;
   }
 }

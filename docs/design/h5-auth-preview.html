@@ -55,13 +55,6 @@
                   <div class="brand-mark">
                     <h1 class="wordmark">meeting</h1>
                     <div class="brand-spotlight" aria-hidden="true"></div>
-                    <p>把 PC 端黑色舞台压缩成更适合手机浏览器和 iPad 的会议壳层，同时保留同一套品牌、聚光灯和按钮层级。</p>
-                  </div>
-
-                  <div class="brand-badges">
-                    <span class="badge">P2P 优先</span>
-                    <span class="badge">WSS 信令</span>
-                    <span class="badge">H5 / iPad</span>
                   </div>
                 </header>
 
@@ -69,7 +62,6 @@
                   <div class="section-copy">
                     <div class="eyebrow">Sign in</div>
                     <h2>登录 meeting</h2>
-                    <p>当前实现支持邮箱验证码登录和密码登录；加入会议入口继续保留在同一张卡片底部。</p>
                   </div>
 
                   <div class="mode-strip" aria-label="登录方式">
@@ -130,7 +122,6 @@
                   <div class="section-copy">
                     <div class="eyebrow">Register</div>
                     <h2>邮箱注册</h2>
-                    <p>注册完成后返回登录页重新登录，当前 H5 设计稿按真实实现保留“注册”和“加入会议”两个出口。</p>
                   </div>
 
                   <div class="login-switch-row single">
@@ -173,7 +164,6 @@
                   <div class="section-copy">
                     <div class="eyebrow">Home</div>
                     <h2>快速会议 / 预定会议</h2>
-                    <p>H5 当前已落地快速会议、预定会议和最近会议摘要；登录后入口仍是单列卡片，iPad 扩展为双列。</p>
                   </div>
 
                   <div class="login-switch-row single">
@@ -184,17 +174,15 @@
                     <article class="feature-card">
                       <div>
                         <strong>快速会议</strong>
-                        <p>先进入入会预览，再决定是否开启摄像头和麦克风，适合站会和临时沟通。</p>
                       </div>
-                      <button class="button primary link-button" data-auth-target="preview" type="button">立即开始</button>
+                      <a class="button primary link-button" href="./h5-room-preview.html">快速会议</a>
                     </article>
 
                     <article class="feature-card">
                       <div>
                         <strong>预定会议</strong>
-                        <p>填写主题、时间、时区和可选密码，适合正式安排的会议流程。</p>
                       </div>
-                      <button class="button secondary" data-auth-target="schedule" type="button">进入预定流程</button>
+                      <button class="button secondary" data-auth-target="schedule" type="button">预定会议</button>
                     </article>
                   </div>
 
@@ -213,7 +201,6 @@
                   <div class="section-copy">
                     <div class="eyebrow">Schedule</div>
                     <h2>预定会议</h2>
-                    <p>当前后端还没有真正的预约会议模型，本轮会按预定表单创建可立即进入的会议，再进入 H5 入会预览确认。</p>
                   </div>
 
                   <form class="form-stack schedule-grid">
@@ -252,7 +239,6 @@
                   <div class="section-copy">
                     <div class="eyebrow">Join</div>
                     <h2>加入会议</h2>
-                    <p>先输入会议号和昵称，确认会议存在且可加入后，再弹出固定悬浮窗继续输入密码。</p>
                   </div>
 
                   <form class="form-stack">
@@ -288,9 +274,7 @@
 
                 <section class="surface-card preview-card" data-view="preview">
                   <div class="section-copy">
-                    <div class="eyebrow">Preview</div>
-                    <h2>进入会议前预览</h2>
-                    <p>先确认会议信息、昵称和入会偏好，再正式接入会议房间；当前预览页优先收口流程与布局。</p>
+                    <h2>预定会议</h2>
                   </div>
 
                   <div class="preview-layout">
@@ -354,7 +338,6 @@
                   <div class="section-copy compact-copy">
                     <div class="eyebrow">Password</div>
                     <h3>请输入会议密码</h3>
-                    <p>当前会议需要密码，继续输入后将基于现有后端接口使用 `会议号 + 密码` 加入会议。</p>
                   </div>
 
                   <form class="form-stack compact-form">
