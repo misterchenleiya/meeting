@@ -366,7 +366,7 @@ function App() {
 
         syncAuthenticatedUser(response.user);
         setEntryView((current) => {
-          if (current === "join") {
+          if (current === "join" || current === "schedule" || current === "preview") {
             return current;
           }
 
@@ -380,7 +380,7 @@ function App() {
 
         syncAuthenticatedUser(null);
         setEntryView((current) => {
-          if (current === "register" || current === "join") {
+          if (current === "register" || current === "join" || current === "preview") {
             return current;
           }
 
@@ -391,7 +391,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [meetingSession, syncAuthenticatedUser]);
+  }, [meetingSession]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
