@@ -54,6 +54,29 @@ button {
   padding: 28px 0 44px;
 }
 
+.build-metadata {
+  position: fixed;
+  left: 18px;
+  display: grid;
+  gap: 2px;
+  color: rgba(152, 152, 157, 0.62);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  z-index: 7;
+}
+
+.build-metadata--auth {
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+
+.build-metadata--room {
+  bottom: calc(102px + env(safe-area-inset-bottom, 0px));
+}
+
 .auth-page.auth-page-login {
   width: 100vw;
   min-height: 100vh;
@@ -1596,6 +1619,15 @@ p {
     padding-top: 18px;
   }
 
+  .build-metadata {
+    left: 12px;
+    font-size: 10px;
+  }
+
+  .build-metadata--room {
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+
   .auth-page.auth-page-login {
     width: 100vw;
     min-height: 100vh;
@@ -1636,6 +1668,10 @@ p {
 }
 
 @media (max-width: 640px) {
+  .build-metadata--room {
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+
   .brand-stage {
     padding: 32px 24px 260px;
   }

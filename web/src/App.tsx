@@ -175,6 +175,22 @@ const defaultJoinForm: JoinFormState = {
   requestMicrophoneEnabled: false
 };
 
+const frontendBuildInfo = {
+  version: __MEETING_WEB_VERSION__,
+  commit: __MEETING_WEB_COMMIT__,
+  buildTime: __MEETING_WEB_BUILD_TIME__
+};
+
+function BuildMetadataBadge({ variant }: { variant: "auth" | "room" }) {
+  return (
+    <aside className={`build-metadata build-metadata--${variant}`} aria-label="版本信息">
+      <span>version: {frontendBuildInfo.version}</span>
+      <span>commit: {frontendBuildInfo.commit}</span>
+      <span>build time: {frontendBuildInfo.buildTime}</span>
+    </aside>
+  );
+}
+
 function App() {
   const initialPersistedState = useRef(readPersistedAppState()).current;
   const initialMeetingSession = initialPersistedState?.meetingSession ?? null;
@@ -3175,6 +3191,7 @@ function App() {
             ) : null}
           </aside>
         </section>
+        <BuildMetadataBadge variant="auth" />
       </main>
     );
   }
@@ -4155,6 +4172,7 @@ function App() {
 
         <MeetingIconSprite />
       </section>
+      <BuildMetadataBadge variant="room" />
     </main>
   );
 }

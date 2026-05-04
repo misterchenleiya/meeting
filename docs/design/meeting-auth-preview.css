@@ -99,6 +99,22 @@ select {
   transition: 180ms ease;
 }
 
+.build-metadata {
+  position: absolute;
+  left: 20px;
+  bottom: 14px;
+  display: grid;
+  gap: 2px;
+  color: rgba(162, 162, 170, 0.62);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  z-index: 4;
+}
+
 .preview-switch.active {
   border-color: rgba(10, 132, 255, 0.38);
   background: rgba(10, 132, 255, 0.2);
@@ -663,6 +679,12 @@ select {
 }
 
 @media (max-width: 1180px) {
+  .build-metadata {
+    left: 16px;
+    bottom: 12px;
+    font-size: 10px;
+  }
+
   .auth-frame {
     grid-template-columns: 1fr;
     min-height: 100vh;
