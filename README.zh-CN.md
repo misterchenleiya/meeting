@@ -83,12 +83,13 @@
   当前支持会中临时纪要、聊天记录、白板数量和就位确认摘要导出；“会议结束时提示主持人保存纪要”尚未补齐。
 - [~] 审计日志
   当前已上报延迟、丢包、帧率、码率和连接摘要；仍可继续丰富设备指纹和更细粒度网络信息。
+- [~] `TURN` / coturn 运行时中继接入
+  后端现在已经支持运行时下发 ICE / TURN 动态凭据，发布模板也已切到 `coturn use-auth-secret`；但生产环境仍需要把共享密钥、证书可读性和防火墙规则配置到位，才能完成最终验证。
 - [~] 微信小程序客户端
   当前第一阶段已实现：支持微信快捷登录、显式 token 登录态保持、首页最近会议、会议查询、带密码加入会议、入会预览和基础会中壳层；音视频和更完整的会中协作能力仍待继续补齐。
 
 ### 未实现
 
-- [ ] `TURN` / coturn 部署与穿透失败自动退化链路的生产验证
 - [ ] 多人 Mesh 的动态管理和性能优化
 - [ ] 微信扫码登录与更完整的账号绑定流程
 - [ ] 打开邀请链接后自动回填会议号与密码
@@ -113,6 +114,7 @@
 - `GET /api/meetings/{meetingID}`：获取会议快照
 - `GET /api/meetings/{meetingID}/minutes`：获取会中临时纪要快照
 - `POST /api/meetings/{meetingID}/join`：加入会议
+- `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers`：获取当前参会者的运行时 ICE / TURN 配置
 - `POST /api/meetings/{meetingID}/participants/{participantID}/leave`：离开会议
 - `POST /api/meetings/{meetingID}/participants/{participantID}/nickname`：修改昵称
 - `POST /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant`：主持人授权
@@ -129,6 +131,7 @@
 - `POST /api/auth/login/password`：最小密码登录接口；未设置密码的账号会返回“请使用邮箱验证码登录”的明确提示
 - `POST /api/auth/wechat/mini/login`：微信小程序快捷登录接口；后端使用 `wx.login` 返回的 code 换取 `openid`，并返回显式 `sessionToken`
 - `POST /api/meetings` 返回的会议对象现在同时包含内部 `id` 和公开 `meetingNumber`。
+- `POST /api/meetings`、`POST /api/meetings/{meetingID}/join` 和 `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers` 现在都会返回运行时 `iceServers`；TURN 凭据改为由后端按短期动态方式签发，不再打进前端发布包。
 - `GET /api/meetings/{meetingID}` 与 `POST /api/meetings/{meetingID}/join` 等会议级接口现在同时接受内部运行态 ID 和公开 `9` 位会议号。
 - `GET /ws/meetings/{meetingID}` 仍继续使用内部运行态 ID，以减少对现有信令链路的影响。
 
@@ -153,6 +156,10 @@ go run ./cmd/server
 - `MEETING_WECHAT_MINIPROGRAM_APP_ID`、`MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
 - `MEETING_WECHAT_MINIPROGRAM_API_BASE_URL`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
+- `MEETING_STUN_URLS`，默认 `stun:stun.l.google.com:19302`
+- `MEETING_TURN_URLS`，例如 `turn:turn.meeting.07c2.com.cn:3478?transport=udp,...`
+- `MEETING_TURN_SHARED_SECRET`，启用运行时 TURN 动态凭据时必填
+- `MEETING_TURN_TTL_SECONDS`，默认 `43200`
 
 ### 生产环境邮件发送
 
@@ -218,6 +225,7 @@ make clean
 - 后端构建输出：`build/backend/meeting`
 - 前端构建输出：`build/frontend/`
 - `make linux`：构建用于 Docker 运行的 Linux/amd64 发布产物；前端生产包默认按同源 `/api` 和 `/ws` 生成，依赖外层 Nginx 反代，只有确实需要跨域部署时才应显式传入 `FRONTEND_API_BASE_URL` / `FRONTEND_SIGNAL_BASE_URL`
+- 发布打包现在要求本地环境提供 `TURN_SHARED_SECRET`，用于在不把真实共享密钥写进仓库的前提下渲染 coturn 的 `static-auth-secret`
 - `make pack`：将 `scripts/`、`docker-compose.yml`、后端、前端和 coturn 资源打入 `meeting_${commit}.tar.gz` 与 `latest.txt`
 - `make upload`：先上传 `meeting_${commit}.tar.gz`，再上传 `latest.txt`
 - `make publish`：执行标准 `clean -> linux -> pack -> upload` 发布流程

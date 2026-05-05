@@ -51,6 +51,10 @@ export type MediaQualityPolicy = {
   maxVideoFramerate: number;
 };
 
+type PeerMeshOptions = {
+  iceServers?: RTCIceServer[];
+};
+
 type CandidateStatsLike = {
   candidateType?: string;
 };
@@ -63,13 +67,25 @@ export class PeerMesh {
   private readonly localParticipantId: string;
   private readonly sendSignal: SendSignal;
   private readonly callbacks: MeshCallbacks;
+  private readonly rtcConfiguration: RTCConfiguration;
   private readonly peers = new Map<string, PeerState>();
   private localStream: MediaStream | null = null;
 
-  constructor(localParticipantId: string, sendSignal: SendSignal, callbacks: MeshCallbacks) {
+  constructor(
+    localParticipantId: string,
+    sendSignal: SendSignal,
+    callbacks: MeshCallbacks,
+    options?: PeerMeshOptions
+  ) {
     this.localParticipantId = localParticipantId;
     this.sendSignal = sendSignal;
     this.callbacks = callbacks;
+    this.rtcConfiguration =
+      options?.iceServers && options.iceServers.length > 0
+        ? {
+            iceServers: options.iceServers
+          }
+        : defaultRTCConfiguration;
   }
 
   async setLocalStream(stream: MediaStream | null): Promise<void> {
@@ -153,7 +169,7 @@ export class PeerMesh {
       return existing;
     }
 
-    const pc = new RTCPeerConnection(defaultRTCConfiguration);
+    const pc = new RTCPeerConnection(this.rtcConfiguration);
     const remoteStream = new MediaStream();
     const peer: PeerState = {
       participantId,

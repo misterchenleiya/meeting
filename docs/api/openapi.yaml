@@ -327,6 +327,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingID}/participants/{participantID}/ice-servers:
+    post:
+      tags: [Meetings]
+      summary: Get runtime ICE servers for a participant
+      parameters:
+        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/ParticipantID"
+      responses:
+        "200":
+          description: Runtime ICE configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IceServersResponse"
+        "401":
+          description: The current session does not match the authenticated participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The current session cannot request ICE servers for this participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Meeting or participant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/meetings/{meetingID}/participants/{participantID}/leave:
     post:
       tags: [Meetings]
@@ -749,12 +781,19 @@ components:
           description: Browser or client label. The backend stores it as-is.
     CreateMeetingResponse:
       type: object
-      required: [meeting, host]
+      required: [meeting, host, iceServers]
       properties:
         meeting:
           $ref: "#/components/schemas/Meeting"
         host:
           $ref: "#/components/schemas/Participant"
+        iceServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/IceServer"
+        iceCredentialExpiresAt:
+          type: string
+          format: date-time
     GetMeetingResponse:
       type: object
       required: [meeting]
@@ -808,12 +847,42 @@ components:
           description: Optional initial microphone preference override.
     JoinMeetingResponse:
       type: object
-      required: [meeting, participant]
+      required: [meeting, participant, iceServers]
       properties:
         meeting:
           $ref: "#/components/schemas/Meeting"
         participant:
           $ref: "#/components/schemas/Participant"
+        iceServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/IceServer"
+        iceCredentialExpiresAt:
+          type: string
+          format: date-time
+    IceServersResponse:
+      type: object
+      required: [iceServers]
+      properties:
+        iceServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/IceServer"
+        expiresAt:
+          type: string
+          format: date-time
+    IceServer:
+      type: object
+      required: [urls]
+      properties:
+        urls:
+          type: array
+          items:
+            type: string
+        username:
+          type: string
+        credential:
+          type: string
     LeaveMeetingRequest:
       type: object
       properties:

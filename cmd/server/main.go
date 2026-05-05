@@ -15,6 +15,7 @@ import (
 	"github.com/misterchenleiya/meeting/internal/meeting"
 	"github.com/misterchenleiya/meeting/internal/signaling"
 	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
+	"github.com/misterchenleiya/meeting/internal/turnauth"
 )
 
 func main() {
@@ -83,9 +84,20 @@ func main() {
 	authService := auth.NewService(store, mailer, authOptions...)
 	meetingService := meeting.NewService(logger, store)
 	signalingHub := signaling.NewHub(logger, meetingService)
+	turnService, err := turnauth.NewService(turnauth.Config{
+		StunURLs:     turnauth.ParseURLList(cfg.MeetingSTUNURLs),
+		TurnURLs:     turnauth.ParseURLList(cfg.MeetingTURNURLs),
+		SharedSecret: cfg.MeetingTURNSharedSecret,
+		TTL:          time.Duration(cfg.MeetingTURNTTLSeconds) * time.Second,
+	})
+	if err != nil {
+		logger.Error("failed to initialize turn auth service", "error", err)
+		os.Exit(1)
+	}
+
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewServer(logger, authService, meetingService, store, signalingHub).Routes(),
+		Handler:           httpapi.NewServer(logger, authService, meetingService, store, signalingHub, turnService).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

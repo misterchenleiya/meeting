@@ -15,6 +15,7 @@ import (
 	"github.com/misterchenleiya/meeting/internal/meeting"
 	"github.com/misterchenleiya/meeting/internal/signaling"
 	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
+	"github.com/misterchenleiya/meeting/internal/turnauth"
 )
 
 type Server struct {
@@ -23,16 +24,25 @@ type Server struct {
 	meetings  *meeting.Service
 	store     *sqlite.Store
 	signaling *signaling.Hub
+	turn      *turnauth.Service
 	mux       *http.ServeMux
 }
 
-func NewServer(logger *slog.Logger, authService *auth.Service, meetings *meeting.Service, store *sqlite.Store, signalingHub *signaling.Hub) *Server {
+func NewServer(
+	logger *slog.Logger,
+	authService *auth.Service,
+	meetings *meeting.Service,
+	store *sqlite.Store,
+	signalingHub *signaling.Hub,
+	turnService *turnauth.Service,
+) *Server {
 	server := &Server{
 		logger:    logger,
 		auth:      authService,
 		meetings:  meetings,
 		store:     store,
 		signaling: signalingHub,
+		turn:      turnService,
 		mux:       http.NewServeMux(),
 	}
 	server.registerRoutes()
@@ -58,6 +68,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/meetings/{meetingID}", s.handleGetMeeting)
 	s.mux.HandleFunc("GET /api/meetings/{meetingID}/minutes", s.handleGetMeetingMinutes)
 	s.mux.HandleFunc("POST /api/meetings/{meetingID}/join", s.handleJoinMeeting)
+	s.mux.HandleFunc("POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers", s.handleGetICEServers)
 	s.mux.HandleFunc("POST /api/meetings/{meetingID}/participants/{participantID}/leave", s.handleLeaveMeeting)
 	s.mux.HandleFunc("POST /api/meetings/{meetingID}/participants/{participantID}/nickname", s.handleUpdateNickname)
 	s.mux.HandleFunc("POST /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant", s.handleGrantCapability)
@@ -155,9 +166,18 @@ func (s *Server) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	iceServers, expiresAt, err := s.buildICEBundle(host.ID)
+	if err != nil {
+		s.logger.Error("build create meeting ice servers failed", "error", err, "meetingId", meetingValue.ID, "participantId", host.ID)
+		writeError(w, http.StatusInternalServerError, "failed to build meeting ice servers")
+		return
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"meeting": meetingValue,
-		"host":    host,
+		"meeting":               meetingValue,
+		"host":                  host,
+		"iceServers":            iceServers,
+		"iceCredentialExpiresAt": formatOptionalTimestamp(expiresAt),
 	})
 }
 
@@ -254,9 +274,18 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 		s.signaling.NotifyParticipantJoined(meetingID, participant)
 	}
 
+	iceServers, expiresAt, err := s.buildICEBundle(participant.ID)
+	if err != nil {
+		s.logger.Error("build join meeting ice servers failed", "error", err, "meetingId", meetingValue.ID, "participantId", participant.ID)
+		writeError(w, http.StatusInternalServerError, "failed to build meeting ice servers")
+		return
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"meeting":     meetingValue,
-		"participant": participant,
+		"meeting":               meetingValue,
+		"participant":           participant,
+		"iceServers":            iceServers,
+		"iceCredentialExpiresAt": formatOptionalTimestamp(expiresAt),
 	})
 }
 
@@ -568,6 +597,13 @@ func writeError(w http.ResponseWriter, statusCode int, message string) {
 	writeJSON(w, statusCode, map[string]string{
 		"error": message,
 	})
+}
+
+func formatOptionalTimestamp(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339)
 }
 
 func isWebSocketRequest(r *http.Request) bool {

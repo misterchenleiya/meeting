@@ -9,6 +9,7 @@ import {
   createMeeting,
   endMeeting,
   fetchCurrentUser,
+  fetchMeetingIceServers,
   getMeeting,
   joinMeeting,
   leaveMeeting,
@@ -27,6 +28,7 @@ import {
   startLocalRecording
 } from "./recording";
 import { PeerMesh, type MediaQualityPolicy, type MediaQualityProfile, type PeerStatsSnapshot } from "./rtc";
+import { resolveIceServers } from "./runtime-config";
 import { SignalClient, type SignalEnvelope } from "./signaling";
 import type {
   AuthUser,
@@ -56,6 +58,13 @@ const logger = createClientLogger("frontend.app");
 type SessionState = {
   meeting: Meeting;
   participant: Participant;
+};
+
+type RuntimeIceState = {
+  meetingId: string;
+  participantId: string;
+  iceServers: RTCIceServer[];
+  expiresAt?: string;
 };
 
 type RemoteTile = {
@@ -299,6 +308,7 @@ function App() {
   const [fullscreenActive, setFullscreenActive] = useState(false);
   const endingMeetingRef = useRef(false);
   const meetingEndSummaryPreparedRef = useRef(false);
+  const runtimeIceStateRef = useRef<RuntimeIceState | null>(null);
 
   useEffect(() => {
     sessionRef.current = meetingSession;
@@ -513,7 +523,14 @@ function App() {
       }
 
       setStatusMessage("正在重连 WSS 信令...");
-      connectSignalForSession(currentSession);
+      connectSignalForSession(currentSession).catch((error) => {
+        logger.error("signal.reconnect_failed", {
+          meetingId: currentSession.meeting.id,
+          participantId: currentSession.participant.id,
+          error
+        });
+        setErrorMessage(asMessage(error));
+      });
     }, delayMs);
   });
 
@@ -702,7 +719,72 @@ function App() {
     );
   });
 
-  const ensurePeerMesh = useEffectEvent((session: SessionState) => {
+  const cacheRuntimeIceState = useEffectEvent(
+    (meeting: Meeting, participant: Participant, iceServers: RTCIceServer[], expiresAt?: string) => {
+      runtimeIceStateRef.current = {
+        meetingId: meeting.id,
+        participantId: participant.id,
+        iceServers,
+        expiresAt: expiresAt?.trim() ? expiresAt.trim() : undefined
+      };
+    }
+  );
+
+  const clearRuntimeIceState = useEffectEvent(() => {
+    runtimeIceStateRef.current = null;
+  });
+
+  const readCachedRuntimeIceServers = useEffectEvent((session: SessionState): RTCIceServer[] | null => {
+    const cached = runtimeIceStateRef.current;
+    if (!cached) {
+      return null;
+    }
+
+    if (cached.meetingId !== session.meeting.id || cached.participantId !== session.participant.id) {
+      return null;
+    }
+
+    if (!cached.expiresAt) {
+      return cached.iceServers;
+    }
+
+    const expiresAtMs = Date.parse(cached.expiresAt);
+    if (Number.isNaN(expiresAtMs)) {
+      return cached.iceServers;
+    }
+
+    if (expiresAtMs <= Date.now() + 30_000) {
+      runtimeIceStateRef.current = null;
+      return null;
+    }
+
+    return cached.iceServers;
+  });
+
+  const ensureRuntimeIceServers = useEffectEvent(async (session: SessionState): Promise<RTCIceServer[]> => {
+    const cached = readCachedRuntimeIceServers(session);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const response = await fetchMeetingIceServers({
+        meetingId: session.meeting.id,
+        participantId: session.participant.id
+      });
+      cacheRuntimeIceState(session.meeting, session.participant, response.iceServers, response.expiresAt);
+      return response.iceServers;
+    } catch (error) {
+      logger.warn("rtc.ice_servers_fetch_failed", {
+        meetingId: session.meeting.id,
+        participantId: session.participant.id,
+        error
+      });
+      return resolveIceServers();
+    }
+  });
+
+  const ensurePeerMesh = useEffectEvent((session: SessionState, iceServers: RTCIceServer[]) => {
     const currentMesh = meshRef.current;
     if (currentMesh && sessionRef.current?.participant.id === session.participant.id) {
       return currentMesh;
@@ -748,6 +830,9 @@ function App() {
           setErrorMessage(message);
           appendEvent("rtc.error", message);
         }
+      },
+      {
+        iceServers
       }
     );
 
@@ -823,6 +908,7 @@ function App() {
     setStatusMessage(nextStatus);
     setErrorMessage("");
     setEntryView(nextEntryView ?? (currentUser ? "home" : "login"));
+    clearRuntimeIceState();
     scrollViewportToTop();
   });
 
@@ -875,7 +961,9 @@ function App() {
         replaceMeetingSnapshot(payload.meeting);
         const currentSession = sessionRef.current;
         if (currentSession) {
-          const mesh = ensurePeerMesh(currentSession);
+          const mesh =
+            meshRef.current ??
+            ensurePeerMesh(currentSession, readCachedRuntimeIceServers(currentSession) ?? resolveIceServers());
           mesh
             .syncParticipants(
               payload.onlineParticipantIds.filter((id) => id !== currentSession.participant.id)
@@ -1208,7 +1296,15 @@ function App() {
     await applyOutboundStream(baseMediaStreamRef.current);
   });
 
-  const connectSignalForSession = useEffectEvent((session: SessionState) => {
+  const connectSignalForSession = useEffectEvent(async (session: SessionState) => {
+    const iceServers = await ensureRuntimeIceServers(session);
+    if (
+      sessionRef.current?.meeting.id !== session.meeting.id ||
+      sessionRef.current?.participant.id !== session.participant.id
+    ) {
+      return;
+    }
+
     clearSignalReconnectTimer();
     const connectionGeneration = signalConnectionGenerationRef.current + 1;
     signalConnectionGenerationRef.current = connectionGeneration;
@@ -1217,7 +1313,7 @@ function App() {
 
     const client = new SignalClient();
     signalClientRef.current = client;
-    ensurePeerMesh(session);
+    ensurePeerMesh(session, iceServers);
     const isCurrentConnection = () =>
       signalConnectionGenerationRef.current === connectionGeneration && signalClientRef.current === client;
     client.connect(session.meeting.id, session.participant.id, {
@@ -1298,8 +1394,38 @@ function App() {
       return;
     }
 
-    connectSignalForSession(meetingSession);
-    setPendingSignalSession(null);
+    let cancelled = false;
+    const connect = async () => {
+      try {
+        await connectSignalForSession(meetingSession);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        logger.error("signal.connect_failed", {
+          meetingId: meetingSession.meeting.id,
+          participantId: meetingSession.participant.id,
+          error
+        });
+        setErrorMessage(asMessage(error));
+      } finally {
+        if (!cancelled) {
+          setPendingSignalSession(null);
+        }
+      }
+    };
+
+    connect().catch((error) => {
+      logger.error("signal.connect_effect_failed", {
+        meetingId: meetingSession.meeting.id,
+        participantId: meetingSession.participant.id,
+        error
+      });
+      setErrorMessage(asMessage(error));
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [meetingSession, pendingSignalSession]);
 
   const enterMeetingSession = useEffectEvent((meeting: Meeting, participant: Participant, nextStatus: string) => {
@@ -1658,6 +1784,12 @@ function App() {
         hostNickname: currentUser.nickname || "主持人",
         deviceType
       });
+      cacheRuntimeIceState(
+        response.meeting,
+        response.host,
+        response.iceServers,
+        response.iceCredentialExpiresAt
+      );
       setReturnAfterMeetingView("schedule");
       setMeetingAccessPassword(password);
       setJoinForm((current) => ({
@@ -1701,6 +1833,12 @@ function App() {
         hostNickname: currentUser.nickname || "主持人",
         deviceType
       });
+      cacheRuntimeIceState(
+        response.meeting,
+        response.host,
+        response.iceServers,
+        response.iceCredentialExpiresAt
+      );
       setReturnAfterMeetingView("home");
       setMeetingAccessPassword(password);
       setJoinForm((current) => ({
@@ -1739,6 +1877,12 @@ function App() {
       requestCameraEnabled: joinForm.requestCameraEnabled,
       requestMicrophoneEnabled: joinForm.requestMicrophoneEnabled
     });
+    cacheRuntimeIceState(
+      response.meeting,
+      response.participant,
+      response.iceServers,
+      response.iceCredentialExpiresAt
+    );
     setMeetingAccessPassword(password);
     setReturnAfterMeetingView(isAuthenticated ? "home" : "login");
     openPrejoinSession(response.meeting, response.participant, "join", "已加入会议，请先确认入会预览");
@@ -1875,6 +2019,7 @@ function App() {
 
     setPrejoinSession(null);
     setPrejoinOriginView(null);
+    clearRuntimeIceState();
     setJoinLookupMeeting(null);
     setStatusMessage("已返回上一页，可继续修改入会信息");
     setErrorMessage("");

@@ -1,4 +1,4 @@
-type RuntimeIceServer = RTCIceServer & {
+export type RuntimeIceServer = RTCIceServer & {
   urls: string | string[];
 };
 
@@ -64,6 +64,12 @@ function normalizeIceServer(raw: Partial<RTCIceServer> & { urls?: string | strin
   return normalized;
 }
 
+export function normalizeIceServers(
+  rawServers: Array<Partial<RTCIceServer> & { urls?: string | string[] }>
+): RTCIceServer[] {
+  return rawServers.map((item) => normalizeIceServer(item));
+}
+
 export function resolveApiBaseUrl(): string | null {
   const configuredBase = readEnv("VITE_MEETING_API_BASE_URL");
   if (!configuredBase) {
@@ -118,7 +124,7 @@ export function resolveIceServers(): RTCIceServer[] {
         throw new Error("ICE servers config must be an array");
       }
 
-      return parsed.map((item) => normalizeIceServer(item));
+      return normalizeIceServers(parsed);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "unknown error";
       throw new Error(`解析 VITE_MEETING_ICE_SERVERS 失败: ${reason}`);

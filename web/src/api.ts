@@ -1,5 +1,5 @@
 import { createClientLogger } from "./logger";
-import { resolveApiUrl } from "./runtime-config";
+import { normalizeIceServers, resolveApiUrl, type RuntimeIceServer } from "./runtime-config";
 import type {
   AuthUser,
   ChatMessage,
@@ -24,18 +24,48 @@ export type AuthLoginResponse = {
   autoRegistered?: boolean;
 };
 
+type RuntimeIceResponseFields = {
+  iceServers: RTCIceServer[];
+  iceCredentialExpiresAt?: string;
+};
+
 type CreateMeetingResponse = {
   meeting: Meeting;
   host: Participant;
-};
+} & RuntimeIceResponseFields;
 
 type JoinMeetingResponse = {
   meeting: Meeting;
   participant: Participant;
-};
+} & RuntimeIceResponseFields;
 
 type GetMeetingResponse = {
   meeting: Meeting;
+};
+
+type RawRuntimeIceResponseFields = {
+  iceServers: RuntimeIceServer[];
+  iceCredentialExpiresAt?: string;
+};
+
+type RawCreateMeetingResponse = {
+  meeting: Meeting;
+  host: Participant;
+} & RawRuntimeIceResponseFields;
+
+type RawJoinMeetingResponse = {
+  meeting: Meeting;
+  participant: Participant;
+} & RawRuntimeIceResponseFields;
+
+type RawMeetingIceServersResponse = {
+  iceServers: RuntimeIceServer[];
+  expiresAt?: string;
+};
+
+export type MeetingIceServersResponse = {
+  iceServers: RTCIceServer[];
+  expiresAt?: string;
 };
 
 export type MeetingMinutesSnapshot = {
@@ -48,6 +78,15 @@ export type MeetingMinutesSnapshot = {
 };
 
 const logger = createClientLogger("frontend.api");
+
+function normalizeRuntimeIcePayload<T extends { iceServers: RuntimeIceServer[] }>(
+  payload: T
+): Omit<T, "iceServers"> & { iceServers: RTCIceServer[] } {
+  return {
+    ...payload,
+    iceServers: normalizeIceServers(payload.iceServers)
+  };
+}
 
 async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? "GET";
@@ -93,10 +132,11 @@ export async function createMeeting(input: {
   hostNickname: string;
   deviceType: string;
 }): Promise<CreateMeetingResponse> {
-  return requestJSON<CreateMeetingResponse>("/api/meetings", {
+  const response = await requestJSON<RawCreateMeetingResponse>("/api/meetings", {
     method: "POST",
     body: JSON.stringify(input)
   });
+  return normalizeRuntimeIcePayload(response);
 }
 
 export async function requestRegisterCode(input: {
@@ -166,7 +206,7 @@ export async function joinMeeting(input: {
   requestCameraEnabled?: boolean;
   requestMicrophoneEnabled?: boolean;
 }): Promise<JoinMeetingResponse> {
-  return requestJSON<JoinMeetingResponse>(`/api/meetings/${input.meetingId}/join`, {
+  const response = await requestJSON<RawJoinMeetingResponse>(`/api/meetings/${input.meetingId}/join`, {
     method: "POST",
     body: JSON.stringify({
       password: input.password,
@@ -178,10 +218,24 @@ export async function joinMeeting(input: {
       requestMicrophoneEnabled: input.requestMicrophoneEnabled
     })
   });
+  return normalizeRuntimeIcePayload(response);
 }
 
 export async function getMeeting(input: { meetingId: string }): Promise<GetMeetingResponse> {
   return requestJSON<GetMeetingResponse>(`/api/meetings/${input.meetingId}`);
+}
+
+export async function fetchMeetingIceServers(input: {
+  meetingId: string;
+  participantId: string;
+}): Promise<MeetingIceServersResponse> {
+  const response = await requestJSON<RawMeetingIceServersResponse>(
+    `/api/meetings/${input.meetingId}/participants/${input.participantId}/ice-servers`,
+    {
+      method: "POST"
+    }
+  );
+  return normalizeRuntimeIcePayload(response);
 }
 
 export async function endMeeting(input: {

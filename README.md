@@ -81,12 +81,13 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
   Temporary minutes, chat history, whiteboard counts, and ready check summaries can be exported, but there is no host-side save reminder at meeting end yet.
 - [~] Audit logging
   The frontend already reports latency, packet loss, frame rate, bitrate, and connection summary, but device fingerprinting and richer network context are still missing.
+- [~] TURN / coturn runtime relay access
+  The backend now issues runtime ICE / TURN credentials and the release template now uses `coturn use-auth-secret`, but production still needs the shared secret, certificate readability, and firewall validation to be wired correctly in each environment.
 - [~] WeChat mini program client
   Phase 1 is now implemented: the mini program supports WeChat quick login, token-based auth persistence, meeting lookup, password-gated join, and a minimal room shell. Audio/video and richer in-room collaboration are still pending.
 
 ### Not Yet Implemented
 
-- [ ] TURN / coturn deployment and production validation for peers that fail NAT traversal
 - [ ] Dynamic multi-peer mesh management and performance optimization
 - [ ] WeChat QR-code login and richer account binding flows
 - [ ] Auto-fill the join form when opening an invite link directly
@@ -119,6 +120,7 @@ Key endpoints that are already available:
 - `GET /api/meetings/{meetingID}`
 - `GET /api/meetings/{meetingID}/minutes`
 - `POST /api/meetings/{meetingID}/join`
+- `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers`
 - `POST /api/meetings/{meetingID}/participants/{participantID}/leave`
 - `POST /api/meetings/{meetingID}/participants/{participantID}/nickname`
 - `POST /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant`
@@ -132,6 +134,7 @@ Detailed contract docs live in [docs/api/README.md](docs/api/README.md).
 Notes:
 
 - `POST /api/meetings` now returns both the internal `id` and the public `meetingNumber`.
+- `POST /api/meetings`, `POST /api/meetings/{meetingID}/join`, and `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers` now return runtime `iceServers`; TURN credentials are short-lived and signed by the backend instead of being baked into the frontend bundle.
 - Meeting-scoped REST endpoints such as `GET /api/meetings/{meetingID}` and `POST /api/meetings/{meetingID}/join` accept either the internal runtime id or the public 9-digit meeting number.
 - `GET /ws/meetings/{meetingID}` still uses the internal runtime id to keep the signaling path stable.
 
@@ -156,6 +159,10 @@ Optional environment variables:
 - `MEETING_WECHAT_MINIPROGRAM_APP_ID`, `MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
 - `MEETING_WECHAT_MINIPROGRAM_API_BASE_URL`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
+- `MEETING_STUN_URLS`, default `stun:stun.l.google.com:19302`
+- `MEETING_TURN_URLS`, for example `turn:turn.meeting.07c2.com.cn:3478?transport=udp,...`
+- `MEETING_TURN_SHARED_SECRET`, required when you want runtime TURN relay credentials
+- `MEETING_TURN_TTL_SECONDS`, default `43200`
 
 ### Production Mail Delivery
 
@@ -219,6 +226,7 @@ make clean
 - Backend build output: `build/backend/meeting`
 - Frontend build output: `build/frontend/`
 - `make linux`: builds the Linux/amd64 release artifacts used by the Docker-based runtime; the frontend release bundle now defaults to same-origin `/api` and `/ws`, assuming your outer Nginx reverse-proxies those paths to the backend. Only set `FRONTEND_API_BASE_URL` / `FRONTEND_SIGNAL_BASE_URL` when you intentionally need a cross-origin deployment
+- Release packaging now requires `TURN_SHARED_SECRET` in the local environment so the staged coturn config can render `static-auth-secret` without committing any real secret into the repo
 - `make pack`: stages `scripts/`, `docker-compose.yml`, backend, frontend, and coturn assets into `meeting_${commit}.tar.gz` and `latest.txt`
 - `make upload`: uploads `meeting_${commit}.tar.gz` first, then `latest.txt`
 - `make publish`: runs the standard `clean -> linux -> pack -> upload` flow

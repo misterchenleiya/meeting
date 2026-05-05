@@ -11,6 +11,10 @@ type Config struct {
 	HTTPAddr                    string
 	SQLitePath                  string
 	LogDir                      string
+	MeetingSTUNURLs             string
+	MeetingTURNURLs             string
+	MeetingTURNSharedSecret     string
+	MeetingTURNTTLSeconds       int
 	MailerMode                  string
 	SMTPHost                    string
 	SMTPPort                    int
@@ -41,10 +45,19 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	turnTTLSeconds, err := envIntOrDefault("MEETING_TURN_TTL_SECONDS", 43200)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		HTTPAddr:                    envOrDefault("MEETING_HTTP_ADDR", ":5180"),
 		SQLitePath:                  envOrDefault("MEETING_SQLITE_PATH", "./data/meeting.db"),
 		LogDir:                      envOrDefault("MEETING_LOG_DIR", "./logs"),
+		MeetingSTUNURLs:             envOrDefault("MEETING_STUN_URLS", "stun:stun.l.google.com:19302"),
+		MeetingTURNURLs:             envOrDefault("MEETING_TURN_URLS", ""),
+		MeetingTURNSharedSecret:     envOrDefault("MEETING_TURN_SHARED_SECRET", ""),
+		MeetingTURNTTLSeconds:       turnTTLSeconds,
 		MailerMode:                  strings.ToLower(envOrDefault("MEETING_MAILER_MODE", "debug")),
 		SMTPHost:                    envOrDefault("MEETING_SMTP_HOST", ""),
 		SMTPPort:                    smtpPort,

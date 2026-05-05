@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增运行时 ICE 配置接口 `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers`，后端现在会基于共享密钥为当前参会者签发短期 TURN 动态凭据。
 - 微信小程序加入会议页新增会议号输入框内嵌扫码入口，可直接调用摄像头识别会议二维码，并自动回填会议号与二维码中附带的会议密码。
 - 新增独立的 `微信小程序` 设计资产：`docs/design/wechat-auth-preview.html`、`docs/design/wechat-auth-preview.css`、`docs/design/wechat-room-preview.html`、`docs/design/wechat-room-preview.css` 和 `docs/design/wechat-ui-spec.md`，用于在保留 `H5 / PC` 黑色舞台风格的前提下，适配小程序导航栏、安全区和会中壳层。
 - 新增独立的 `H5` 设计资产：`docs/design/h5-auth-preview.html`、`docs/design/h5-auth-preview.css`、`docs/design/h5-room-preview.html`、`docs/design/h5-room-preview.css` 和 `docs/design/h5-ui-spec.md`，用于覆盖手机浏览器与 `iPad` 的登录到入会首屏方案，并与 `PC` 端保持同一套深色产品风格。
@@ -49,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `coturn` 发布模板和后端运行配置已切换为 `use-auth-secret + static-auth-secret` 动态凭据模式；生产前端发布包不再注入固定 TURN 用户名和密码，浏览器产物中默认只保留 STUN fallback。
 - `Web` 桌面端与 `H5` 移动端左下角新增低干扰版本角标，固定按 `version / commit / build time` 三行显示当前前端构建信息，并同步到 `PC / H5` 设计稿与 `H5 UI` 规格中。
 - `Web` 桌面端与 `H5` 移动端进入会议后不再显示左下角版本信息；版本角标仅保留在登录、登录后入口、加入会议和入会预览等登录前壳层页面，并同步更新会中设计稿与 `H5 UI` 规格。
 - `docs/design/` 下的 `H5` 与微信小程序设计稿、结构化 UI 规格和目录说明已按当前实现同步，补齐 `H5` 注册、扫码加入、密码确认、入会预览和当前会中工具栏，并移除小程序设计稿中残留的说明性旧文案与过时壳层内容。
