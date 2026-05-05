@@ -155,6 +155,8 @@ go run ./cmd/server
 - `MEETING_SMTP_FROM_ADDRESS`、`MEETING_SMTP_FROM_NAME`、`MEETING_SMTP_REQUIRE_TLS`
 - `MEETING_SENDCLOUD_API_BASE_URL`、`MEETING_SENDCLOUD_API_USER`、`MEETING_SENDCLOUD_API_KEY`
 - `MEETING_SENDCLOUD_FROM_ADDRESS`、`MEETING_SENDCLOUD_FROM_NAME`
+- `MEETING_STATS_REPORT_TO`，每日流量统计邮件收件人，多个地址用英文逗号分隔；为空表示不发送
+- `MEETING_STATS_REPORT_SEND_AT_UTC`，每日统计邮件发送时间，格式为 UTC `HH:MM`，默认 `12:00`
 - `MEETING_WECHAT_MINIPROGRAM_APP_ID`、`MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
 - `MEETING_WECHAT_MINIPROGRAM_API_BASE_URL`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
@@ -181,12 +183,20 @@ MEETING_SENDCLOUD_API_KEY=your_sendcloud_api_key
 MEETING_SENDCLOUD_FROM_ADDRESS=no-reply@mail.07c2.com.cn
 MEETING_SENDCLOUD_FROM_NAME=meeting
 MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+MEETING_STATS_REPORT_TO=ops@example.com
+MEETING_STATS_REPORT_SEND_AT_UTC=12:00
 MEETING_WECHAT_MINIPROGRAM_APP_ID=your_wechat_miniprogram_app_id
 MEETING_WECHAT_MINIPROGRAM_APP_SECRET=your_wechat_miniprogram_app_secret
 MEETING_WECHAT_MINIPROGRAM_API_BASE_URL=https://api.weixin.qq.com
 ```
 
 仓库内同时提供了生产配置模版 [scripts/env.example](scripts/env.example)。每次发布打包时，这个文件也会一并进入压缩包根目录，文件名保持为 `env.example`，便于运维复制到 `/data/07c2.com.cn/meeting/meeting-backend.env` 后再手工填写真实凭据。SMTP 仍然保留为备选模式，但生产环境优先推荐 SendCloud API。
+
+### 流量统计邮件
+
+配置 `MEETING_STATS_REPORT_TO` 后，后端会每天在 `MEETING_STATS_REPORT_SEND_AT_UTC` 指定的 UTC 时间发送一次流量统计邮件，并统计过去 24 小时的数据。发送时间未配置时默认为 UTC `12:00`。统计明细会持久化写入 SQLite，默认不自动清理，便于后续审计。
+
+有使用数据时，邮件正文会以 HTML 表格直接展示摘要，并附带 `users.csv` 和 `meetings.csv` 两个明细 CSV；过去 24 小时没有使用数据时，仍会发送一封简短邮件，但不带附件。每封邮件末尾都会包含后端 `tag`、`commit` 和 `build time`。
 
 ### 微信小程序
 

@@ -29,6 +29,13 @@ const (
 	StatusEnded  Status = "ended"
 )
 
+type MeetingType string
+
+const (
+	MeetingTypeQuick     MeetingType = "quick"
+	MeetingTypeScheduled MeetingType = "scheduled"
+)
+
 type MediaPreference struct {
 	CameraEnabled     bool `json:"cameraEnabled"`
 	MicrophoneEnabled bool `json:"microphoneEnabled"`
@@ -124,6 +131,7 @@ type Meeting struct {
 	JoinCode          string                  `json:"joinCode"`
 	PasswordRequired  bool                    `json:"passwordRequired"`
 	Title             string                  `json:"title"`
+	MeetingType       MeetingType             `json:"meetingType"`
 	HostParticipantID string                  `json:"hostParticipantId"`
 	Status            Status                  `json:"status"`
 	CreatedAt         time.Time               `json:"createdAt"`

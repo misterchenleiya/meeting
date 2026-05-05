@@ -17,6 +17,10 @@ import (
 
 type disconnectTestStore struct{}
 
+func (disconnectTestStore) GetUserByID(_ context.Context, _ string) (sqlite.UserRecord, bool, error) {
+	return sqlite.UserRecord{}, false, nil
+}
+
 func (disconnectTestStore) GetUserPreference(_ context.Context, _ string) (sqlite.UserPreference, bool, error) {
 	return sqlite.UserPreference{}, false, nil
 }
@@ -26,6 +30,30 @@ func (disconnectTestStore) UpsertUserPreference(_ context.Context, _ sqlite.User
 }
 
 func (disconnectTestStore) InsertAuditEvent(_ context.Context, _ sqlite.AuditEvent) error {
+	return nil
+}
+
+func (disconnectTestStore) UpsertMeetingUsage(_ context.Context, _ sqlite.MeetingUsageRecord) error {
+	return nil
+}
+
+func (disconnectTestStore) UpdateMeetingUsageEndedAt(_ context.Context, _ string, _ time.Time, _ time.Time) error {
+	return nil
+}
+
+func (disconnectTestStore) UpsertMeetingParticipantUsage(_ context.Context, _ sqlite.MeetingParticipantUsageRecord) error {
+	return nil
+}
+
+func (disconnectTestStore) UpdateMeetingParticipantUsageLeftAt(_ context.Context, _ string, _ string, _ time.Time, _ time.Time) error {
+	return nil
+}
+
+func (disconnectTestStore) UpdateMeetingParticipantUsageNickname(_ context.Context, _ string, _ string, _ string, _ time.Time) error {
+	return nil
+}
+
+func (disconnectTestStore) UpdateMeetingParticipantUsageRole(_ context.Context, _ string, _ string, _ string, _ time.Time) error {
 	return nil
 }
 

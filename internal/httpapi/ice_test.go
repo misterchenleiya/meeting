@@ -17,6 +17,10 @@ import (
 
 type turnHTTPStubStore struct{}
 
+func (turnHTTPStubStore) GetUserByID(_ context.Context, _ string) (sqlite.UserRecord, bool, error) {
+	return sqlite.UserRecord{}, false, nil
+}
+
 func (turnHTTPStubStore) GetUserPreference(_ context.Context, _ string) (sqlite.UserPreference, bool, error) {
 	return sqlite.UserPreference{}, false, nil
 }
@@ -26,6 +30,30 @@ func (turnHTTPStubStore) UpsertUserPreference(_ context.Context, _ sqlite.UserPr
 }
 
 func (turnHTTPStubStore) InsertAuditEvent(_ context.Context, _ sqlite.AuditEvent) error {
+	return nil
+}
+
+func (turnHTTPStubStore) UpsertMeetingUsage(_ context.Context, _ sqlite.MeetingUsageRecord) error {
+	return nil
+}
+
+func (turnHTTPStubStore) UpdateMeetingUsageEndedAt(_ context.Context, _ string, _ time.Time, _ time.Time) error {
+	return nil
+}
+
+func (turnHTTPStubStore) UpsertMeetingParticipantUsage(_ context.Context, _ sqlite.MeetingParticipantUsageRecord) error {
+	return nil
+}
+
+func (turnHTTPStubStore) UpdateMeetingParticipantUsageLeftAt(_ context.Context, _ string, _ string, _ time.Time, _ time.Time) error {
+	return nil
+}
+
+func (turnHTTPStubStore) UpdateMeetingParticipantUsageNickname(_ context.Context, _ string, _ string, _ string, _ time.Time) error {
+	return nil
+}
+
+func (turnHTTPStubStore) UpdateMeetingParticipantUsageRole(_ context.Context, _ string, _ string, _ string, _ time.Time) error {
 	return nil
 }
 

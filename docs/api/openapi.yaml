@@ -770,6 +770,11 @@ components:
         password:
           type: string
           description: Optional meeting password. Empty string means no password.
+        meetingType:
+          type: string
+          enum: [quick, scheduled]
+          default: quick
+          description: Source flow for usage statistics. Existing clients may omit it and are treated as quick meetings.
         hostUserId:
           type: string
           description: Ignored by the backend; the current authenticated session is used instead.
@@ -958,6 +963,62 @@ components:
           type: boolean
         defaultMicrophoneEnabled:
           type: boolean
+    Meeting:
+      type: object
+      required:
+        - id
+        - meetingNumber
+        - joinCode
+        - passwordRequired
+        - title
+        - meetingType
+        - hostParticipantId
+        - status
+        - createdAt
+        - participants
+      properties:
+        id:
+          type: string
+        meetingNumber:
+          type: string
+        joinCode:
+          type: string
+        passwordRequired:
+          type: boolean
+        title:
+          type: string
+        meetingType:
+          type: string
+          enum: [quick, scheduled]
+        hostParticipantId:
+          type: string
+        status:
+          type: string
+          enum: [active, ended]
+        createdAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        participants:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Participant"
+        chatMessages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        whiteboardActions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhiteboardAction"
+        activeReadyCheck:
+          $ref: "#/components/schemas/ReadyCheckRound"
+        temporaryMinutes:
+          type: array
+          items:
+            type: string
     Participant:
       type: object
       required:

@@ -128,6 +128,7 @@ async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
 export async function createMeeting(input: {
   title: string;
   password: string;
+  meetingType: "quick" | "scheduled";
   hostUserId: string;
   hostNickname: string;
   deviceType: string;

@@ -1,6 +1,10 @@
 SHELL := /bin/zsh
 
 PROJECT_NAME := meeting
+GIT_COMMIT := $(shell git rev-parse --short=12 HEAD)
+GIT_TAG := $(shell git describe --tags --exact-match HEAD 2>/dev/null || echo untagged)
+BUILD_TIME := $(shell date '+%Y-%m-%d %H:%M:%S %z')
+BACKEND_LDFLAGS := -s -w -X 'github.com/misterchenleiya/meeting/internal/buildinfo.Tag=$(GIT_TAG)' -X 'github.com/misterchenleiya/meeting/internal/buildinfo.Commit=$(GIT_COMMIT)' -X 'github.com/misterchenleiya/meeting/internal/buildinfo.BuildTime=$(BUILD_TIME)'
 BUILD_DIR := build
 BACKEND_BUILD_DIR := $(BUILD_DIR)/backend
 BACKEND_BINARY := $(BACKEND_BUILD_DIR)/meeting
@@ -11,7 +15,7 @@ RELEASE_ROOT := $(BUILD_DIR)/release/$(PROJECT_NAME)
 RELEASE_BACKEND_DIR := $(RELEASE_ROOT)/backend
 RELEASE_FRONTEND_DIR := $(RELEASE_ROOT)/frontend
 RELEASE_COTURN_DIR := $(RELEASE_ROOT)/coturn
-ARCHIVE_FILE := $(PROJECT_NAME)_$(shell git rev-parse --short=12 HEAD).tar.gz
+ARCHIVE_FILE := $(PROJECT_NAME)_$(GIT_COMMIT).tar.gz
 ARCHIVE_PATH := $(BUILD_DIR)/$(ARCHIVE_FILE)
 LATEST_FILE := $(BUILD_DIR)/latest.txt
 CURRENT_FILE := $(RELEASE_ROOT)/current.txt
@@ -38,7 +42,7 @@ build-backend:
 	@mkdir -p "$(BACKEND_BUILD_DIR)" "$(GO_CACHE_DIR)" "$(GO_TMP_DIR)"
 	GOCACHE="$(abspath $(GO_CACHE_DIR))" \
 	GOTMPDIR="$(abspath $(GO_TMP_DIR))" \
-	go build -o "$(abspath $(BACKEND_BINARY))" ./cmd/server
+	go build -ldflags "$(BACKEND_LDFLAGS)" -o "$(abspath $(BACKEND_BINARY))" ./cmd/server
 
 build-frontend:
 	@mkdir -p "$(WEB_BUILD_DIR)" "$(BUILD_DIR)/.cache/typescript" "$(BUILD_DIR)/.cache/vite"
@@ -57,7 +61,7 @@ build-backend-linux:
 		-e GOOS=linux \
 		-e GOARCH=amd64 \
 		golang:1.24-bookworm \
-		/usr/local/go/bin/go build -trimpath -o build/backend/meeting ./cmd/server
+		/usr/local/go/bin/go build -trimpath -ldflags "$(BACKEND_LDFLAGS)" -o build/backend/meeting ./cmd/server
 
 build-frontend-release:
 	@mkdir -p "$(WEB_BUILD_DIR)" "$(BUILD_DIR)/.cache/typescript" "$(BUILD_DIR)/.cache/vite"

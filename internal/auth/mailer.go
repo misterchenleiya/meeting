@@ -16,6 +16,7 @@ const (
 
 type Mailer interface {
 	SendVerificationCode(ctx context.Context, message VerificationMessage) (MailDelivery, error)
+	SendEmail(ctx context.Context, message EmailMessage) (MailDelivery, error)
 }
 
 type VerificationMessage struct {
@@ -30,6 +31,21 @@ type VerificationMessage struct {
 type MailDelivery struct {
 	Mode      string
 	DebugCode string
+}
+
+type EmailMessage struct {
+	To             []string
+	Subject        string
+	TextBody       string
+	HTMLBody       string
+	ContentSummary string
+	Attachments    []MailAttachment
+}
+
+type MailAttachment struct {
+	Filename    string
+	ContentType string
+	Data        []byte
 }
 
 type MailerConfig struct {

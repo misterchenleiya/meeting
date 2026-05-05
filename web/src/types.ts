@@ -89,6 +89,7 @@ export type Meeting = {
   joinCode: string;
   passwordRequired: boolean;
   title: string;
+  meetingType: "quick" | "scheduled";
   hostParticipantId: string;
   status: "active" | "ended";
   createdAt: string;

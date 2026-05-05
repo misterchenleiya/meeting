@@ -11,14 +11,25 @@ import (
 )
 
 type stubStore struct {
-	preferences map[string]sqlite.UserPreference
-	auditEvents []sqlite.AuditEvent
+	preferences  map[string]sqlite.UserPreference
+	users        map[string]sqlite.UserRecord
+	auditEvents  []sqlite.AuditEvent
+	meetings     map[string]sqlite.MeetingUsageRecord
+	participants map[string]sqlite.MeetingParticipantUsageRecord
 }
 
 func newStubStore() *stubStore {
 	return &stubStore{
-		preferences: map[string]sqlite.UserPreference{},
+		preferences:  map[string]sqlite.UserPreference{},
+		users:        map[string]sqlite.UserRecord{},
+		meetings:     map[string]sqlite.MeetingUsageRecord{},
+		participants: map[string]sqlite.MeetingParticipantUsageRecord{},
 	}
+}
+
+func (s *stubStore) GetUserByID(_ context.Context, userID string) (sqlite.UserRecord, bool, error) {
+	user, ok := s.users[userID]
+	return user, ok, nil
 }
 
 func (s *stubStore) GetUserPreference(_ context.Context, userID string) (sqlite.UserPreference, bool, error) {
@@ -33,6 +44,51 @@ func (s *stubStore) UpsertUserPreference(_ context.Context, pref sqlite.UserPref
 
 func (s *stubStore) InsertAuditEvent(_ context.Context, event sqlite.AuditEvent) error {
 	s.auditEvents = append(s.auditEvents, event)
+	return nil
+}
+
+func (s *stubStore) UpsertMeetingUsage(_ context.Context, record sqlite.MeetingUsageRecord) error {
+	s.meetings[record.ID] = record
+	return nil
+}
+
+func (s *stubStore) UpdateMeetingUsageEndedAt(_ context.Context, meetingID string, endedAt time.Time, updatedAt time.Time) error {
+	record := s.meetings[meetingID]
+	record.EndedAt = &endedAt
+	record.UpdatedAt = updatedAt
+	s.meetings[meetingID] = record
+	return nil
+}
+
+func (s *stubStore) UpsertMeetingParticipantUsage(_ context.Context, record sqlite.MeetingParticipantUsageRecord) error {
+	s.participants[record.MeetingID+"/"+record.ParticipantID] = record
+	return nil
+}
+
+func (s *stubStore) UpdateMeetingParticipantUsageLeftAt(_ context.Context, meetingID string, participantID string, leftAt time.Time, updatedAt time.Time) error {
+	key := meetingID + "/" + participantID
+	record := s.participants[key]
+	record.LeftAt = &leftAt
+	record.UpdatedAt = updatedAt
+	s.participants[key] = record
+	return nil
+}
+
+func (s *stubStore) UpdateMeetingParticipantUsageNickname(_ context.Context, meetingID string, participantID string, nickname string, updatedAt time.Time) error {
+	key := meetingID + "/" + participantID
+	record := s.participants[key]
+	record.Nickname = nickname
+	record.UpdatedAt = updatedAt
+	s.participants[key] = record
+	return nil
+}
+
+func (s *stubStore) UpdateMeetingParticipantUsageRole(_ context.Context, meetingID string, participantID string, role string, updatedAt time.Time) error {
+	key := meetingID + "/" + participantID
+	record := s.participants[key]
+	record.ParticipantRole = role
+	record.UpdatedAt = updatedAt
+	s.participants[key] = record
 	return nil
 }
 

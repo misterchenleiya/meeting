@@ -18,6 +18,10 @@ import (
 
 type stubStore struct{}
 
+func (stubStore) GetUserByID(_ context.Context, _ string) (sqlite.UserRecord, bool, error) {
+	return sqlite.UserRecord{}, false, nil
+}
+
 func (stubStore) GetUserPreference(_ context.Context, _ string) (sqlite.UserPreference, bool, error) {
 	return sqlite.UserPreference{}, false, nil
 }
@@ -27,6 +31,30 @@ func (stubStore) UpsertUserPreference(_ context.Context, _ sqlite.UserPreference
 }
 
 func (stubStore) InsertAuditEvent(_ context.Context, _ sqlite.AuditEvent) error {
+	return nil
+}
+
+func (stubStore) UpsertMeetingUsage(_ context.Context, _ sqlite.MeetingUsageRecord) error {
+	return nil
+}
+
+func (stubStore) UpdateMeetingUsageEndedAt(_ context.Context, _ string, _ time.Time, _ time.Time) error {
+	return nil
+}
+
+func (stubStore) UpsertMeetingParticipantUsage(_ context.Context, _ sqlite.MeetingParticipantUsageRecord) error {
+	return nil
+}
+
+func (stubStore) UpdateMeetingParticipantUsageLeftAt(_ context.Context, _ string, _ string, _ time.Time, _ time.Time) error {
+	return nil
+}
+
+func (stubStore) UpdateMeetingParticipantUsageNickname(_ context.Context, _ string, _ string, _ string, _ time.Time) error {
+	return nil
+}
+
+func (stubStore) UpdateMeetingParticipantUsageRole(_ context.Context, _ string, _ string, _ string, _ time.Time) error {
 	return nil
 }
 

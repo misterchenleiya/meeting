@@ -28,6 +28,8 @@ type Config struct {
 	SendCloudAPIKey             string
 	SendCloudFromAddress        string
 	SendCloudFromName           string
+	StatsReportRecipients       []string
+	StatsReportSendAtUTC        string
 	WechatMiniProgramAppID      string
 	WechatMiniProgramAppSecret  string
 	WechatMiniProgramAPIBaseURL string
@@ -71,11 +73,37 @@ func Load() (Config, error) {
 		SendCloudAPIKey:             envOrDefault("MEETING_SENDCLOUD_API_KEY", ""),
 		SendCloudFromAddress:        envOrDefault("MEETING_SENDCLOUD_FROM_ADDRESS", "no-reply@mail.07c2.com.cn"),
 		SendCloudFromName:           envOrDefault("MEETING_SENDCLOUD_FROM_NAME", "meeting"),
+		StatsReportRecipients:       envList("MEETING_STATS_REPORT_TO"),
+		StatsReportSendAtUTC:        envOrDefault("MEETING_STATS_REPORT_SEND_AT_UTC", "12:00"),
 		WechatMiniProgramAppID:      envOrDefault("MEETING_WECHAT_MINIPROGRAM_APP_ID", ""),
 		WechatMiniProgramAppSecret:  envOrDefault("MEETING_WECHAT_MINIPROGRAM_APP_SECRET", ""),
 		WechatMiniProgramAPIBaseURL: envOrDefault("MEETING_WECHAT_MINIPROGRAM_API_BASE_URL", "https://api.weixin.qq.com"),
 		AuthCodeSubjectPrefix:       envOrDefault("MEETING_AUTH_CODE_SUBJECT_PREFIX", "[meeting]"),
 	}, nil
+}
+
+func envList(key string) []string {
+	raw := os.Getenv(key)
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	values := strings.Split(raw, ",")
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+
+	return result
 }
 
 func envOrDefault(key string, fallback string) string {

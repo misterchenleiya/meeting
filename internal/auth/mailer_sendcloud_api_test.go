@@ -118,3 +118,61 @@ func TestSendCloudAPIMailerRejectsFailedResponse(t *testing.T) {
 		t.Fatalf("SendVerificationCode() error = %v, want auth failure message", err)
 	}
 }
+
+func TestSendCloudAPIMailerSendsAttachments(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+			t.Fatalf("content type = %q, want multipart/form-data", r.Header.Get("Content-Type"))
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm() error = %v", err)
+		}
+		if got := r.FormValue("to"); got != "ops@example.com" {
+			t.Fatalf("to = %q", got)
+		}
+		if got := r.FormValue("subject"); got != "meeting 流量统计报告" {
+			t.Fatalf("subject = %q", got)
+		}
+		files := r.MultipartForm.File["attachments"]
+		if len(files) != 1 {
+			t.Fatalf("attachments count = %d, want 1", len(files))
+		}
+		if files[0].Filename != "summary.csv" {
+			t.Fatalf("attachment filename = %q", files[0].Filename)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"result":true,"statusCode":200,"message":"请求成功","info":{}}`))
+	}))
+	defer server.Close()
+
+	mailer, err := NewSendCloudAPIMailer(nil, MailerConfig{
+		SendCloudAPIBaseURL:  server.URL,
+		SendCloudAPIUser:     "test_user",
+		SendCloudAPIKey:      "test_key",
+		SendCloudFromAddress: "no-reply@mail.07c2.com.cn",
+		SendCloudFromName:    "meeting",
+	})
+	if err != nil {
+		t.Fatalf("NewSendCloudAPIMailer() error = %v", err)
+	}
+
+	_, err = mailer.SendEmail(context.Background(), EmailMessage{
+		To:       []string{"ops@example.com"},
+		Subject:  "meeting 流量统计报告",
+		TextBody: "统计报告",
+		Attachments: []MailAttachment{{
+			Filename:    "summary.csv",
+			ContentType: "text/csv; charset=utf-8",
+			Data:        []byte("指标,数值\n会议数量,1\n"),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("SendEmail() error = %v", err)
+	}
+}

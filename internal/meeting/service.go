@@ -25,9 +25,16 @@ var (
 )
 
 type PreferenceStore interface {
+	GetUserByID(ctx context.Context, userID string) (sqlite.UserRecord, bool, error)
 	GetUserPreference(ctx context.Context, userID string) (sqlite.UserPreference, bool, error)
 	UpsertUserPreference(ctx context.Context, pref sqlite.UserPreference) error
 	InsertAuditEvent(ctx context.Context, event sqlite.AuditEvent) error
+	UpsertMeetingUsage(ctx context.Context, record sqlite.MeetingUsageRecord) error
+	UpdateMeetingUsageEndedAt(ctx context.Context, meetingID string, endedAt time.Time, updatedAt time.Time) error
+	UpsertMeetingParticipantUsage(ctx context.Context, record sqlite.MeetingParticipantUsageRecord) error
+	UpdateMeetingParticipantUsageLeftAt(ctx context.Context, meetingID string, participantID string, leftAt time.Time, updatedAt time.Time) error
+	UpdateMeetingParticipantUsageNickname(ctx context.Context, meetingID string, participantID string, nickname string, updatedAt time.Time) error
+	UpdateMeetingParticipantUsageRole(ctx context.Context, meetingID string, participantID string, role string, updatedAt time.Time) error
 }
 
 type Service struct {
@@ -41,7 +48,9 @@ type Service struct {
 type CreateMeetingInput struct {
 	Title        string
 	Password     string
+	MeetingType  MeetingType
 	HostUserID   string
+	HostEmail    string
 	HostNickname string
 	DeviceType   string
 	IPAddress    string
@@ -51,6 +60,7 @@ type JoinMeetingInput struct {
 	MeetingID                string
 	Password                 string
 	UserID                   string
+	Email                    string
 	Nickname                 string
 	DeviceType               string
 	IPAddress                string
@@ -174,18 +184,24 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 		return nil, nil, err
 	}
 
+	hostEmail, err := s.resolveUserEmail(ctx, input.HostUserID, input.HostEmail)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	hostID, err := generateID(12)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	now := time.Now().UTC()
 	host := &Participant{
 		ID:          hostID,
 		UserID:      input.HostUserID,
 		Nickname:    input.HostNickname,
 		Role:        RoleHost,
 		IsAnonymous: false,
-		JoinedAt:    time.Now().UTC(),
+		JoinedAt:    now,
 		RequestedMediaPreference: MediaPreference{
 			CameraEnabled:     hostPreference.CameraEnabled,
 			MicrophoneEnabled: hostPreference.MicrophoneEnabled,
@@ -207,20 +223,25 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 		JoinCode:          joinCode,
 		PasswordRequired:  passwordRequired,
 		Title:             input.Title,
+		MeetingType:       normalizeMeetingType(input.MeetingType),
 		HostParticipantID: hostID,
 		Status:            StatusActive,
-		CreatedAt:         time.Now().UTC(),
+		CreatedAt:         now,
 		PasswordSalt:      salt,
 		PasswordHash:      passwordHash,
 		Participants: map[string]*Participant{
 			hostID: host,
 		},
 	}
-	addMinuteLocked(meeting, time.Now().UTC(), fmt.Sprintf("会议已创建，主持人 %s 已入会。", host.Nickname))
+	addMinuteLocked(meeting, now, fmt.Sprintf("会议已创建，主持人 %s 已入会。", host.Nickname))
 
 	s.meetings[meeting.ID] = meeting
 	s.numbers[meeting.MeetingNumber] = meeting.ID
 	s.mu.Unlock()
+
+	if err := s.recordMeetingCreated(ctx, meeting, host, hostEmail, input); err != nil {
+		return nil, nil, err
+	}
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
@@ -230,8 +251,8 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 		EventType:       "meeting_created",
 		IPAddress:       input.IPAddress,
 		DeviceType:      input.DeviceType,
-		DetailsJSON:     fmt.Sprintf(`{"title":%q,"joinCode":%q}`, input.Title, joinCode),
-		CreatedAt:       time.Now().UTC(),
+		DetailsJSON:     fmt.Sprintf(`{"title":%q,"joinCode":%q,"meetingType":%q}`, input.Title, joinCode, meeting.MeetingType),
+		CreatedAt:       now,
 	}); err != nil {
 		return nil, nil, err
 	}
@@ -240,6 +261,11 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 }
 
 func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Meeting, *Participant, error) {
+	participantEmail, err := s.resolveUserEmail(ctx, input.UserID, input.Email)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -273,13 +299,14 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 		return nil, nil, err
 	}
 
+	now := time.Now().UTC()
 	participant := &Participant{
 		ID:                       participantID,
 		UserID:                   input.UserID,
 		Nickname:                 input.Nickname,
 		Role:                     RoleParticipant,
 		IsAnonymous:              input.IsAnonymous,
-		JoinedAt:                 time.Now().UTC(),
+		JoinedAt:                 now,
 		RequestedMediaPreference: pref,
 		EffectiveMediaState:      MediaPreference{},
 		GrantedCapabilities:      defaultParticipantCapabilities(input.UserID, input.IsAnonymous),
@@ -287,6 +314,10 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 
 	meeting.Participants[participant.ID] = participant
 	addMinuteLocked(meeting, participant.JoinedAt, fmt.Sprintf("%s 加入会议。", participant.Nickname))
+
+	if err := s.recordParticipantJoined(ctx, meeting.ID, participant, participantEmail, input); err != nil {
+		return nil, nil, err
+	}
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
@@ -297,7 +328,7 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 		IPAddress:       input.IPAddress,
 		DeviceType:      input.DeviceType,
 		DetailsJSON:     fmt.Sprintf(`{"nickname":%q,"anonymous":%t}`, participant.Nickname, participant.IsAnonymous),
-		CreatedAt:       time.Now().UTC(),
+		CreatedAt:       now,
 	}); err != nil {
 		return nil, nil, err
 	}
@@ -340,9 +371,16 @@ func (s *Service) LeaveMeeting(ctx context.Context, meetingID string, participan
 		return err
 	}
 
+	if err := s.recordParticipantLeft(ctx, meeting.ID, participant.ID, now); err != nil {
+		return err
+	}
+
 	delete(meeting.Participants, participantID)
 	if len(meeting.Participants) == 0 {
-		endMeetingLocked(meeting)
+		endMeetingLocked(meeting, now)
+		if err := s.recordMeetingEnded(ctx, meeting.ID, now); err != nil {
+			return err
+		}
 		delete(s.meetings, internalMeetingID)
 		delete(s.numbers, meeting.MeetingNumber)
 	}
@@ -376,7 +414,20 @@ func (s *Service) EndMeeting(ctx context.Context, meetingID string, endedByParti
 		return err
 	}
 
-	endMeetingLocked(meeting)
+	for _, participant := range meeting.Participants {
+		if participant.LeftAt == nil {
+			leftAt := now
+			participant.LeftAt = &leftAt
+		}
+		if err := s.recordParticipantLeft(ctx, meeting.ID, participant.ID, now); err != nil {
+			return err
+		}
+	}
+
+	endMeetingLocked(meeting, now)
+	if err := s.recordMeetingEnded(ctx, meeting.ID, now); err != nil {
+		return err
+	}
 	delete(s.meetings, internalMeetingID)
 	delete(s.numbers, meeting.MeetingNumber)
 
@@ -494,7 +545,12 @@ func (s *Service) AssignAssistant(ctx context.Context, input AssignAssistantInpu
 
 	participant.Role = RoleAssistant
 	participant.GrantedCapabilities = capabilitySet(allCapabilities()...)
-	addMinuteLocked(meetingValue, time.Now().UTC(), fmt.Sprintf("%s 已将 %s 设为助理。", actor.Nickname, participant.Nickname))
+	now := time.Now().UTC()
+	addMinuteLocked(meetingValue, now, fmt.Sprintf("%s 已将 %s 设为助理。", actor.Nickname, participant.Nickname))
+
+	if err := s.store.UpdateMeetingParticipantUsageRole(ctx, meetingValue.ID, participant.ID, string(participant.Role), now); err != nil {
+		return nil, err
+	}
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
@@ -503,7 +559,7 @@ func (s *Service) AssignAssistant(ctx context.Context, input AssignAssistantInpu
 		ParticipantRole: string(participant.Role),
 		EventType:       "assistant_assigned",
 		DetailsJSON:     fmt.Sprintf(`{"assignedBy":%q}`, actor.ID),
-		CreatedAt:       time.Now().UTC(),
+		CreatedAt:       now,
 	}); err != nil {
 		return nil, err
 	}
@@ -544,6 +600,10 @@ func (s *Service) UpdateNickname(ctx context.Context, input UpdateNicknameInput)
 	}
 
 	addMinuteLocked(meetingValue, systemMessage.SentAt, fmt.Sprintf("%s 将昵称修改为 %s。", previousNickname, trimmedNickname))
+
+	if err := s.store.UpdateMeetingParticipantUsageNickname(ctx, meetingValue.ID, actor.ID, actor.Nickname, systemMessage.SentAt); err != nil {
+		return nil, nil, "", err
+	}
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
@@ -884,6 +944,81 @@ func (s *Service) insertAudit(ctx context.Context, event sqlite.AuditEvent) erro
 	return nil
 }
 
+func (s *Service) recordMeetingCreated(ctx context.Context, meetingValue *Meeting, host *Participant, hostEmail string, input CreateMeetingInput) error {
+	record := sqlite.MeetingUsageRecord{
+		ID:                meetingValue.ID,
+		MeetingNumber:     meetingValue.MeetingNumber,
+		JoinCode:          meetingValue.JoinCode,
+		Title:             meetingValue.Title,
+		MeetingType:       string(meetingValue.MeetingType),
+		HostParticipantID: meetingValue.HostParticipantID,
+		HostUserID:        host.UserID,
+		HostEmail:         hostEmail,
+		HostNickname:      host.Nickname,
+		HostIPAddress:     input.IPAddress,
+		CreatedAt:         meetingValue.CreatedAt,
+		UpdatedAt:         meetingValue.CreatedAt,
+	}
+	if err := s.store.UpsertMeetingUsage(ctx, record); err != nil {
+		return err
+	}
+
+	return s.store.UpsertMeetingParticipantUsage(ctx, sqlite.MeetingParticipantUsageRecord{
+		MeetingID:       meetingValue.ID,
+		ParticipantID:   host.ID,
+		UserID:          host.UserID,
+		Email:           hostEmail,
+		Nickname:        host.Nickname,
+		IsAnonymous:     host.IsAnonymous,
+		IPAddress:       input.IPAddress,
+		DeviceType:      input.DeviceType,
+		ParticipantRole: string(host.Role),
+		JoinedAt:        host.JoinedAt,
+		UpdatedAt:       host.JoinedAt,
+	})
+}
+
+func (s *Service) recordParticipantJoined(ctx context.Context, meetingID string, participant *Participant, email string, input JoinMeetingInput) error {
+	return s.store.UpsertMeetingParticipantUsage(ctx, sqlite.MeetingParticipantUsageRecord{
+		MeetingID:       meetingID,
+		ParticipantID:   participant.ID,
+		UserID:          participant.UserID,
+		Email:           email,
+		Nickname:        participant.Nickname,
+		IsAnonymous:     participant.IsAnonymous,
+		IPAddress:       input.IPAddress,
+		DeviceType:      input.DeviceType,
+		ParticipantRole: string(participant.Role),
+		JoinedAt:        participant.JoinedAt,
+		UpdatedAt:       participant.JoinedAt,
+	})
+}
+
+func (s *Service) recordParticipantLeft(ctx context.Context, meetingID string, participantID string, leftAt time.Time) error {
+	return s.store.UpdateMeetingParticipantUsageLeftAt(ctx, meetingID, participantID, leftAt, leftAt)
+}
+
+func (s *Service) recordMeetingEnded(ctx context.Context, meetingID string, endedAt time.Time) error {
+	return s.store.UpdateMeetingUsageEndedAt(ctx, meetingID, endedAt, endedAt)
+}
+
+func (s *Service) resolveUserEmail(ctx context.Context, userID string, email string) (string, error) {
+	trimmedEmail := strings.TrimSpace(email)
+	if trimmedEmail != "" || strings.TrimSpace(userID) == "" {
+		return trimmedEmail, nil
+	}
+
+	user, found, err := s.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", nil
+	}
+
+	return strings.TrimSpace(user.Email), nil
+}
+
 func (s *Service) resolvePreference(
 	ctx context.Context,
 	userID string,
@@ -942,6 +1077,15 @@ func defaultParticipantCapabilities(userID string, isAnonymous bool) map[Capabil
 
 func isRegisteredParticipant(userID string, isAnonymous bool) bool {
 	return strings.TrimSpace(userID) != "" && !isAnonymous
+}
+
+func normalizeMeetingType(value MeetingType) MeetingType {
+	switch value {
+	case MeetingTypeScheduled:
+		return MeetingTypeScheduled
+	default:
+		return MeetingTypeQuick
+	}
 }
 
 func isParticipantCapabilityRequestable(capability Capability) bool {
@@ -1022,10 +1166,9 @@ func copyParticipant(value *Participant) *Participant {
 	return &copied
 }
 
-func endMeetingLocked(meeting *Meeting) {
-	now := time.Now().UTC()
+func endMeetingLocked(meeting *Meeting, endedAt time.Time) {
 	meeting.Status = StatusEnded
-	meeting.EndedAt = &now
+	meeting.EndedAt = &endedAt
 	meeting.ChatMessages = nil
 	meeting.WhiteboardActions = nil
 	meeting.ActiveReadyCheck = nil

@@ -158,6 +158,8 @@ Optional environment variables:
 - `MEETING_SMTP_FROM_ADDRESS`, `MEETING_SMTP_FROM_NAME`, `MEETING_SMTP_REQUIRE_TLS`
 - `MEETING_SENDCLOUD_API_BASE_URL`, `MEETING_SENDCLOUD_API_USER`, `MEETING_SENDCLOUD_API_KEY`
 - `MEETING_SENDCLOUD_FROM_ADDRESS`, `MEETING_SENDCLOUD_FROM_NAME`
+- `MEETING_STATS_REPORT_TO`, comma-separated recipients for the daily traffic statistics report. Empty means disabled.
+- `MEETING_STATS_REPORT_SEND_AT_UTC`, daily statistics report send time in `HH:MM` UTC, default `12:00`.
 - `MEETING_WECHAT_MINIPROGRAM_APP_ID`, `MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
 - `MEETING_WECHAT_MINIPROGRAM_API_BASE_URL`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
@@ -184,12 +186,20 @@ MEETING_SENDCLOUD_API_KEY=your_sendcloud_api_key
 MEETING_SENDCLOUD_FROM_ADDRESS=no-reply@mail.07c2.com.cn
 MEETING_SENDCLOUD_FROM_NAME=meeting
 MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+MEETING_STATS_REPORT_TO=ops@example.com
+MEETING_STATS_REPORT_SEND_AT_UTC=12:00
 MEETING_WECHAT_MINIPROGRAM_APP_ID=your_wechat_miniprogram_app_id
 MEETING_WECHAT_MINIPROGRAM_APP_SECRET=your_wechat_miniprogram_app_secret
 MEETING_WECHAT_MINIPROGRAM_API_BASE_URL=https://api.weixin.qq.com
 ```
 
 The repository also ships a production template at [scripts/env.example](scripts/env.example). Every release package now includes this file as root-level `env.example` so operators can copy it to `/data/07c2.com.cn/meeting/meeting-backend.env` and fill in real credentials manually. SMTP is still supported as a fallback mode, but SendCloud API is the recommended production path.
+
+### Traffic Statistics Report
+
+When `MEETING_STATS_REPORT_TO` is configured, the backend sends one traffic statistics email every day at `MEETING_STATS_REPORT_SEND_AT_UTC` and reports the previous 24 hours. The default send time is `12:00` UTC. Usage details are persisted in SQLite and are not automatically deleted.
+
+Reports with usage data show the summary directly in the email body as an HTML table and include two detail CSV attachments: `users.csv` and `meetings.csv`. If the previous 24 hours had no usage data, the backend still sends a short email without attachments. Every report footer includes backend `tag`, `commit`, and `build time`.
 
 ### WeChat Mini Program
 

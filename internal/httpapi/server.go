@@ -133,6 +133,7 @@ func (s *Server) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Title        string `json:"title"`
 		Password     string `json:"password"`
+		MeetingType  string `json:"meetingType"`
 		HostUserID   string `json:"hostUserId"`
 		HostNickname string `json:"hostNickname"`
 		DeviceType   string `json:"deviceType"`
@@ -155,7 +156,9 @@ func (s *Server) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	meetingValue, host, err := s.meetings.CreateMeeting(r.Context(), meeting.CreateMeetingInput{
 		Title:        request.Title,
 		Password:     request.Password,
+		MeetingType:  meeting.MeetingType(request.MeetingType),
 		HostUserID:   currentUser.ID,
+		HostEmail:    currentUser.Email,
 		HostNickname: currentUser.Nickname,
 		DeviceType:   request.DeviceType,
 		IPAddress:    clientIP(r),

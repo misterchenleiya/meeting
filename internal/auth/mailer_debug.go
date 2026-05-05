@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"log/slog"
+	"strings"
 )
 
 type DebugMailer struct {
@@ -29,4 +30,17 @@ func (m *DebugMailer) SendVerificationCode(_ context.Context, message Verificati
 		Mode:      MailerModeDebug,
 		DebugCode: message.Code,
 	}, nil
+}
+
+func (m *DebugMailer) SendEmail(_ context.Context, message EmailMessage) (MailDelivery, error) {
+	if m.logger != nil {
+		m.logger.Info(
+			"email generated in debug mode",
+			"to", strings.Join(message.To, ","),
+			"subject", message.Subject,
+			"attachmentCount", len(message.Attachments),
+		)
+	}
+
+	return MailDelivery{Mode: MailerModeDebug}, nil
 }

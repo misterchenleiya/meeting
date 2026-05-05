@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/misterchenleiya/meeting/internal/auth"
+	"github.com/misterchenleiya/meeting/internal/buildinfo"
 	"github.com/misterchenleiya/meeting/internal/config"
 	"github.com/misterchenleiya/meeting/internal/httpapi"
 	"github.com/misterchenleiya/meeting/internal/logging"
 	"github.com/misterchenleiya/meeting/internal/meeting"
 	"github.com/misterchenleiya/meeting/internal/signaling"
+	"github.com/misterchenleiya/meeting/internal/statistics"
 	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
 	"github.com/misterchenleiya/meeting/internal/turnauth"
 )
@@ -34,6 +36,8 @@ func main() {
 	defer closeLogger()
 
 	ctx := context.Background()
+	signalContext, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	store, err := sqlite.Open(ctx, cfg.SQLitePath)
 	if err != nil {
@@ -95,6 +99,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	statsReporter, err := statistics.NewReporter(logger, store, mailer, statistics.Config{
+		Recipients: cfg.StatsReportRecipients,
+		SendAtUTC:  cfg.StatsReportSendAtUTC,
+		BuildInfo:  buildinfo.Current(),
+	})
+	if err != nil {
+		logger.Error("failed to initialize traffic statistics reporter", "error", err)
+		os.Exit(1)
+	}
+	if statsReporter.Enabled() {
+		go statsReporter.Run(signalContext)
+	}
+
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           httpapi.NewServer(logger, authService, meetingService, store, signalingHub, turnService).Routes(),
@@ -108,9 +125,6 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-
-	signalContext, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	<-signalContext.Done()
 

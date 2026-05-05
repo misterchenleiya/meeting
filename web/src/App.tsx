@@ -1885,6 +1885,7 @@ function App() {
       const response = await createMeeting({
         title,
         password,
+        meetingType: "scheduled",
         hostUserId: currentUser.id,
         hostNickname: currentUser.nickname || "主持人",
         deviceType
@@ -1934,6 +1935,7 @@ function App() {
       const response = await createMeeting({
         title,
         password,
+        meetingType: "quick",
         hostUserId: currentUser.id,
         hostNickname: currentUser.nickname || "主持人",
         deviceType

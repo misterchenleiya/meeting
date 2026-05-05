@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增每日用户流量统计邮件：配置 `MEETING_STATS_REPORT_TO` 后，后端会按 UTC 指定时间发送过去 24 小时的统计结果，在邮件正文展示摘要表格，并在有数据时附带 `users.csv` 和 `meetings.csv`。
+- 新增会议与参会者统计持久化表，记录会议类型、主持人、注册用户邮箱、匿名昵称、IP、参会时间和离会时间，默认不自动清理，便于后续审计。
+- 后端构建产物新增 `tag / commit / build time` 版本信息注入，统计邮件会在末尾展示当前后端版本。
 - 新增 `docs/design/20260506-chat-permission-preview.*` 和 `docs/design/20260506-chat-permission-ui-spec.md`，用于约束聊天未读、消息流和主持人权限处理弹窗的交互修复。
 - 新增运行时 ICE 配置接口 `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers`，后端现在会基于共享密钥为当前参会者签发短期 TURN 动态凭据。
 - 微信小程序加入会议页新增会议号输入框内嵌扫码入口，可直接调用摄像头识别会议二维码，并自动回填会议号与二维码中附带的会议密码。
