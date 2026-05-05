@@ -31,7 +31,7 @@ Both directions use the same JSON envelope shape:
 | `signal.offer` | `{ "targetParticipantId": "...", "data": { "type": "offer", "sdp": "..." } }` | Forward a WebRTC offer to another participant |
 | `signal.answer` | `{ "targetParticipantId": "...", "data": { "type": "answer", "sdp": "..." } }` | Forward a WebRTC answer |
 | `signal.ice_candidate` | `{ "targetParticipantId": "...", "data": { ...candidate... } }` | Forward an ICE candidate |
-| `capability.request` | `{ "capability": "camera" }` | Ask the host for a capability |
+| `capability.request` | `{ "capability": "camera" }` | Ask the host for a capability; the server also appends a structured system chat message for the whole room |
 | `capability.grant` | `{ "targetParticipantId": "...", "capability": "camera" }` | Host grants a capability |
 | `role.assign_assistant` | `{ "targetParticipantId": "..." }` | Host promotes a participant to assistant |
 | `chat.message` | `{ "message": "..." }` | Send a chat message |
@@ -49,11 +49,11 @@ Both directions use the same JSON envelope shape:
 | `participant.offline` | `{ "participantId": "...", "status": "offline" }` | A participant went offline |
 | `participant.joined` | `{ "participant": { ... } }` | A participant joined the meeting |
 | `participant.left` | `{ "participantId": "..." }` | A participant left the meeting |
-| `capability.requested` | `{ "fromParticipantId": "...", "capability": "camera" }` | A participant requested permission |
+| `capability.requested` | `{ "fromParticipantId": "...", "capability": "camera" }` | Host-only realtime notification that a participant requested permission |
 | `capability.granted` | `{ "targetParticipantId": "...", "grantedBy": "...", "capability": "camera" }` | Host granted a capability |
 | `role.assistant_assigned` | `{ "participant": { ... }, "assignedBy": "..." }` | Host promoted a participant to assistant |
 | `participant.nickname_updated` | `{ "participant": { ... }, "previousNickname": "...", "systemMessage": { ... } }` | A nickname changed |
-| `chat.message` | `{ "message": { ... } }` | A chat message was appended |
+| `chat.message` | `{ "message": { ... } }` | A chat or system message was appended; system messages may include structured action metadata |
 | `whiteboard.action` | `{ "action": { ... } }` | A whiteboard action was appended |
 | `whiteboard.cleared` | `{ "clearedBy": "..." }` | Whiteboard was cleared |
 | `ready_check.started` | `{ "round": { ... } }` | Ready check started |
@@ -66,6 +66,7 @@ Both directions use the same JSON envelope shape:
 
 - `signal.offer` / `signal.answer` / `signal.ice_candidate` are forwarded to the target participant unchanged except for `fromParticipantId`
 - `capability.grant` and `role.assign_assistant` are enforced by the meeting service; the server rejects unauthorized actors
+- `capability.request` currently supports runtime requests for `microphone` / `camera` / `screen_share` / `record`; the broadcast chat message uses `message.kind = capability_request` and an `action` object so the host UI can open the permission panel directly
 - `whiteboard.clear` and `ready_check.start` are host / capability guarded through the meeting service
 - `meeting.ended` is broadcast after the host ends the room and the signaling hub closes the room
 

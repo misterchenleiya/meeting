@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增 `docs/design/20260506-chat-permission-preview.*` 和 `docs/design/20260506-chat-permission-ui-spec.md`，用于约束聊天未读、消息流和主持人权限处理弹窗的交互修复。
 - 新增运行时 ICE 配置接口 `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers`，后端现在会基于共享密钥为当前参会者签发短期 TURN 动态凭据。
 - 微信小程序加入会议页新增会议号输入框内嵌扫码入口，可直接调用摄像头识别会议二维码，并自动回填会议号与二维码中附带的会议密码。
 - 新增独立的 `微信小程序` 设计资产：`docs/design/wechat-auth-preview.html`、`docs/design/wechat-auth-preview.css`、`docs/design/wechat-room-preview.html`、`docs/design/wechat-room-preview.css` 和 `docs/design/wechat-ui-spec.md`，用于在保留 `H5 / PC` 黑色舞台风格的前提下，适配小程序导航栏、安全区和会中壳层。
@@ -50,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 会中权限策略已按“已注册参会者 / 匿名参会者”拆分默认能力矩阵：已注册参会者默认可直接使用麦克风、摄像头和共享屏幕，匿名参会者仍默认仅聊天。
+- 麦克风、摄像头、共享屏幕和录制的权限申请流已改为“前端二次确认 -> 全员可见系统聊天消息 -> 主持人点击消息快速授权”的闭环交互；系统聊天消息现在带有结构化 `kind / action` 元数据。
 - `coturn` 发布模板和后端运行配置已切换为 `use-auth-secret + static-auth-secret` 动态凭据模式；生产前端发布包不再注入固定 TURN 用户名和密码，浏览器产物中默认只保留 STUN fallback。
 - `Web` 桌面端与 `H5` 移动端左下角新增低干扰版本角标，固定按 `version / commit / build time` 三行显示当前前端构建信息，并同步到 `PC / H5` 设计稿与 `H5 UI` 规格中。
 - `Web` 桌面端与 `H5` 移动端进入会议后不再显示左下角版本信息；版本角标仅保留在登录、登录后入口、加入会议和入会预览等登录前壳层页面，并同步更新会中设计稿与 `H5 UI` 规格。
@@ -104,6 +107,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 Web 桌面端聊天抽屉的未读提示、消息排序和消息流样式；新消息现在在底部追加，聊天关闭时会在工具栏显示未读数。
+- 修复主持人处理权限申请和设为助理时缺少反馈的问题；权限目标和助理目标现在改为参会者下拉选择，并在信令未连接或服务端拒绝时显示错误。
 - `H5` 移动端进入会议后的真实会中页已按现有设计稿重新收口，顶部信息、主舞台、参会者缩略条、底部工具栏以及成员 / 聊天 / 应用面板的布局现在与 `docs/design/h5-room-preview.*` 和 `docs/design/h5-ui-spec.md` 保持一致。
 - 修复登录页的卡片切换：`去注册` 现在保持在同一套全屏登录壳层中无缝切换到注册卡片，`加入会议` 不再被认证初始化流程立即打回登录卡片。
 - 调整登录预览页为全窗口展示，左侧仅保留 `meeting` 标识，右侧邮箱和密码提示改为输入框占位文案 `请输入邮箱` 和 `请输入密码`。

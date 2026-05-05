@@ -20,8 +20,8 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 
 ## Core Constraints
 
-- `participant` starts with chat-only permissions
-- `participant` needs host approval to use microphone, camera, whiteboard, screen sharing, recording, and ready check
+- Registered participants start with chat, microphone, camera, and screen-sharing permissions; recording still needs host approval
+- Anonymous participants start with chat-only permissions; microphone, camera, screen sharing, and recording still require host approval
 - The host can promote a participant to assistant, and assistants receive the granted host-side capabilities
 - Recording stays local by default and is not uploaded to the server
 - Temporary chat history, whiteboard state, ready check results, and temporary minutes live only until the meeting ends
@@ -55,7 +55,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 
 - [x] Create, join, leave, and host-end meeting flows
 - [x] Host / assistant / participant role model
-- [x] Chat-only default permissions for participants
+- [x] Split default capability matrix for registered and anonymous participants
 - [x] 1v1 `WebRTC` P2P connection flow
 - [x] Local media capture and local/remote video preview
 - [x] Screen sharing
@@ -102,6 +102,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - Join flow: enter the public 9-digit meeting number, run a preflight lookup, and then enter the password in a modal only if the meeting requires one. Grouped `3-3-3` meeting numbers with spaces are normalized automatically.
 - In-room flow: the room now uses a single-screen full-stage layout with a top title bar, a bottom dock toolbar, attached host / meeting / settings / apps / end panels, and right-side drawers for members and chat. Idle meetings show an avatar wall; active media switches to a featured stage with a thumbnail rail.
 - The share window now shows the public 9-digit meeting number, a QR code, and copy actions; the internal room id is no longer shown directly in user-facing UI.
+- When a participant tries to use microphone, camera, screen sharing, or recording without permission, the frontend now shows a confirmation dialog first. Confirming sends a host-facing permission request and appends an `@host` system message to the room chat. The host can click that message to open the permission panel with the participant and capability prefilled.
 - Whiteboard, ready check, temporary minutes, audit summary, and capability management remain available through menus, drawers, and floating panels around the main stage.
 
 ## API Surface
@@ -135,6 +136,7 @@ Notes:
 
 - `POST /api/meetings` now returns both the internal `id` and the public `meetingNumber`.
 - `POST /api/meetings`, `POST /api/meetings/{meetingID}/join`, and `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers` now return runtime `iceServers`; TURN credentials are short-lived and signed by the backend instead of being baked into the frontend bundle.
+- `chatMessages` in meeting snapshots and realtime `chat.message` events may now carry structured system-message metadata. Capability-request messages use `kind = capability_request` and an `action` object so the host UI can open the permission panel directly instead of parsing localized text.
 - Meeting-scoped REST endpoints such as `GET /api/meetings/{meetingID}` and `POST /api/meetings/{meetingID}/join` accept either the internal runtime id or the public 9-digit meeting number.
 - `GET /ws/meetings/{meetingID}` still uses the internal runtime id to keep the signaling path stable.
 

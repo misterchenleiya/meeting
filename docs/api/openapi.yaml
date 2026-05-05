@@ -1006,7 +1006,7 @@ components:
           type: boolean
     ChatMessage:
       type: object
-      required: [id, participantId, nickname, message, sentAt]
+      required: [id, participantId, nickname, kind, message, sentAt]
       properties:
         id:
           type: string
@@ -1014,11 +1014,30 @@ components:
           type: string
         nickname:
           type: string
+        kind:
+          type: string
+          enum: [user, system, capability_request]
         message:
           type: string
+        action:
+          $ref: "#/components/schemas/ChatMessageAction"
         sentAt:
           type: string
           format: date-time
+    ChatMessageAction:
+      type: object
+      required: [type, targetParticipantId, capability, requestedBy]
+      properties:
+        type:
+          type: string
+          enum: [open_permissions]
+        targetParticipantId:
+          type: string
+        capability:
+          type: string
+          enum: [chat, microphone, camera, whiteboard, screen_share, record, ready_check]
+        requestedBy:
+          type: string
     WhiteboardPoint:
       type: object
       required: [x, y]

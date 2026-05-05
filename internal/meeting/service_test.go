@@ -86,7 +86,7 @@ func TestCreateMeetingAssignsPublicMeetingNumber(t *testing.T) {
 	}
 }
 
-func TestJoinMeetingParticipantDefaultsToChatOnly(t *testing.T) {
+func TestJoinMeetingRegisteredParticipantGetsBaseMediaCapabilities(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -145,12 +145,20 @@ func TestJoinMeetingParticipantDefaultsToChatOnly(t *testing.T) {
 		t.Fatalf("requested microphone preference = %t, want true", participant.RequestedMediaPreference.MicrophoneEnabled)
 	}
 
-	if len(participant.GrantedCapabilities) != 1 {
-		t.Fatalf("granted capability count = %d, want 1", len(participant.GrantedCapabilities))
+	expectedCapabilities := []Capability{
+		CapabilityChat,
+		CapabilityMicrophone,
+		CapabilityCamera,
+		CapabilityScreenShare,
+	}
+	if len(participant.GrantedCapabilities) != len(expectedCapabilities) {
+		t.Fatalf("granted capability count = %d, want %d", len(participant.GrantedCapabilities), len(expectedCapabilities))
 	}
 
-	if _, ok := participant.GrantedCapabilities[CapabilityChat]; !ok {
-		t.Fatalf("participant should have chat capability")
+	for _, capability := range expectedCapabilities {
+		if _, ok := participant.GrantedCapabilities[capability]; !ok {
+			t.Fatalf("participant should have capability %s", capability)
+		}
 	}
 
 	if participant.EffectiveMediaState.CameraEnabled {
@@ -159,6 +167,45 @@ func TestJoinMeetingParticipantDefaultsToChatOnly(t *testing.T) {
 
 	if participant.EffectiveMediaState.MicrophoneEnabled {
 		t.Fatalf("effective microphone state = true, want false")
+	}
+}
+
+func TestJoinMeetingAnonymousParticipantDefaultsToChatOnly(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := NewService(testLogger(t), newStubStore())
+
+	meetingValue, _, err := service.CreateMeeting(ctx, CreateMeetingInput{
+		Title:        "anonymous review",
+		Password:     "secret",
+		HostUserID:   "host-user",
+		HostNickname: "主持人",
+		DeviceType:   "desktop",
+		IPAddress:    "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CreateMeeting() error = %v", err)
+	}
+
+	_, participant, err := service.JoinMeeting(ctx, JoinMeetingInput{
+		MeetingID:   meetingValue.ID,
+		Password:    "secret",
+		Nickname:    "匿名参会者",
+		IsAnonymous: true,
+		DeviceType:  "desktop",
+		IPAddress:   "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("JoinMeeting() error = %v", err)
+	}
+
+	if len(participant.GrantedCapabilities) != 1 {
+		t.Fatalf("granted capability count = %d, want 1", len(participant.GrantedCapabilities))
+	}
+
+	if _, ok := participant.GrantedCapabilities[CapabilityChat]; !ok {
+		t.Fatalf("anonymous participant should have chat capability")
 	}
 }
 
@@ -525,7 +572,71 @@ func TestUpdateNicknameAppendsSystemChatMessage(t *testing.T) {
 		t.Fatalf("system message nickname = %q, want 系统消息", systemMessage.Nickname)
 	}
 
+	if systemMessage.Kind != ChatMessageKindSystem {
+		t.Fatalf("system message kind = %q, want %q", systemMessage.Kind, ChatMessageKindSystem)
+	}
+
 	if !strings.Contains(systemMessage.Message, "旧昵称 将昵称修改为 新昵称") {
 		t.Fatalf("system message = %q, want rename log", systemMessage.Message)
+	}
+}
+
+func TestRequestCapabilityAppendsStructuredSystemChatMessage(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := NewService(testLogger(t), newStubStore())
+
+	meetingValue, _, err := service.CreateMeeting(ctx, CreateMeetingInput{
+		Title:        "capability request",
+		Password:     "secret",
+		HostUserID:   "host-user",
+		HostNickname: "主持人",
+		DeviceType:   "desktop",
+		IPAddress:    "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CreateMeeting() error = %v", err)
+	}
+
+	_, participant, err := service.JoinMeeting(ctx, JoinMeetingInput{
+		MeetingID:   meetingValue.ID,
+		Password:    "secret",
+		Nickname:    "匿名参会者 A",
+		IsAnonymous: true,
+		DeviceType:  "desktop",
+		IPAddress:   "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("JoinMeeting() error = %v", err)
+	}
+
+	systemMessage, err := service.RequestCapability(ctx, CapabilityRequestInput{
+		MeetingID:     meetingValue.ID,
+		ParticipantID: participant.ID,
+		Capability:    CapabilityMicrophone,
+	})
+	if err != nil {
+		t.Fatalf("RequestCapability() error = %v", err)
+	}
+
+	if systemMessage.Kind != ChatMessageKindCapabilityRequest {
+		t.Fatalf("system message kind = %q, want %q", systemMessage.Kind, ChatMessageKindCapabilityRequest)
+	}
+
+	if systemMessage.Action == nil {
+		t.Fatalf("system message action = nil, want value")
+	}
+
+	if systemMessage.Action.Type != ChatMessageActionTypeOpenPermissions {
+		t.Fatalf("system message action type = %q, want %q", systemMessage.Action.Type, ChatMessageActionTypeOpenPermissions)
+	}
+
+	if systemMessage.Action.TargetParticipantID != participant.ID {
+		t.Fatalf("targetParticipantId = %q, want %q", systemMessage.Action.TargetParticipantID, participant.ID)
+	}
+
+	if !strings.Contains(systemMessage.Message, "@主持人") || !strings.Contains(systemMessage.Message, "麦克风权限") {
+		t.Fatalf("system message = %q, want capability request copy", systemMessage.Message)
 	}
 }

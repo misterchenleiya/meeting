@@ -32,6 +32,7 @@ var (
 type MeetingService interface {
 	GetMeeting(meetingID string) (*meeting.Meeting, bool)
 	LeaveMeeting(ctx context.Context, meetingID string, participantID string, deviceType string, ipAddress string) error
+	RequestCapability(ctx context.Context, input meeting.CapabilityRequestInput) (*meeting.ChatMessage, error)
 	GrantCapability(ctx context.Context, input meeting.GrantCapabilityInput) error
 	AssignAssistant(ctx context.Context, input meeting.AssignAssistantInput) (*meeting.Participant, error)
 	UpdateNickname(ctx context.Context, input meeting.UpdateNicknameInput) (*meeting.Participant, *meeting.ChatMessage, string, error)
@@ -637,13 +638,33 @@ func (c *client) handleCapabilityRequest(rawPayload json.RawMessage) error {
 		return fmt.Errorf("%w: capability is required", ErrInvalidMessage)
 	}
 
-	return c.hub.sendToParticipant(c.meetingID, meetingValue.HostParticipantID, serverEnvelope{
+	systemMessage, err := c.hub.meetings.RequestCapability(context.Background(), meeting.CapabilityRequestInput{
+		MeetingID:     c.meetingID,
+		ParticipantID: participant.ID,
+		Capability:    payload.Capability,
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := c.hub.sendToParticipant(c.meetingID, meetingValue.HostParticipantID, serverEnvelope{
 		Type: "capability.requested",
 		Payload: capabilityRequestPayload{
 			FromParticipantID: participant.ID,
 			Capability:        payload.Capability,
 		},
-	})
+	}); err != nil {
+		return err
+	}
+
+	c.hub.broadcast(c.meetingID, serverEnvelope{
+		Type: "chat.message",
+		Payload: chatMessagePayload{
+			Message: *systemMessage,
+		},
+	}, "")
+
+	return nil
 }
 
 func (c *client) handleCapabilityGrant(rawPayload json.RawMessage) error {

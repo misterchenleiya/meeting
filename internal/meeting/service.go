@@ -66,6 +66,12 @@ type GrantCapabilityInput struct {
 	Capability    Capability
 }
 
+type CapabilityRequestInput struct {
+	MeetingID     string
+	ParticipantID string
+	Capability    Capability
+}
+
 type AssignAssistantInput struct {
 	MeetingID     string
 	HostID        string
@@ -276,7 +282,7 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 		JoinedAt:                 time.Now().UTC(),
 		RequestedMediaPreference: pref,
 		EffectiveMediaState:      MediaPreference{},
-		GrantedCapabilities:      capabilitySet(CapabilityChat),
+		GrantedCapabilities:      defaultParticipantCapabilities(input.UserID, input.IsAnonymous),
 	}
 
 	meeting.Participants[participant.ID] = participant
@@ -413,6 +419,66 @@ func (s *Service) GrantCapability(ctx context.Context, input GrantCapabilityInpu
 	return nil
 }
 
+func (s *Service) RequestCapability(ctx context.Context, input CapabilityRequestInput) (*ChatMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meetingValue, actor, err := s.meetingActorLocked(input.MeetingID, input.ParticipantID)
+	if err != nil {
+		return nil, err
+	}
+
+	if actor.Role != RoleParticipant {
+		return nil, ErrUnauthorized
+	}
+
+	if !isParticipantCapabilityRequestable(input.Capability) {
+		return nil, ErrUnauthorized
+	}
+
+	if _, alreadyGranted := actor.GrantedCapabilities[input.Capability]; alreadyGranted {
+		return nil, ErrUnauthorized
+	}
+
+	messageText := fmt.Sprintf(
+		"@主持人，%s 申请开启%s权限。",
+		actor.Nickname,
+		formatCapabilityLabel(input.Capability),
+	)
+	systemMessage, err := s.appendSystemChatLocked(
+		meetingValue,
+		actor.ID,
+		ChatMessageKindCapabilityRequest,
+		messageText,
+		&ChatMessageAction{
+			Type:                ChatMessageActionTypeOpenPermissions,
+			TargetParticipantID: actor.ID,
+			Capability:          input.Capability,
+			RequestedBy:         actor.ID,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	addMinuteLocked(meetingValue, systemMessage.SentAt, messageText)
+
+	if err := s.insertAudit(ctx, sqlite.AuditEvent{
+		MeetingID:       meetingValue.ID,
+		ParticipantID:   actor.ID,
+		UserID:          actor.UserID,
+		ParticipantRole: string(actor.Role),
+		EventType:       "capability_requested",
+		DetailsJSON:     fmt.Sprintf(`{"capability":%q}`, input.Capability),
+		CreatedAt:       systemMessage.SentAt,
+	}); err != nil {
+		return nil, err
+	}
+
+	copied := copyChatMessage(systemMessage)
+	return &copied, nil
+}
+
 func (s *Service) AssignAssistant(ctx context.Context, input AssignAssistantInput) (*Participant, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -466,7 +532,13 @@ func (s *Service) UpdateNickname(ctx context.Context, input UpdateNicknameInput)
 	}
 
 	actor.Nickname = trimmedNickname
-	systemMessage, err := s.appendSystemChatLocked(meetingValue, actor.ID, fmt.Sprintf("%s 将昵称修改为 %s。", previousNickname, trimmedNickname))
+	systemMessage, err := s.appendSystemChatLocked(
+		meetingValue,
+		actor.ID,
+		ChatMessageKindSystem,
+		fmt.Sprintf("%s 将昵称修改为 %s。", previousNickname, trimmedNickname),
+		nil,
+	)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -512,6 +584,7 @@ func (s *Service) AppendChatMessage(ctx context.Context, input ChatMessageInput)
 		ID:            messageID,
 		ParticipantID: actor.ID,
 		Nickname:      actor.Nickname,
+		Kind:          ChatMessageKindUser,
 		Message:       input.Message,
 		SentAt:        time.Now().UTC(),
 	}
@@ -854,6 +927,54 @@ func capabilitySet(capabilities ...Capability) map[Capability]struct{} {
 	return set
 }
 
+func defaultParticipantCapabilities(userID string, isAnonymous bool) map[Capability]struct{} {
+	if isRegisteredParticipant(userID, isAnonymous) {
+		return capabilitySet(
+			CapabilityChat,
+			CapabilityMicrophone,
+			CapabilityCamera,
+			CapabilityScreenShare,
+		)
+	}
+
+	return capabilitySet(CapabilityChat)
+}
+
+func isRegisteredParticipant(userID string, isAnonymous bool) bool {
+	return strings.TrimSpace(userID) != "" && !isAnonymous
+}
+
+func isParticipantCapabilityRequestable(capability Capability) bool {
+	for _, candidate := range requestableParticipantCapabilities() {
+		if capability == candidate {
+			return true
+		}
+	}
+
+	return false
+}
+
+func formatCapabilityLabel(capability Capability) string {
+	switch capability {
+	case CapabilityMicrophone:
+		return "麦克风"
+	case CapabilityCamera:
+		return "摄像头"
+	case CapabilityWhiteboard:
+		return "白板"
+	case CapabilityScreenShare:
+		return "共享屏幕"
+	case CapabilityRecord:
+		return "录制"
+	case CapabilityReadyCheck:
+		return "就位确认"
+	case CapabilityChat:
+		return "聊天"
+	default:
+		return string(capability)
+	}
+}
+
 func copyMeeting(value *Meeting) *Meeting {
 	if value == nil {
 		return nil
@@ -948,6 +1069,10 @@ func copyWhiteboardAction(value WhiteboardAction) WhiteboardAction {
 }
 
 func copyChatMessage(value ChatMessage) ChatMessage {
+	if value.Action != nil {
+		actionCopy := *value.Action
+		value.Action = &actionCopy
+	}
 	return value
 }
 
@@ -1023,7 +1148,13 @@ func (s *Service) meetingByIdentifierLocked(identifier string) (*Meeting, string
 	return meetingValue, internalMeetingID, true
 }
 
-func (s *Service) appendSystemChatLocked(meetingValue *Meeting, participantID string, message string) (ChatMessage, error) {
+func (s *Service) appendSystemChatLocked(
+	meetingValue *Meeting,
+	participantID string,
+	kind ChatMessageKind,
+	message string,
+	action *ChatMessageAction,
+) (ChatMessage, error) {
 	messageID, err := generateID(10)
 	if err != nil {
 		return ChatMessage{}, err
@@ -1033,7 +1164,9 @@ func (s *Service) appendSystemChatLocked(meetingValue *Meeting, participantID st
 		ID:            messageID,
 		ParticipantID: participantID,
 		Nickname:      "系统消息",
+		Kind:          kind,
 		Message:       message,
+		Action:        action,
 		SentAt:        time.Now().UTC(),
 	}
 	meetingValue.ChatMessages = append(meetingValue.ChatMessages, systemMessage)

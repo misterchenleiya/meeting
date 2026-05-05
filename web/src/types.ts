@@ -39,7 +39,14 @@ export type ChatMessage = {
   id: string;
   participantId: string;
   nickname: string;
+  kind: "user" | "system" | "capability_request";
   message: string;
+  action?: {
+    type: "open_permissions";
+    targetParticipantId: string;
+    capability: Capability;
+    requestedBy: string;
+  };
   sentAt: string;
 };
 

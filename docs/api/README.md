@@ -12,6 +12,7 @@ This directory is the contract source of truth for backend interfaces.
 - Use this directory when you need the exact request / response contract
 - Keep `README.md` and `README.zh-CN.md` as high-level entry points
 - Keep `docs/design/` for product and UI decisions, not API contracts
+- Meeting snapshots and realtime `chat.message` events may carry structured system-message metadata through `ChatMessage.kind` and `ChatMessage.action`; update the REST and WebSocket contracts together when this shape changes
 
 ## Meeting identifier rule
 

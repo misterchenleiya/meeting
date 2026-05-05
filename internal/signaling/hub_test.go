@@ -86,6 +86,11 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 		t.Fatalf("fromParticipantId = %v, want %s", payload["fromParticipantId"], participant.ID)
 	}
 
+	requestChatOnHost := readEvent(t, hostConn, "chat.message")
+	requestChatOnParticipant := readEvent(t, participantConn, "chat.message")
+	assertCapabilityRequestChatMessage(t, requestChatOnHost, participant.ID)
+	assertCapabilityRequestChatMessage(t, requestChatOnParticipant, participant.ID)
+
 	writeEvent(t, hostConn, map[string]any{
 		"type": "capability.grant",
 		"payload": map[string]any{
@@ -158,5 +163,28 @@ func readEvent(t *testing.T, conn *websocket.Conn, expectedType string) map[stri
 		if response["type"] == expectedType {
 			return response
 		}
+	}
+}
+
+func assertCapabilityRequestChatMessage(t *testing.T, event map[string]any, participantID string) {
+	t.Helper()
+
+	payload := event["payload"].(map[string]any)
+	message := payload["message"].(map[string]any)
+	if message["kind"] != "capability_request" {
+		t.Fatalf("chat message kind = %v, want capability_request", message["kind"])
+	}
+
+	action, ok := message["action"].(map[string]any)
+	if !ok {
+		t.Fatalf("chat message action missing")
+	}
+
+	if action["type"] != "open_permissions" {
+		t.Fatalf("chat action type = %v, want open_permissions", action["type"])
+	}
+
+	if action["targetParticipantId"] != participantID {
+		t.Fatalf("chat action targetParticipantId = %v, want %s", action["targetParticipantId"], participantID)
 	}
 }
