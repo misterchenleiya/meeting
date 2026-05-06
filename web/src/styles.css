@@ -2638,6 +2638,14 @@ p {
   cursor: not-allowed;
 }
 
+.room-page .remote-audio-sink {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .room-page .meeting-tool.is-active {
   border-color: transparent;
   background: rgba(10, 132, 255, 0.14);

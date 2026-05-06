@@ -79,6 +79,11 @@ type CapabilityRequestState = {
   capability: Capability;
 };
 
+type CapturePreference = {
+  camera: boolean;
+  microphone: boolean;
+};
+
 type RemoteTile = {
   participantId: string;
   stream: MediaStream;
@@ -228,6 +233,7 @@ function App() {
   const signalReconnectAttemptRef = useRef(0);
   const signalReconnectDisabledRef = useRef(false);
   const signalConnectionGenerationRef = useRef(0);
+  const mediaRequestGenerationRef = useRef(0);
   const currentSidebarRef = useRef<SidebarView>("none");
   const chatListRef = useRef<HTMLUListElement | null>(null);
   const chatMessageIdsRef = useRef(
@@ -284,6 +290,7 @@ function App() {
     camera: false,
     microphone: false
   });
+  const [mediaCaptureBusy, setMediaCaptureBusy] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(
     initialPersistedState?.currentUser ?? null
   );
@@ -365,14 +372,7 @@ function App() {
   }, [chatMessages.length, currentSidebar]);
 
   useEffect(() => {
-    if (!meetingSession) {
-      return;
-    }
-
-    setCaptureSelection({
-      camera: meetingSession.participant.requestedMediaPreference.cameraEnabled,
-      microphone: meetingSession.participant.requestedMediaPreference.microphoneEnabled
-    });
+    setCaptureSelection(resolveBaseCapturePreference(baseMediaStreamRef.current));
   }, [meetingSession?.participant.id]);
 
   useEffect(() => {
@@ -1136,22 +1136,33 @@ function App() {
           grantedBy: string;
           capability: string;
         };
+        const grantedCapability = payload.capability as Capability;
         const currentParticipants = Object.values(sessionRef.current?.meeting.participants ?? {});
         syncParticipantCapability(payload.targetParticipantId, payload.capability);
         appendEvent(
           "capability.granted",
-          `${findParticipantLabel(currentParticipants, payload.grantedBy)} 已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(payload.capability as Capability)}权限`
+          `${findParticipantLabel(currentParticipants, payload.grantedBy)} 已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(grantedCapability)}权限`
         );
         appendTemporaryMinute(
-          `${findParticipantLabel(currentParticipants, payload.grantedBy)} 已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(payload.capability as Capability)}权限。`
+          `${findParticipantLabel(currentParticipants, payload.grantedBy)} 已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(grantedCapability)}权限。`
         );
         if (payload.targetParticipantId === sessionRef.current?.participant.id) {
-          setStatusMessage(describeCapabilityGrantFollowup(payload.capability as Capability));
+          setStatusMessage(describeCapabilityGrantFollowup(grantedCapability));
           setErrorMessage("");
+          if (grantedCapability === "microphone" || grantedCapability === "camera") {
+            const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+            void syncBaseMediaPreference(
+              {
+                camera: currentPreference.camera || grantedCapability === "camera",
+                microphone: currentPreference.microphone || grantedCapability === "microphone"
+              },
+              { skipCapabilityCheck: true }
+            );
+          }
         }
         if (payload.grantedBy === sessionRef.current?.participant.id) {
           setPermissionFeedback(
-            `已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(payload.capability as Capability)}权限。`
+            `已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(grantedCapability)}权限。`
           );
           setErrorMessage("");
         }
@@ -1405,6 +1416,32 @@ function App() {
     await applyOutboundStream(baseMediaStreamRef.current);
   });
 
+  const handleBaseMediaTrackEnded = useEffectEvent((track: MediaStreamTrack) => {
+    const baseStream = baseMediaStreamRef.current;
+    if (!baseStream) {
+      return;
+    }
+
+    baseStream.removeTrack(track);
+    if (baseStream.getTracks().length === 0) {
+      baseMediaStreamRef.current = null;
+    }
+
+    const nextPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+    setCaptureSelection(nextPreference);
+    rebuildOutboundStream().catch((error) => {
+      setErrorMessage(asMessage(error));
+    });
+    appendEvent(
+      "rtc.local_media_track_ended",
+      `${track.kind === "audio" ? "麦克风" : "摄像头"} 已被浏览器或系统停止`
+    );
+  });
+
+  function registerBaseMediaTrack(track: MediaStreamTrack) {
+    track.addEventListener("ended", () => handleBaseMediaTrackEnded(track), { once: true });
+  }
+
   const connectSignalForSession = useEffectEvent(async (session: SessionState) => {
     const iceServers = await ensureRuntimeIceServers(session);
     if (
@@ -1580,60 +1617,113 @@ function App() {
     }
   );
 
-  const syncBaseMediaPreference = useEffectEvent(async (nextPreference: { camera: boolean; microphone: boolean }) => {
+  const syncBaseMediaPreference = useEffectEvent(async (
+    nextPreference: CapturePreference,
+    options: { skipCapabilityCheck?: boolean } = {}
+  ) => {
     if (!meetingSession) {
       setErrorMessage("请先进入会议");
       return;
     }
 
-    if (nextPreference.camera && !hasCapability(meetingSession, "camera")) {
+    if (!options.skipCapabilityCheck && nextPreference.camera && !hasCapability(meetingSession, "camera")) {
       openCapabilityRequestConfirm("camera");
       return;
     }
 
-    if (nextPreference.microphone && !hasCapability(meetingSession, "microphone")) {
+    if (!options.skipCapabilityCheck && nextPreference.microphone && !hasCapability(meetingSession, "microphone")) {
       openCapabilityRequestConfirm("microphone");
       return;
     }
 
     if ((nextPreference.camera || nextPreference.microphone) && !supportsUserMediaCapture()) {
-      setErrorMessage(describeUserMediaError(undefined));
+      setErrorMessage(describeUserMediaError(undefined, nextPreference));
       return;
     }
 
+    const requestGeneration = mediaRequestGenerationRef.current + 1;
+    mediaRequestGenerationRef.current = requestGeneration;
+    setMediaCaptureBusy(true);
+
     try {
-      if (!nextPreference.camera && !nextPreference.microphone) {
-        baseMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      const baseStream = baseMediaStreamRef.current;
+      if (!nextPreference.camera) {
+        for (const track of baseStream?.getVideoTracks() ?? []) {
+          baseStream?.removeTrack(track);
+          track.stop();
+        }
+      }
+      if (!nextPreference.microphone) {
+        for (const track of baseStream?.getAudioTracks() ?? []) {
+          baseStream?.removeTrack(track);
+          track.stop();
+        }
+      }
+      if (baseStream && baseStream.getTracks().length === 0) {
         baseMediaStreamRef.current = null;
-        setCaptureSelection(nextPreference);
-        await rebuildOutboundStream();
+      }
+
+      const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+      const missingPreference = {
+        camera: nextPreference.camera && !currentPreference.camera,
+        microphone: nextPreference.microphone && !currentPreference.microphone
+      };
+
+      if (missingPreference.camera || missingPreference.microphone) {
+        const mediaDevices = getMediaDevices();
+        if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
+          setErrorMessage(describeUserMediaError(undefined, nextPreference));
+          return;
+        }
+
+        await ensureCaptureDevicesAvailable(missingPreference);
+        const addedStream = await mediaDevices.getUserMedia({
+          video: missingPreference.camera,
+          audio: missingPreference.microphone
+        });
+
+        try {
+          assertCapturedTracks(addedStream, missingPreference);
+        } catch (error) {
+          addedStream.getTracks().forEach((track) => track.stop());
+          throw error;
+        }
+
+        if (mediaRequestGenerationRef.current !== requestGeneration) {
+          addedStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        const nextStream = baseMediaStreamRef.current ?? new MediaStream();
+        for (const track of addedStream.getTracks()) {
+          registerBaseMediaTrack(track);
+          nextStream.addTrack(track);
+        }
+        baseMediaStreamRef.current = nextStream;
+      }
+
+      if (mediaRequestGenerationRef.current !== requestGeneration) {
+        return;
+      }
+
+      const actualPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+      setCaptureSelection(actualPreference);
+      await rebuildOutboundStream();
+      if (!actualPreference.camera && !actualPreference.microphone) {
         setStatusMessage("本地媒体已关闭");
         appendEvent("rtc.local_media_stopped", "本地摄像头和麦克风均已关闭");
         return;
       }
 
-      const mediaDevices = getMediaDevices();
-      if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
-        setErrorMessage(describeUserMediaError(undefined));
-        return;
-      }
-
-      const stream = await mediaDevices.getUserMedia({
-        video: nextPreference.camera,
-        audio: nextPreference.microphone
-      });
-
-      baseMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-      baseMediaStreamRef.current = stream;
-      setCaptureSelection(nextPreference);
-      await rebuildOutboundStream();
       setStatusMessage("本地媒体已更新");
-      appendEvent(
-        "rtc.local_media_started",
-        `本地媒体已更新: ${describeCaptureSelection(nextPreference)}`
-      );
+      appendEvent("rtc.local_media_started", `本地媒体已更新: ${describeCaptureSelection(actualPreference)}`);
     } catch (error) {
-      setErrorMessage(describeUserMediaError(error));
+      setCaptureSelection(resolveBaseCapturePreference(baseMediaStreamRef.current));
+      setErrorMessage(describeUserMediaError(error, nextPreference));
+    } finally {
+      if (mediaRequestGenerationRef.current === requestGeneration) {
+        setMediaCaptureBusy(false);
+      }
     }
   });
 
@@ -2331,7 +2421,7 @@ function App() {
   }
 
   function handleToggleCamera() {
-    const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+    const currentPreference = captureSelection;
     void syncBaseMediaPreference({
       camera: !currentPreference.camera,
       microphone: currentPreference.microphone
@@ -2339,7 +2429,7 @@ function App() {
   }
 
   function handleToggleMicrophone() {
-    const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+    const currentPreference = captureSelection;
     void syncBaseMediaPreference({
       camera: currentPreference.camera,
       microphone: !currentPreference.microphone
@@ -2914,7 +3004,7 @@ function App() {
     ? activeReadyCheck.results[meetingSession.participant.id]?.status
     : undefined;
 
-  const basePreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+  const basePreference = captureSelection;
   const localMicEnabled = Boolean(
     baseMediaStreamRef.current?.getAudioTracks().some((track) => track.enabled && track.readyState === "live")
   );
@@ -3537,6 +3627,18 @@ function App() {
 
   return (
     <main className="page-shell room-page">
+      <RemoteAudioSinks
+        tiles={remoteTiles}
+        onPlaybackError={(participantId, error) => {
+          logger.warn("rtc.remote_audio_playback_failed", {
+            ...meetingLogFields(meetingSession.meeting),
+            participantId,
+            error
+          });
+          setErrorMessage("远端音频播放被浏览器拦截，请点击页面任意位置后重试。");
+        }}
+      />
+
       {meetingSession && activeReadyCheck?.status === "active" && localReadyCheckStatus === "pending" ? (
         <ReadyCheckOverlay
           round={activeReadyCheck}
@@ -4478,6 +4580,7 @@ function App() {
             <div className="tool-rack">
               <button
                 className={`meeting-tool ${basePreference.microphone ? "is-active" : "is-muted"}`}
+                disabled={mediaCaptureBusy}
                 onClick={handleToggleMicrophone}
                 type="button"
               >
@@ -4488,6 +4591,7 @@ function App() {
               </button>
               <button
                 className={`meeting-tool ${basePreference.camera ? "is-active" : "is-camera-off"}`}
+                disabled={mediaCaptureBusy}
                 onClick={handleToggleCamera}
                 type="button"
               >
@@ -4815,6 +4919,51 @@ function StreamFrame(props: {
       <video autoPlay muted={props.muted} playsInline ref={videoRef} />
     </div>
   );
+}
+
+function RemoteAudioSinks(props: {
+  tiles: RemoteTile[];
+  onPlaybackError: (participantId: string, error: unknown) => void;
+}) {
+  return (
+    <>
+      {props.tiles
+        .filter((tile) => tile.stream.getAudioTracks().length > 0 && tile.stream.getVideoTracks().length === 0)
+        .map((tile) => (
+          <RemoteAudioSink
+            key={tile.participantId}
+            participantId={tile.participantId}
+            stream={tile.stream}
+            onPlaybackError={props.onPlaybackError}
+          />
+        ))}
+    </>
+  );
+}
+
+function RemoteAudioSink(props: {
+  participantId: string;
+  stream: MediaStream;
+  onPlaybackError: (participantId: string, error: unknown) => void;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    audio.srcObject = props.stream;
+    const playPromise = audio.play();
+    if (playPromise) {
+      playPromise.catch((error) => {
+        props.onPlaybackError(props.participantId, error);
+      });
+    }
+  }, [props.participantId, props.stream]);
+
+  return <audio autoPlay className="remote-audio-sink" playsInline ref={audioRef} />;
 }
 
 function ReadyCheckOverlay(props: {
@@ -5245,7 +5394,44 @@ function supportsLiveJoinScanner() {
   return supportsUserMediaCapture();
 }
 
-function describeUserMediaError(error: unknown) {
+async function ensureCaptureDevicesAvailable(preference: CapturePreference) {
+  const mediaDevices = getMediaDevices();
+  if (!mediaDevices || typeof mediaDevices.enumerateDevices !== "function") {
+    return;
+  }
+
+  let devices: MediaDeviceInfo[];
+  try {
+    devices = await mediaDevices.enumerateDevices();
+  } catch (error) {
+    logger.warn("media.enumerate_devices_failed", { error });
+    return;
+  }
+
+  if (devices.length === 0) {
+    return;
+  }
+
+  if (preference.microphone && !devices.some((device) => device.kind === "audioinput")) {
+    throw new Error("未检测到可用麦克风，请检查系统声音设置或重新启用麦克风后再试。");
+  }
+
+  if (preference.camera && !devices.some((device) => device.kind === "videoinput")) {
+    throw new Error("未检测到可用摄像头，请检查系统或浏览器设备设置后再试。");
+  }
+}
+
+function assertCapturedTracks(stream: MediaStream, preference: CapturePreference) {
+  if (preference.microphone && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
+    throw new Error("浏览器没有返回可用麦克风轨道，请检查麦克风权限或设备状态后重试。");
+  }
+
+  if (preference.camera && !stream.getVideoTracks().some((track) => track.readyState === "live")) {
+    throw new Error("浏览器没有返回可用摄像头轨道，请检查摄像头权限或设备状态后重试。");
+  }
+}
+
+function describeUserMediaError(error: unknown, preference?: CapturePreference) {
   if (!supportsUserMediaCapture()) {
     return "当前页面无法直接打开摄像头或麦克风。请优先通过 HTTPS 或 localhost 访问，再重试。";
   }
@@ -5255,6 +5441,12 @@ function describeUserMediaError(error: unknown) {
       return "浏览器未授予摄像头或麦克风权限，请允许访问后重试。";
     }
     if (error.name === "NotFoundError") {
+      if (preference?.microphone && !preference.camera) {
+        return "未检测到可用麦克风，请检查系统声音设置或重新启用麦克风后再试。";
+      }
+      if (preference?.camera && !preference.microphone) {
+        return "未检测到可用摄像头，请检查系统或浏览器设备设置后再试。";
+      }
       return "未检测到可用的摄像头或麦克风，请检查设备后重试。";
     }
     if (error.name === "NotReadableError") {
