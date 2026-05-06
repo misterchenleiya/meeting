@@ -65,17 +65,17 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/auth/me", s.handleMe)
 	s.mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	s.mux.HandleFunc("POST /api/meetings", s.handleCreateMeeting)
-	s.mux.HandleFunc("GET /api/meetings/{meetingID}", s.handleGetMeeting)
-	s.mux.HandleFunc("GET /api/meetings/{meetingID}/minutes", s.handleGetMeetingMinutes)
-	s.mux.HandleFunc("POST /api/meetings/{meetingID}/join", s.handleJoinMeeting)
-	s.mux.HandleFunc("POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers", s.handleGetICEServers)
-	s.mux.HandleFunc("POST /api/meetings/{meetingID}/participants/{participantID}/leave", s.handleLeaveMeeting)
-	s.mux.HandleFunc("POST /api/meetings/{meetingID}/participants/{participantID}/nickname", s.handleUpdateNickname)
-	s.mux.HandleFunc("POST /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant", s.handleGrantCapability)
-	s.mux.HandleFunc("POST /api/meetings/{meetingID}/participants/{participantID}/audit", s.handleAuditReport)
-	s.mux.HandleFunc("POST /api/meetings/{meetingID}/end", s.handleEndMeeting)
+	s.mux.HandleFunc("GET /api/meetings/{meetingNumber}", s.handleGetMeeting)
+	s.mux.HandleFunc("GET /api/meetings/{meetingNumber}/minutes", s.handleGetMeetingMinutes)
+	s.mux.HandleFunc("POST /api/meetings/{meetingNumber}/join", s.handleJoinMeeting)
+	s.mux.HandleFunc("POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers", s.handleGetICEServers)
+	s.mux.HandleFunc("POST /api/meetings/{meetingNumber}/participants/{participantID}/leave", s.handleLeaveMeeting)
+	s.mux.HandleFunc("POST /api/meetings/{meetingNumber}/participants/{participantID}/nickname", s.handleUpdateNickname)
+	s.mux.HandleFunc("POST /api/meetings/{meetingNumber}/participants/{participantID}/capabilities/{capability}/grant", s.handleGrantCapability)
+	s.mux.HandleFunc("POST /api/meetings/{meetingNumber}/participants/{participantID}/audit", s.handleAuditReport)
+	s.mux.HandleFunc("POST /api/meetings/{meetingNumber}/end", s.handleEndMeeting)
 	s.mux.HandleFunc("PUT /api/users/{userID}/preferences", s.handleSaveUserPreference)
-	s.mux.HandleFunc("GET /ws/meetings/{meetingID}", s.handleWebSocketPlaceholder)
+	s.mux.HandleFunc("GET /ws/meetings/{meetingNumber}", s.handleWebSocketPlaceholder)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -83,6 +83,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"status":  "ok",
 		"service": "meeting-api",
 	})
+}
+
+func meetingIdentifierFromPath(r *http.Request) string {
+	if value := r.PathValue("meetingNumber"); value != "" {
+		return value
+	}
+	return r.PathValue("meetingID")
 }
 
 func (s *Server) handleClientLogs(w http.ResponseWriter, r *http.Request) {
@@ -173,7 +180,7 @@ func (s *Server) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 
 	iceServers, expiresAt, err := s.buildICEBundle(host.ID)
 	if err != nil {
-		s.logger.Error("build create meeting ice servers failed", "error", err, "meetingId", meetingValue.ID, "participantId", host.ID)
+		s.logger.Error("build create meeting ice servers failed", "error", err, "meetingId", meetingValue.ID, "meetingNumber", meetingValue.MeetingNumber, "participantId", host.ID)
 		writeError(w, http.StatusInternalServerError, "failed to build meeting ice servers")
 		return
 	}
@@ -187,9 +194,9 @@ func (s *Server) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetMeeting(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 
-	meetingValue, found := s.meetings.GetMeeting(meetingID)
+	meetingValue, found := s.meetings.GetMeeting(meetingIdentifier)
 	if !found {
 		writeError(w, http.StatusNotFound, "meeting not found")
 		return
@@ -201,14 +208,14 @@ func (s *Server) handleGetMeeting(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetMeetingMinutes(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 	participantID := r.URL.Query().Get("participantId")
 	if participantID == "" {
 		writeError(w, http.StatusBadRequest, "participantId is required")
 		return
 	}
 
-	meetingValue, found := s.meetings.GetMeeting(meetingID)
+	meetingValue, found := s.meetings.GetMeeting(meetingIdentifier)
 	if !found {
 		writeError(w, http.StatusNotFound, "meeting not found")
 		return
@@ -220,7 +227,7 @@ func (s *Server) handleGetMeetingMinutes(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"meetingId":         meetingValue.ID,
+		"meetingNumber":     meetingValue.MeetingNumber,
 		"title":             meetingValue.Title,
 		"chatMessages":      meetingValue.ChatMessages,
 		"whiteboardActions": meetingValue.WhiteboardActions,
@@ -230,7 +237,7 @@ func (s *Server) handleGetMeetingMinutes(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 
 	var request struct {
 		Password                 string            `json:"password"`
@@ -261,7 +268,7 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meetingValue, participant, err := s.meetings.JoinMeeting(r.Context(), meeting.JoinMeetingInput{
-		MeetingID:                meetingID,
+		MeetingID:                meetingIdentifier,
 		Password:                 request.Password,
 		UserID:                   request.UserID,
 		Nickname:                 strings.TrimSpace(request.Nickname),
@@ -278,12 +285,12 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.signaling != nil {
-		s.signaling.NotifyParticipantJoined(meetingID, participant)
+		s.signaling.NotifyParticipantJoined(meetingValue.ID, participant)
 	}
 
 	iceServers, expiresAt, err := s.buildICEBundle(participant.ID)
 	if err != nil {
-		s.logger.Error("build join meeting ice servers failed", "error", err, "meetingId", meetingValue.ID, "participantId", participant.ID)
+		s.logger.Error("build join meeting ice servers failed", "error", err, "meetingId", meetingValue.ID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participant.ID)
 		writeError(w, http.StatusInternalServerError, "failed to build meeting ice servers")
 		return
 	}
@@ -297,7 +304,7 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLeaveMeeting(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 	participantID := r.PathValue("participantID")
 
 	var request struct {
@@ -309,13 +316,19 @@ func (s *Server) handleLeaveMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.meetings.LeaveMeeting(r.Context(), meetingID, participantID, request.DeviceType, clientIP(r)); err != nil {
+	meetingValue, found := s.meetings.GetMeeting(meetingIdentifier)
+	if !found {
+		writeError(w, http.StatusNotFound, "meeting not found")
+		return
+	}
+
+	if err := s.meetings.LeaveMeeting(r.Context(), meetingIdentifier, participantID, request.DeviceType, clientIP(r)); err != nil {
 		s.writeMeetingError(w, err)
 		return
 	}
 
 	if s.signaling != nil {
-		s.signaling.NotifyParticipantLeft(meetingID, participantID)
+		s.signaling.NotifyParticipantLeft(meetingValue.ID, participantID)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{
@@ -324,7 +337,7 @@ func (s *Server) handleLeaveMeeting(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateNickname(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 	participantID := r.PathValue("participantID")
 
 	var request struct {
@@ -340,8 +353,14 @@ func (s *Server) handleUpdateNickname(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	meetingValue, found := s.meetings.GetMeeting(meetingIdentifier)
+	if !found {
+		writeError(w, http.StatusNotFound, "meeting not found")
+		return
+	}
+
 	updatedParticipant, systemMessage, previousNickname, err := s.meetings.UpdateNickname(r.Context(), meeting.UpdateNicknameInput{
-		MeetingID:     meetingID,
+		MeetingID:     meetingIdentifier,
 		ParticipantID: participantID,
 		Nickname:      strings.TrimSpace(request.Nickname),
 	})
@@ -351,7 +370,7 @@ func (s *Server) handleUpdateNickname(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.signaling != nil && (systemMessage != nil || previousNickname != updatedParticipant.Nickname) {
-		s.signaling.NotifyNicknameUpdated(meetingID, updatedParticipant, previousNickname, systemMessage)
+		s.signaling.NotifyNicknameUpdated(meetingValue.ID, updatedParticipant, previousNickname, systemMessage)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -362,7 +381,7 @@ func (s *Server) handleUpdateNickname(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGrantCapability(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 	participantID := r.PathValue("participantID")
 	capabilityValue := meeting.Capability(r.PathValue("capability"))
 
@@ -379,8 +398,14 @@ func (s *Server) handleGrantCapability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	meetingValue, found := s.meetings.GetMeeting(meetingIdentifier)
+	if !found {
+		writeError(w, http.StatusNotFound, "meeting not found")
+		return
+	}
+
 	if err := s.meetings.GrantCapability(r.Context(), meeting.GrantCapabilityInput{
-		MeetingID:     meetingID,
+		MeetingID:     meetingIdentifier,
 		HostID:        request.HostParticipantID,
 		ParticipantID: participantID,
 		Capability:    capabilityValue,
@@ -390,7 +415,7 @@ func (s *Server) handleGrantCapability(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.signaling != nil {
-		s.signaling.NotifyCapabilityGranted(meetingID, request.HostParticipantID, participantID, capabilityValue)
+		s.signaling.NotifyCapabilityGranted(meetingValue.ID, request.HostParticipantID, participantID, capabilityValue)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{
@@ -400,7 +425,7 @@ func (s *Server) handleGrantCapability(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAuditReport(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 	participantID := r.PathValue("participantID")
 
 	var request struct {
@@ -419,7 +444,7 @@ func (s *Server) handleAuditReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.meetings.RecordAuditReport(r.Context(), meeting.AuditReportInput{
-		MeetingID:        meetingID,
+		MeetingID:        meetingIdentifier,
 		ParticipantID:    participantID,
 		UserID:           request.UserID,
 		ParticipantRole:  request.ParticipantRole,
@@ -442,7 +467,7 @@ func (s *Server) handleAuditReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEndMeeting(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 
 	var request struct {
 		HostParticipantID string `json:"hostParticipantId"`
@@ -458,13 +483,19 @@ func (s *Server) handleEndMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.meetings.EndMeeting(r.Context(), meetingID, request.HostParticipantID, request.DeviceType, clientIP(r)); err != nil {
+	meetingValue, found := s.meetings.GetMeeting(meetingIdentifier)
+	if !found {
+		writeError(w, http.StatusNotFound, "meeting not found")
+		return
+	}
+
+	if err := s.meetings.EndMeeting(r.Context(), meetingIdentifier, request.HostParticipantID, request.DeviceType, clientIP(r)); err != nil {
 		s.writeMeetingError(w, err)
 		return
 	}
 
 	if s.signaling != nil {
-		s.signaling.NotifyMeetingEnded(meetingID, request.HostParticipantID)
+		s.signaling.NotifyMeetingEnded(meetingValue.ID, request.HostParticipantID)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{
@@ -514,18 +545,18 @@ func (s *Server) handleSaveUserPreference(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleWebSocketPlaceholder(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 	participantID := r.URL.Query().Get("participantId")
 
 	if s.signaling == nil {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{
-			"error":     "websocket signaling is not available",
-			"meetingId": meetingID,
+			"error":         "websocket signaling is not available",
+			"meetingNumber": meetingIdentifier,
 		})
 		return
 	}
 
-	if err := s.signaling.ServeWS(w, r, meetingID, participantID); err != nil {
+	if err := s.signaling.ServeWS(w, r, meetingIdentifier, participantID); err != nil {
 		s.writeMeetingError(w, err)
 	}
 }

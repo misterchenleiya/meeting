@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 流量统计邮件新增会议质量摘要、客户端画像分布、新增用户 IP 统计和 `meeting_quality.csv` 明细，便于运营识别设备、浏览器、网络与会议体验问题。
 - 后端构建产物新增 `tag / commit / build time` 版本信息注入，统计邮件会在末尾展示当前后端版本。
 - 新增 `docs/design/20260506-chat-permission-preview.*` 和 `docs/design/20260506-chat-permission-ui-spec.md`，用于约束聊天未读、消息流和主持人权限处理弹窗的交互修复。
-- 新增运行时 ICE 配置接口 `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers`，后端现在会基于共享密钥为当前参会者签发短期 TURN 动态凭据。
+- 新增运行时 ICE 配置接口 `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers`，后端现在会基于共享密钥为当前参会者签发短期 TURN 动态凭据。
 - 微信小程序加入会议页新增会议号输入框内嵌扫码入口，可直接调用摄像头识别会议二维码，并自动回填会议号与二维码中附带的会议密码。
 - 新增独立的 `微信小程序` 设计资产：`docs/design/wechat-auth-preview.html`、`docs/design/wechat-auth-preview.css`、`docs/design/wechat-room-preview.html`、`docs/design/wechat-room-preview.css` 和 `docs/design/wechat-ui-spec.md`，用于在保留 `H5 / PC` 黑色舞台风格的前提下，适配小程序导航栏、安全区和会中壳层。
 - 新增独立的 `H5` 设计资产：`docs/design/h5-auth-preview.html`、`docs/design/h5-auth-preview.css`、`docs/design/h5-room-preview.html`、`docs/design/h5-room-preview.css` 和 `docs/design/h5-ui-spec.md`，用于覆盖手机浏览器与 `iPad` 的登录到入会首屏方案，并与 `PC` 端保持同一套深色产品风格。
@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增前端屏幕共享与本地录制缓存流程，支持浏览器内存缓存、下载保存和手动丢弃。
 - 新增助理授权、白板协作、就位确认和会中临时聊天/纪要运行态，支持会内查看并在会议结束后自动清理。
 - 新增基于 `RTCPeerConnection.getStats()` 的基础审计统计上报与前端摘要展示，向后端周期性上报延迟、丢包、帧率和码率。
-- 新增临时会议纪要查询接口 `GET /api/meetings/{meetingID}/minutes`，用于读取会中聊天、白板和就位确认快照。
+- 新增临时会议纪要查询接口 `GET /api/meetings/{meetingNumber}/minutes`，用于读取会中聊天、白板和就位确认快照。
 - 新增昵称修改接口和前端入口，修改昵称后会自动写入临时聊天记录与会议纪要。
 - 新增参会者离开会议入口和主持人保护规则，主持人在仍有其他参会者时必须显式结束会议，避免房间进入无主持人状态。
 - 新增临时纪要本地导出入口，支持把会中纪要、聊天、白板数量和就位确认摘要导出为文本文件。
@@ -56,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 对外展示、统计邮件和 CSV 报表统一使用 9 位“会议号”；后端与前端日志在记录内部 `meetingId` 时同步携带 `meetingNumber`，便于双向反查。
+- REST/WSS 会议级路径参数、前端运行态调用和接口文档统一切换为公开 `meetingNumber`；服务端仍兼容旧内部 ID 路径值，并在信令房间注册前归一到内部 ID。
 - 登录页版本角标、后端构建信息和发布包名中的 `commit` 统一改为 `git rev-parse --short HEAD` 默认短 hash，避免展示过长的 12 位提交号。
 - 会中权限策略已按“已注册参会者 / 匿名参会者”拆分默认能力矩阵：已注册参会者默认可直接使用麦克风、摄像头和共享屏幕，匿名参会者仍默认仅聊天。
 - 麦克风、摄像头、共享屏幕和录制的权限申请流已改为“前端二次确认 -> 全员可见系统聊天消息 -> 主持人点击消息快速授权”的闭环交互；系统聊天消息现在带有结构化 `kind / action` 元数据。

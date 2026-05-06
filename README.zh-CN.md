@@ -112,17 +112,17 @@
 当前已实现的关键接口包括：
 
 - `POST /api/meetings`：创建会议
-- `GET /api/meetings/{meetingID}`：获取会议快照
-- `GET /api/meetings/{meetingID}/minutes`：获取会中临时纪要快照
-- `POST /api/meetings/{meetingID}/join`：加入会议
-- `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers`：获取当前参会者的运行时 ICE / TURN 配置
-- `POST /api/meetings/{meetingID}/participants/{participantID}/leave`：离开会议
-- `POST /api/meetings/{meetingID}/participants/{participantID}/nickname`：修改昵称
-- `POST /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant`：主持人授权
-- `POST /api/meetings/{meetingID}/participants/{participantID}/audit`：上报基础审计数据
-- `POST /api/meetings/{meetingID}/end`：主持人结束会议
+- `GET /api/meetings/{meetingNumber}`：获取会议快照
+- `GET /api/meetings/{meetingNumber}/minutes`：获取会中临时纪要快照
+- `POST /api/meetings/{meetingNumber}/join`：加入会议
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers`：获取当前参会者的运行时 ICE / TURN 配置
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/leave`：离开会议
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/nickname`：修改昵称
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/capabilities/{capability}/grant`：主持人授权
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/audit`：上报基础审计数据
+- `POST /api/meetings/{meetingNumber}/end`：主持人结束会议
 - `PUT /api/users/{userID}/preferences`：保存注册用户默认媒体偏好
-- `GET /ws/meetings/{meetingID}`：WebSocket 信令入口
+- `GET /ws/meetings/{meetingNumber}`：WebSocket 信令入口
 
 更完整的接口契约文档见 [docs/api/README.md](docs/api/README.md)。
 
@@ -132,10 +132,10 @@
 - `POST /api/auth/login/password`：最小密码登录接口；未设置密码的账号会返回“请使用邮箱验证码登录”的明确提示
 - `POST /api/auth/wechat/mini/login`：微信小程序快捷登录接口；后端使用 `wx.login` 返回的 code 换取 `openid`，并返回显式 `sessionToken`
 - `POST /api/meetings` 返回的会议对象现在同时包含内部 `id` 和公开 `meetingNumber`。
-- `POST /api/meetings`、`POST /api/meetings/{meetingID}/join` 和 `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers` 现在都会返回运行时 `iceServers`；TURN 凭据改为由后端按短期动态方式签发，不再打进前端发布包。
+- `POST /api/meetings`、`POST /api/meetings/{meetingNumber}/join` 和 `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers` 现在都会返回运行时 `iceServers`；TURN 凭据改为由后端按短期动态方式签发，不再打进前端发布包。
 - 会议快照里的 `chatMessages` 与 WebSocket `chat.message` 事件现在可能带有结构化系统消息元数据；权限申请消息会通过 `kind = capability_request` 和 `action` 字段暴露“快速处理”上下文，而不是依赖前端解析中文文案。
-- `GET /api/meetings/{meetingID}` 与 `POST /api/meetings/{meetingID}/join` 等会议级接口现在同时接受内部运行态 ID 和公开 `9` 位会议号。
-- `GET /ws/meetings/{meetingID}` 仍继续使用内部运行态 ID，以减少对现有信令链路的影响。
+- 会议级 REST 与 WebSocket 路径现在统一使用公开 `9` 位 `meetingNumber`；兼容窗口内仍接受旧内部运行态 ID，并由服务端归一到同一个内部房间。
+- API 响应中仍保留内部 `id` 以兼容旧客户端和排查问题，但新版前端必须使用 `meetingNumber` 做用户展示、REST 路径、WebSocket 路径、二维码和邀请链接。
 
 ## 本地运行
 

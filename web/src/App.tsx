@@ -69,7 +69,7 @@ type SessionState = {
 };
 
 type RuntimeIceState = {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
   iceServers: RTCIceServer[];
   expiresAt?: string;
@@ -153,7 +153,7 @@ type ScheduleFormState = {
 };
 
 type JoinFormState = {
-  meetingId: string;
+  meetingNumber: string;
   password: string;
   nickname: string;
   requestCameraEnabled: boolean;
@@ -189,7 +189,7 @@ const defaultRegisterForm: RegisterFormState = {
   code: ""
 };
 const defaultJoinForm: JoinFormState = {
-  meetingId: "",
+  meetingNumber: "",
   password: "",
   nickname: "匿名用户",
   requestCameraEnabled: false,
@@ -561,7 +561,7 @@ function App() {
       const currentSession = sessionRef.current;
       if (
         !currentSession ||
-        currentSession.meeting.id !== session.meeting.id ||
+        getMeetingPublicNumber(currentSession.meeting) !== getMeetingPublicNumber(session.meeting) ||
         currentSession.participant.id !== session.participant.id ||
         signalClientRef.current !== null
       ) {
@@ -571,7 +571,7 @@ function App() {
       setStatusMessage("正在重连 WSS 信令...");
       connectSignalForSession(currentSession).catch((error) => {
         logger.error("signal.reconnect_failed", {
-          meetingId: currentSession.meeting.id,
+          ...meetingLogFields(currentSession.meeting),
           participantId: currentSession.participant.id,
           error
         });
@@ -801,7 +801,7 @@ function App() {
   const cacheRuntimeIceState = useEffectEvent(
     (meeting: Meeting, participant: Participant, iceServers: RTCIceServer[], expiresAt?: string) => {
       runtimeIceStateRef.current = {
-        meetingId: meeting.id,
+        meetingNumber: getMeetingPublicNumber(meeting),
         participantId: participant.id,
         iceServers,
         expiresAt: expiresAt?.trim() ? expiresAt.trim() : undefined
@@ -819,7 +819,10 @@ function App() {
       return null;
     }
 
-    if (cached.meetingId !== session.meeting.id || cached.participantId !== session.participant.id) {
+    if (
+      cached.meetingNumber !== getMeetingPublicNumber(session.meeting) ||
+      cached.participantId !== session.participant.id
+    ) {
       return null;
     }
 
@@ -848,14 +851,14 @@ function App() {
 
     try {
       const response = await fetchMeetingIceServers({
-        meetingId: session.meeting.id,
+        meetingNumber: getMeetingPublicNumber(session.meeting),
         participantId: session.participant.id
       });
       cacheRuntimeIceState(session.meeting, session.participant, response.iceServers, response.expiresAt);
       return response.iceServers;
     } catch (error) {
       logger.warn("rtc.ice_servers_fetch_failed", {
-        meetingId: session.meeting.id,
+        ...meetingLogFields(session.meeting),
         participantId: session.participant.id,
         error
       });
@@ -1003,9 +1006,10 @@ function App() {
 
     meetingEndSummaryPreparedRef.current = true;
     endingMeetingRef.current = false;
+    const summarySession = sessionRef.current ?? meetingSession;
     logger.info("meeting.end_summary_preparing", {
-      meetingId: sessionRef.current?.meeting.id ?? meetingSession?.meeting.id ?? "",
-      participantId: sessionRef.current?.participant.id ?? meetingSession?.participant.id ?? ""
+      ...meetingLogFields(summarySession?.meeting),
+      participantId: summarySession?.participant.id ?? ""
     });
     setEndingMeetingPending(false);
     sessionRef.current = null;
@@ -1224,7 +1228,7 @@ function App() {
       case "meeting.ended": {
         appendEvent("meeting.ended", "会议已结束，运行态将被清理");
         logger.info("signal.meeting_ended_received", {
-          meetingId: sessionRef.current?.meeting.id ?? "",
+          ...meetingLogFields(sessionRef.current?.meeting),
           participantId: sessionRef.current?.participant.id ?? "",
           participantRole: sessionRef.current?.participant.role ?? "",
           endingMeetingFlow: endingMeetingRef.current
@@ -1309,7 +1313,7 @@ function App() {
     });
 
     await reportAudit({
-      meetingId: currentSession.meeting.id,
+      meetingNumber: getMeetingPublicNumber(currentSession.meeting),
       participantId: currentSession.participant.id,
       userId: currentSession.participant.userId,
       participantRole: currentSession.participant.role,
@@ -1364,7 +1368,7 @@ function App() {
       auditBaselineRef.current.clear();
     };
   }, [
-    meetingSession?.meeting.id,
+    meetingSession ? getMeetingPublicNumber(meetingSession.meeting) : "",
     meetingSession?.participant.id,
     meetingSession?.participant.role,
     meetingSession?.participant.userId,
@@ -1404,7 +1408,8 @@ function App() {
   const connectSignalForSession = useEffectEvent(async (session: SessionState) => {
     const iceServers = await ensureRuntimeIceServers(session);
     if (
-      sessionRef.current?.meeting.id !== session.meeting.id ||
+      !sessionRef.current ||
+      getMeetingPublicNumber(sessionRef.current.meeting) !== getMeetingPublicNumber(session.meeting) ||
       sessionRef.current?.participant.id !== session.participant.id
     ) {
       return;
@@ -1421,7 +1426,7 @@ function App() {
     ensurePeerMesh(session, iceServers);
     const isCurrentConnection = () =>
       signalConnectionGenerationRef.current === connectionGeneration && signalClientRef.current === client;
-    client.connect(session.meeting.id, session.participant.id, {
+    client.connect(getMeetingPublicNumber(session.meeting), session.participant.id, {
       onOpen: () => {
         if (!isCurrentConnection()) {
           return;
@@ -1429,7 +1434,7 @@ function App() {
         clearSignalReconnectTimer();
         signalReconnectAttemptRef.current = 0;
         logger.info("signal.connected", {
-          meetingId: session.meeting.id,
+          ...meetingLogFields(session.meeting),
           participantId: session.participant.id
         });
         setErrorMessage("");
@@ -1441,7 +1446,7 @@ function App() {
           return;
         }
         logger.warn("signal.closed", {
-          meetingId: session.meeting.id,
+          ...meetingLogFields(session.meeting),
           participantId: session.participant.id,
           endingMeetingFlow: endingMeetingRef.current,
           summaryPrepared: meetingEndSummaryPreparedRef.current
@@ -1472,7 +1477,7 @@ function App() {
           return;
         }
         logger.error("signal.error", {
-          meetingId: session.meeting.id,
+          ...meetingLogFields(session.meeting),
           participantId: session.participant.id,
           error: message
         });
@@ -1493,7 +1498,7 @@ function App() {
     }
 
     if (
-      pendingSignalSession.meeting.id !== meetingSession.meeting.id ||
+      getMeetingPublicNumber(pendingSignalSession.meeting) !== getMeetingPublicNumber(meetingSession.meeting) ||
       pendingSignalSession.participant.id !== meetingSession.participant.id
     ) {
       return;
@@ -1508,7 +1513,7 @@ function App() {
           return;
         }
         logger.error("signal.connect_failed", {
-          meetingId: meetingSession.meeting.id,
+          ...meetingLogFields(meetingSession.meeting),
           participantId: meetingSession.participant.id,
           error
         });
@@ -1522,7 +1527,7 @@ function App() {
 
     connect().catch((error) => {
       logger.error("signal.connect_effect_failed", {
-        meetingId: meetingSession.meeting.id,
+        ...meetingLogFields(meetingSession.meeting),
         participantId: meetingSession.participant.id,
         error
       });
@@ -1903,13 +1908,13 @@ function App() {
       setMeetingAccessPassword(password);
       setJoinForm((current) => ({
         ...current,
-        meetingId: getMeetingPublicNumber(response.meeting),
+        meetingNumber: getMeetingPublicNumber(response.meeting),
         password
       }));
       openPrejoinSession(response.meeting, response.host, "schedule", "会议已创建，请先确认入会预览");
       appendEvent("meeting.created", `会议 ${response.meeting.title} 已创建`);
       logger.info("meeting.schedule_create_succeeded", {
-        meetingId: response.meeting.id,
+        ...meetingLogFields(response.meeting),
         passwordRequired: response.meeting.passwordRequired
       });
     } catch (error) {
@@ -1954,13 +1959,13 @@ function App() {
       setMeetingAccessPassword(password);
       setJoinForm((current) => ({
         ...current,
-        meetingId: getMeetingPublicNumber(response.meeting),
+        meetingNumber: getMeetingPublicNumber(response.meeting),
         password
       }));
       enterMeetingSession(response.meeting, response.host, "已进入会议，正在接入信令");
       appendEvent("meeting.created", `快速会议 ${response.meeting.title} 已创建并直接进入会议`);
       logger.info("meeting.quick_create_succeeded", {
-        meetingId: response.meeting.id,
+        ...meetingLogFields(response.meeting),
         passwordRequired: response.meeting.passwordRequired
       });
     } catch (error) {
@@ -1974,12 +1979,12 @@ function App() {
 
   const performJoinMeeting = useEffectEvent(async (meeting: Meeting, password: string) => {
     logger.info("meeting.join_requested", {
-      meetingId: meeting.id,
+      ...meetingLogFields(meeting),
       passwordProvided: password !== "",
       nickname: joinForm.nickname.trim()
     });
     const response = await joinMeeting({
-      meetingId: meeting.id,
+      meetingNumber: getMeetingPublicNumber(meeting),
       password,
       userId: isAuthenticated && currentUser ? currentUser.id : "",
       nickname: joinForm.nickname.trim(),
@@ -2000,7 +2005,7 @@ function App() {
     openPrejoinSession(response.meeting, response.participant, "join", "已加入会议，请先确认入会预览");
     appendEvent("meeting.joined", `${response.participant.nickname} 已加入会议`);
     logger.info("meeting.join_succeeded", {
-      meetingId: response.meeting.id,
+      ...meetingLogFields(response.meeting),
       participantId: response.participant.id,
       participantRole: response.participant.role
     });
@@ -2008,8 +2013,8 @@ function App() {
 
   const handleLookupMeeting = useEffectEvent(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const meetingId = normalizeMeetingLookupValue(joinForm.meetingId);
-    if (!meetingId) {
+    const meetingNumber = normalizeMeetingLookupValue(joinForm.meetingNumber);
+    if (!meetingNumber) {
       setErrorMessage("请输入会议号");
       return;
     }
@@ -2021,14 +2026,14 @@ function App() {
 
     try {
       logger.info("meeting.lookup_requested", {
-        meetingId,
+        meetingNumber,
         nickname: joinForm.nickname.trim()
       });
-      const response = await getMeeting({ meetingId });
+      const response = await getMeeting({ meetingNumber });
       setJoinLookupMeeting(response.meeting);
       if (response.meeting.passwordRequired) {
         logger.info("meeting.lookup_requires_password", {
-          meetingId: response.meeting.id
+          ...meetingLogFields(response.meeting)
         });
         setShowJoinPasswordModal(true);
         setStatusMessage("会议号已验证，请继续输入会议密码");
@@ -2038,7 +2043,7 @@ function App() {
 
       setJoinForm((current) => ({
         ...current,
-        meetingId,
+        meetingNumber,
         password: ""
       }));
       setShowJoinPasswordModal(false);
@@ -2047,7 +2052,7 @@ function App() {
       await performJoinMeeting(response.meeting, "");
     } catch (error) {
       logger.error("meeting.lookup_failed", {
-        meetingId,
+        meetingNumber,
         error
       });
       setJoinLookupMeeting(null);
@@ -2113,13 +2118,13 @@ function App() {
     try {
       if (prejoinOriginView === "join") {
         await leaveMeeting({
-          meetingId: prejoinSession.meeting.id,
+          meetingNumber: getMeetingPublicNumber(prejoinSession.meeting),
           participantId: prejoinSession.participant.id,
           deviceType
         });
       } else if (prejoinOriginView === "home" || prejoinOriginView === "schedule") {
         await endMeeting({
-          meetingId: prejoinSession.meeting.id,
+          meetingNumber: getMeetingPublicNumber(prejoinSession.meeting),
           hostParticipantId: prejoinSession.participant.id,
           deviceType
         });
@@ -2150,7 +2155,7 @@ function App() {
 
   const handleScannedJoinQRCode = useEffectEvent((payloadText: string) => {
     const payload = parseMeetingQRCodePayload(payloadText);
-    if (!payload.meetingId) {
+    if (!payload.meetingNumber) {
       logger.warn("join.scan_decoded_invalid_payload", {
         payloadText
       });
@@ -2159,7 +2164,7 @@ function App() {
     }
 
     logger.info("join.scan_decoded", {
-      meetingId: payload.meetingId,
+      meetingNumber: payload.meetingNumber,
       passwordProvided: payload.password !== ""
     });
     stopJoinScanner();
@@ -2170,7 +2175,7 @@ function App() {
     setJoinScanStatus("二维码已识别");
     setJoinForm((current) => ({
       ...current,
-      meetingId: normalizeMeetingLookupValue(payload.meetingId),
+      meetingNumber: normalizeMeetingLookupValue(payload.meetingNumber),
       password: payload.password ?? current.password
     }));
     setStatusMessage(
@@ -2638,7 +2643,7 @@ function App() {
 
     try {
       const response = await updateNickname({
-        meetingId: meetingSession.meeting.id,
+        meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
         participantId: meetingSession.participant.id,
         nickname: trimmedNickname
       });
@@ -2657,7 +2662,7 @@ function App() {
 
     try {
       await leaveMeeting({
-        meetingId: meetingSession.meeting.id,
+        meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
         participantId: meetingSession.participant.id,
         deviceType
       });
@@ -2678,16 +2683,16 @@ function App() {
       setEndingMeetingPending(true);
       setStatusMessage("正在结束会议...");
       logger.info("meeting.end_requested", {
-        meetingId: meetingSession.meeting.id,
+        ...meetingLogFields(meetingSession.meeting),
         participantId: meetingSession.participant.id
       });
       await endMeeting({
-        meetingId: meetingSession.meeting.id,
+        meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
         hostParticipantId: meetingSession.participant.id,
         deviceType
       });
       logger.info("meeting.end_request_succeeded", {
-        meetingId: meetingSession.meeting.id,
+        ...meetingLogFields(meetingSession.meeting),
         participantId: meetingSession.participant.id
       });
       preparePostEndSummary();
@@ -2695,7 +2700,7 @@ function App() {
       endingMeetingRef.current = false;
       setEndingMeetingPending(false);
       logger.error("meeting.end_request_failed", {
-        meetingId: meetingSession.meeting.id,
+        ...meetingLogFields(meetingSession.meeting),
         participantId: meetingSession.participant.id,
         error
       });
@@ -2721,7 +2726,7 @@ function App() {
     }
   }
 
-  async function handleCopyMeetingID() {
+  async function handleCopyMeetingNumber() {
     if (!meetingSession) {
       return;
     }
@@ -3283,15 +3288,15 @@ function App() {
                 ) : null}
                 <form className="form-grid" onSubmit={handleLookupMeeting}>
                   <label>
-                    会议号 / Meeting ID
+                    会议号
                     <div className="field-shell">
                       <input
                         onChange={(event) => {
-                          setJoinForm((current) => ({ ...current, meetingId: event.target.value }));
+                          setJoinForm((current) => ({ ...current, meetingNumber: event.target.value }));
                           setJoinLookupMeeting(null);
                           setShowJoinPasswordModal(false);
                         }}
-                        value={joinForm.meetingId}
+                        value={joinForm.meetingNumber}
                       />
                       <button
                         className="mini-action-button"
@@ -4001,14 +4006,14 @@ function App() {
 
                 <div className="invite-head">
                   <div className="invite-title-row">
-                      <div className="invite-title-copy">
-                        <div className="invite-eyebrow">meeting</div>
-                        <div className="invite-id-row">
-                          <h3>会议号：{inviteMeetingNumberLabel}</h3>
-                          <button
-                            aria-label="复制会议号"
-                            className="meeting-id-copy"
-                          onClick={() => void handleCopyMeetingID()}
+                    <div className="invite-title-copy">
+                      <div className="invite-eyebrow">meeting</div>
+                      <div className="invite-id-row">
+                        <h3>会议号：{inviteMeetingNumberLabel}</h3>
+                        <button
+                          aria-label="复制会议号"
+                          className="meeting-id-copy"
+                          onClick={() => void handleCopyMeetingNumber()}
                           type="button"
                         >
                           <MeetingIcon name="copy" />
@@ -4035,7 +4040,7 @@ function App() {
                     ) : (
                       <div className="qr-share-placeholder room-share-qr-placeholder">二维码生成中...</div>
                     )}
-                    <div className="qr-caption">会议ID：{inviteMeetingNumberLabel}</div>
+                    <div className="qr-caption">会议号：{inviteMeetingNumberLabel}</div>
                   </div>
                 </div>
 
@@ -5160,7 +5165,7 @@ function parseMeetingQRCodePayload(payloadText: string) {
   const trimmed = payloadText.trim();
   if (!trimmed) {
     return {
-      meetingId: "",
+      meetingNumber: "",
       password: ""
     };
   }
@@ -5168,21 +5173,28 @@ function parseMeetingQRCodePayload(payloadText: string) {
   try {
     const url = new URL(trimmed);
     return {
-      meetingId: normalizeMeetingLookupValue(
+      meetingNumber: normalizeMeetingLookupValue(
         url.searchParams.get("meetingNumber") ?? url.searchParams.get("meetingId") ?? ""
       ),
       password: url.searchParams.get("password") ?? ""
     };
   } catch {
     return {
-      meetingId: normalizeMeetingLookupValue(trimmed),
+      meetingNumber: normalizeMeetingLookupValue(trimmed),
       password: ""
     };
   }
 }
 
 function getMeetingPublicNumber(meeting: Pick<Meeting, "meetingNumber" | "id">) {
-  return meeting.meetingNumber || meeting.id;
+  return meeting.meetingNumber || meeting.id || "";
+}
+
+function meetingLogFields(meeting: Pick<Meeting, "meetingNumber" | "id"> | null | undefined) {
+  return {
+    meetingId: meeting?.id ?? "",
+    meetingNumber: meeting ? getMeetingPublicNumber(meeting) : ""
+  };
 }
 
 function normalizeMeetingLookupValue(value: string) {
@@ -5589,6 +5601,9 @@ function readPersistedAppState(): PersistedAppState | null {
     const defaultScheduleForm = buildDefaultScheduleForm();
     const currentUser = isPersistedAuthUser(parsed.currentUser) ? parsed.currentUser : null;
     const prejoinSession = isPersistedSessionState(parsed.prejoinSession) ? parsed.prejoinSession : null;
+    const persistedJoinForm = parsed.joinForm as
+      | (Partial<JoinFormState> & { meetingId?: string })
+      | undefined;
     const fallbackEntryView =
       parsed.isAuthenticated === true || Boolean(currentUser) ? "home" : "login";
     return {
@@ -5613,13 +5628,14 @@ function readPersistedAppState(): PersistedAppState | null {
         password: parsed.scheduleForm?.password ?? defaultScheduleForm.password
       },
       joinForm: {
-        meetingId: parsed.joinForm?.meetingId ?? defaultJoinForm.meetingId,
-        password: parsed.joinForm?.password ?? defaultJoinForm.password,
-        nickname: parsed.joinForm?.nickname ?? defaultJoinForm.nickname,
+        meetingNumber:
+          persistedJoinForm?.meetingNumber ?? persistedJoinForm?.meetingId ?? defaultJoinForm.meetingNumber,
+        password: persistedJoinForm?.password ?? defaultJoinForm.password,
+        nickname: persistedJoinForm?.nickname ?? defaultJoinForm.nickname,
         requestCameraEnabled:
-          parsed.joinForm?.requestCameraEnabled ?? defaultJoinForm.requestCameraEnabled,
+          persistedJoinForm?.requestCameraEnabled ?? defaultJoinForm.requestCameraEnabled,
         requestMicrophoneEnabled:
-          parsed.joinForm?.requestMicrophoneEnabled ?? defaultJoinForm.requestMicrophoneEnabled
+          persistedJoinForm?.requestMicrophoneEnabled ?? defaultJoinForm.requestMicrophoneEnabled
       },
       meetingAccessPassword: parsed.meetingAccessPassword ?? "",
       prejoinSession,

@@ -142,6 +142,46 @@ func TestCreateMeetingAssignsPublicMeetingNumber(t *testing.T) {
 	}
 }
 
+func TestRecordAuditReportResolvesPublicMeetingNumberToInternalID(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newStubStore()
+	service := NewService(testLogger(t), store)
+
+	meetingValue, host, err := service.CreateMeeting(ctx, CreateMeetingInput{
+		Title:        "audit number",
+		Password:     "",
+		HostUserID:   "host-user",
+		HostNickname: "主持人",
+		DeviceType:   "desktop",
+		IPAddress:    "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CreateMeeting() error = %v", err)
+	}
+
+	if err := service.RecordAuditReport(ctx, AuditReportInput{
+		MeetingID:       meetingValue.MeetingNumber,
+		ParticipantID:   host.ID,
+		UserID:          host.UserID,
+		ParticipantRole: host.Role,
+		DeviceType:      "browser",
+		LatencyMS:       42,
+		Details:         map[string]any{"source": "test"},
+	}); err != nil {
+		t.Fatalf("RecordAuditReport() error = %v", err)
+	}
+
+	lastEvent := store.auditEvents[len(store.auditEvents)-1]
+	if lastEvent.MeetingID != meetingValue.ID {
+		t.Fatalf("audit MeetingID = %q, want internal id %q", lastEvent.MeetingID, meetingValue.ID)
+	}
+	if lastEvent.MeetingNumber != meetingValue.MeetingNumber {
+		t.Fatalf("audit MeetingNumber = %q, want %q", lastEvent.MeetingNumber, meetingValue.MeetingNumber)
+	}
+}
+
 func TestJoinMeetingRegisteredParticipantGetsBaseMediaCapabilities(t *testing.T) {
 	t.Parallel()
 

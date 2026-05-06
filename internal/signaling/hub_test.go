@@ -93,7 +93,7 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 		t.Fatalf("JoinMeeting() error = %v", err)
 	}
 
-	hostConn := dialWebSocket(t, server.URL, meetingValue.ID, host.ID)
+	hostConn := dialWebSocket(t, server.URL, meetingValue.MeetingNumber, host.ID)
 	defer func() { _ = hostConn.Close() }()
 	participantConn := dialWebSocket(t, server.URL, meetingValue.ID, participant.ID)
 	defer func() { _ = participantConn.Close() }()
@@ -156,10 +156,10 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 	}
 }
 
-func dialWebSocket(t *testing.T, serverURL string, meetingID string, participantID string) *websocket.Conn {
+func dialWebSocket(t *testing.T, serverURL string, meetingIdentifier string, participantID string) *websocket.Conn {
 	t.Helper()
 
-	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws/meetings/" + meetingID + "?participantId=" + participantID
+	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws/meetings/" + meetingIdentifier + "?participantId=" + participantID
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		t.Fatalf("Dial(%s) error = %v", wsURL, err)

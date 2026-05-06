@@ -67,6 +67,7 @@ type client struct {
 	conn          *websocket.Conn
 	hub           *Hub
 	meetingID     string
+	meetingNumber string
 	participantID string
 	send          chan serverEnvelope
 }
@@ -162,12 +163,12 @@ func NewHub(logger *slog.Logger, meetings MeetingService) *Hub {
 	}
 }
 
-func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request, meetingID string, participantID string) error {
+func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request, meetingIdentifier string, participantID string) error {
 	if participantID == "" {
 		return fmt.Errorf("%w: participantId is required", ErrInvalidMessage)
 	}
 
-	meetingValue, found := h.meetings.GetMeeting(meetingID)
+	meetingValue, found := h.meetings.GetMeeting(meetingIdentifier)
 	if !found {
 		return meeting.ErrMeetingNotFound
 	}
@@ -178,20 +179,21 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request, meetingID string, 
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		h.logger.Warn("websocket upgrade failed", "meetingId", meetingID, "participantId", participantID, "error", err)
+		h.logger.Warn("websocket upgrade failed", "meetingId", meetingValue.ID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID, "error", err)
 		return fmt.Errorf("upgrade websocket: %w", err)
 	}
 
 	clientValue := &client{
 		conn:          conn,
 		hub:           h,
-		meetingID:     meetingID,
+		meetingID:     meetingValue.ID,
+		meetingNumber: meetingValue.MeetingNumber,
 		participantID: participantID,
 		send:          make(chan serverEnvelope, 32),
 	}
 
 	onlineParticipantIDs := h.register(clientValue)
-	h.logger.Info("websocket connected", "meetingId", meetingID, "participantId", participantID)
+	h.logger.Info("websocket connected", "meetingId", meetingValue.ID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID)
 	clientValue.send <- serverEnvelope{
 		Type: "session.welcome",
 		Payload: welcomePayload{
@@ -376,11 +378,12 @@ func (h *Hub) unregister(clientValue *client) {
 
 	h.mu.Unlock()
 
-	h.logger.Info("websocket disconnected", "meetingId", clientValue.meetingID, "participantId", clientValue.participantID)
+	h.logger.Info("websocket disconnected", "meetingId", clientValue.meetingID, "meetingNumber", clientValue.meetingNumber, "participantId", clientValue.participantID)
 	h.scheduleDisconnectCleanup(clientValue.meetingID, clientValue.participantID)
 }
 
 func (h *Hub) closeRoom(meetingID string) {
+	meetingID = h.canonicalMeetingID(meetingID)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -401,6 +404,7 @@ func (h *Hub) closeRoom(meetingID string) {
 }
 
 func (h *Hub) broadcast(meetingID string, event serverEnvelope, excludeParticipantID string) {
+	meetingID = h.canonicalMeetingID(meetingID)
 	h.mu.RLock()
 	room := h.rooms[meetingID]
 	clients := make([]*client, 0, len(room))
@@ -418,6 +422,7 @@ func (h *Hub) broadcast(meetingID string, event serverEnvelope, excludeParticipa
 		default:
 			h.logger.Warn("dropping websocket event for slow client",
 				"meetingId", meetingID,
+				"meetingNumber", h.meetingNumber(meetingID),
 				"participantId", clientValue.participantID,
 				"type", event.Type,
 			)
@@ -437,7 +442,7 @@ func (h *Hub) scheduleDisconnectCleanup(meetingID string, participantID string) 
 	}
 
 	if participant.Role == meeting.RoleHost {
-		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "participantId", participantID, "reason", "host")
+		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID, "reason", "host")
 		return
 	}
 
@@ -453,17 +458,18 @@ func (h *Hub) scheduleDisconnectCleanup(meetingID string, participantID string) 
 	h.disconnectCleanups[key] = timer
 	h.mu.Unlock()
 
-	h.logger.Info("participant disconnect cleanup scheduled", "meetingId", meetingID, "participantId", participantID, "gracePeriod", disconnectGracePeriod.String())
+	h.logger.Info("participant disconnect cleanup scheduled", "meetingId", meetingID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID, "gracePeriod", disconnectGracePeriod.String())
 }
 
 func (h *Hub) runDisconnectCleanup(meetingID string, participantID string) {
+	meetingNumber := h.meetingNumber(meetingID)
 	h.mu.Lock()
 	delete(h.disconnectCleanups, disconnectCleanupKey(meetingID, participantID))
 	room := h.rooms[meetingID]
 	if room != nil {
 		if _, ok := room[participantID]; ok {
 			h.mu.Unlock()
-			h.logger.Info("participant disconnect cleanup canceled", "meetingId", meetingID, "participantId", participantID, "reason", "reconnected")
+			h.logger.Info("participant disconnect cleanup canceled", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID, "reason", "reconnected")
 			return
 		}
 	}
@@ -472,15 +478,31 @@ func (h *Hub) runDisconnectCleanup(meetingID string, participantID string) {
 	err := h.meetings.LeaveMeeting(context.Background(), meetingID, participantID, "signal_disconnect", "")
 	switch {
 	case err == nil:
-		h.logger.Info("participant disconnect cleanup completed", "meetingId", meetingID, "participantId", participantID)
+		h.logger.Info("participant disconnect cleanup completed", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID)
 		h.NotifyParticipantLeft(meetingID, participantID)
 	case errors.Is(err, meeting.ErrMeetingNotFound), errors.Is(err, meeting.ErrParticipantNotFound):
-		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "participantId", participantID, "reason", "already_removed")
+		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID, "reason", "already_removed")
 	case errors.Is(err, meeting.ErrUnauthorized):
-		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "participantId", participantID, "reason", "unauthorized")
+		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID, "reason", "unauthorized")
 	default:
-		h.logger.Error("participant disconnect cleanup failed", "meetingId", meetingID, "participantId", participantID, "error", err)
+		h.logger.Error("participant disconnect cleanup failed", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID, "error", err)
 	}
+}
+
+func (h *Hub) meetingNumber(meetingID string) string {
+	meetingValue, found := h.meetings.GetMeeting(meetingID)
+	if !found {
+		return ""
+	}
+	return meetingValue.MeetingNumber
+}
+
+func (h *Hub) canonicalMeetingID(meetingIdentifier string) string {
+	meetingValue, found := h.meetings.GetMeeting(meetingIdentifier)
+	if !found {
+		return meetingIdentifier
+	}
+	return meetingValue.ID
 }
 
 func (h *Hub) cancelDisconnectCleanupLocked(meetingID string, participantID string) {
@@ -506,6 +528,7 @@ func disconnectCleanupKey(meetingID string, participantID string) string {
 }
 
 func (h *Hub) sendToParticipant(meetingID string, participantID string, event serverEnvelope) error {
+	meetingID = h.canonicalMeetingID(meetingID)
 	h.mu.RLock()
 	room := h.rooms[meetingID]
 	clientValue, ok := room[participantID]

@@ -15,7 +15,7 @@ func TestHandleClientLogsAccepted(t *testing.T) {
 	var logBuffer bytes.Buffer
 	server := NewServer(logging.NewBootstrapLogger(&logBuffer), nil, nil, nil, nil, nil)
 
-	requestBody := `{"logs":[{"level":"warn","time":"2026-03-25T12:00:00.000Z","message":"meeting.end_request_failed","scope":"frontend.app","meetingId":"mtg-001","detail":"timeout"}]}`
+	requestBody := `{"logs":[{"level":"warn","time":"2026-03-25T12:00:00.000Z","message":"meeting.end_request_failed","scope":"frontend.app","meetingId":"mtg-001","meetingNumber":"123456789","detail":"timeout"}]}`
 	request := httptest.NewRequest(http.MethodPost, "/api/client-logs", strings.NewReader(requestBody))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("User-Agent", "meeting-test/1.0")
@@ -60,6 +60,10 @@ func TestHandleClientLogsAccepted(t *testing.T) {
 
 	if payload["scope"] != "frontend.app" {
 		t.Fatalf("scope = %v, want frontend.app", payload["scope"])
+	}
+
+	if payload["meetingNumber"] != "123456789" {
+		t.Fatalf("meetingNumber = %v, want 123456789", payload["meetingNumber"])
 	}
 }
 

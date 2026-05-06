@@ -15,10 +15,10 @@ type SignalClientOptions = {
 export class SignalClient {
   private socket: WebSocket | null = null;
 
-  connect(meetingId: string, participantId: string, options: SignalClientOptions): void {
+  connect(meetingNumber: string, participantId: string, options: SignalClientOptions): void {
     this.close();
 
-    const url = resolveSignalUrl(`/ws/meetings/${meetingId}`);
+    const url = resolveSignalUrl(`/ws/meetings/${encodeURIComponent(meetingNumber)}`);
     url.searchParams.set("participantId", participantId);
 
     const socket = new WebSocket(url.toString());

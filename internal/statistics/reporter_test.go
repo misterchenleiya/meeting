@@ -181,6 +181,9 @@ func TestReporterSendsSummaryTableAndDetailCSVAttachmentsWhenUsageExists(t *test
 	if !strings.Contains(mailer.message.TextBody, "会议质量样本数 | 2") || !strings.Contains(mailer.message.TextBody, "客户端设备分布 | desktop: 1；mobile: 1") {
 		t.Fatalf("email text body missing quality or client profile summary: %s", mailer.message.TextBody)
 	}
+	if !strings.Contains(mailer.message.TextBody, "时间最长的会议 | 01:30:00 | 123456789") {
+		t.Fatalf("email text body missing public meeting number: %s", mailer.message.TextBody)
+	}
 	if !strings.Contains(mailer.message.HTMLBody, "<table") || !strings.Contains(mailer.message.HTMLBody, "用户访问数量") {
 		t.Fatalf("email html body missing summary table: %s", mailer.message.HTMLBody)
 	}
@@ -188,14 +191,14 @@ func TestReporterSendsSummaryTableAndDetailCSVAttachmentsWhenUsageExists(t *test
 		t.Fatalf("first attachment filename = %q, want users.csv", mailer.message.Attachments[0].Filename)
 	}
 	users := string(mailer.message.Attachments[0].Data)
-	if !strings.Contains(users, "host@example.com") || !strings.Contains(users, "匿名用户") {
+	if !strings.Contains(users, "host@example.com") || !strings.Contains(users, "匿名用户") || !strings.Contains(users, "123456789") {
 		t.Fatalf("users csv = %s", users)
 	}
 	if mailer.message.Attachments[1].Filename != "meetings.csv" {
 		t.Fatalf("second attachment filename = %q, want meetings.csv", mailer.message.Attachments[1].Filename)
 	}
 	meetings := string(mailer.message.Attachments[1].Data)
-	if !strings.Contains(meetings, "mtg_001") || !strings.Contains(meetings, "scheduled") {
+	if !strings.Contains(meetings, "123456789") || !strings.Contains(meetings, "scheduled") {
 		t.Fatalf("meetings csv = %s", meetings)
 	}
 	if mailer.message.Attachments[2].Filename != "new_users.csv" {
@@ -216,7 +219,7 @@ func TestReporterSendsSummaryTableAndDetailCSVAttachmentsWhenUsageExists(t *test
 		t.Fatalf("fifth attachment filename = %q, want meeting_quality.csv", mailer.message.Attachments[4].Filename)
 	}
 	quality := string(mailer.message.Attachments[4].Data)
-	if !strings.Contains(quality, "anon_001") || !strings.Contains(quality, "320") || !strings.Contains(quality, "1") {
+	if !strings.Contains(quality, "123456789") || !strings.Contains(quality, "anon_001") || !strings.Contains(quality, "320") || !strings.Contains(quality, "1") {
 		t.Fatalf("meeting quality csv = %s", quality)
 	}
 }

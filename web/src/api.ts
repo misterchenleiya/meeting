@@ -70,7 +70,7 @@ export type MeetingIceServersResponse = {
 };
 
 export type MeetingMinutesSnapshot = {
-  meetingId: string;
+  meetingNumber: string;
   title: string;
   chatMessages: ChatMessage[];
   whiteboardActions: WhiteboardAction[];
@@ -79,6 +79,10 @@ export type MeetingMinutesSnapshot = {
 };
 
 const logger = createClientLogger("frontend.api");
+
+function meetingPathSegment(meetingNumber: string): string {
+  return encodeURIComponent(meetingNumber);
+}
 
 function normalizeRuntimeIcePayload<T extends { iceServers: RuntimeIceServer[] }>(
   payload: T
@@ -200,7 +204,7 @@ export async function logout(): Promise<{ status: string }> {
 }
 
 export async function joinMeeting(input: {
-  meetingId: string;
+  meetingNumber: string;
   password: string;
   userId?: string;
   nickname: string;
@@ -210,7 +214,7 @@ export async function joinMeeting(input: {
   requestCameraEnabled?: boolean;
   requestMicrophoneEnabled?: boolean;
 }): Promise<JoinMeetingResponse> {
-  const response = await requestJSON<RawJoinMeetingResponse>(`/api/meetings/${input.meetingId}/join`, {
+  const response = await requestJSON<RawJoinMeetingResponse>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/join`, {
     method: "POST",
     body: JSON.stringify({
       password: input.password,
@@ -226,16 +230,16 @@ export async function joinMeeting(input: {
   return normalizeRuntimeIcePayload(response);
 }
 
-export async function getMeeting(input: { meetingId: string }): Promise<GetMeetingResponse> {
-  return requestJSON<GetMeetingResponse>(`/api/meetings/${input.meetingId}`);
+export async function getMeeting(input: { meetingNumber: string }): Promise<GetMeetingResponse> {
+  return requestJSON<GetMeetingResponse>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}`);
 }
 
 export async function fetchMeetingIceServers(input: {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
 }): Promise<MeetingIceServersResponse> {
   const response = await requestJSON<RawMeetingIceServersResponse>(
-    `/api/meetings/${input.meetingId}/participants/${input.participantId}/ice-servers`,
+    `/api/meetings/${meetingPathSegment(input.meetingNumber)}/participants/${input.participantId}/ice-servers`,
     {
       method: "POST"
     }
@@ -244,11 +248,11 @@ export async function fetchMeetingIceServers(input: {
 }
 
 export async function endMeeting(input: {
-  meetingId: string;
+  meetingNumber: string;
   hostParticipantId: string;
   deviceType: string;
 }): Promise<{ status: string }> {
-  return requestJSON<{ status: string }>(`/api/meetings/${input.meetingId}/end`, {
+  return requestJSON<{ status: string }>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/end`, {
     method: "POST",
     body: JSON.stringify({
       hostParticipantId: input.hostParticipantId,
@@ -258,12 +262,12 @@ export async function endMeeting(input: {
 }
 
 export async function leaveMeeting(input: {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
   deviceType: string;
 }): Promise<{ status: string }> {
   return requestJSON<{ status: string }>(
-    `/api/meetings/${input.meetingId}/participants/${input.participantId}/leave`,
+    `/api/meetings/${meetingPathSegment(input.meetingNumber)}/participants/${input.participantId}/leave`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -274,7 +278,7 @@ export async function leaveMeeting(input: {
 }
 
 export async function updateNickname(input: {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
   nickname: string;
 }): Promise<{
@@ -286,7 +290,7 @@ export async function updateNickname(input: {
     participant: Participant;
     previousNickname: string;
     systemMessage?: ChatMessage;
-  }>(`/api/meetings/${input.meetingId}/participants/${input.participantId}/nickname`, {
+  }>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/participants/${input.participantId}/nickname`, {
     method: "POST",
     body: JSON.stringify({
       nickname: input.nickname
@@ -295,17 +299,17 @@ export async function updateNickname(input: {
 }
 
 export async function getMeetingMinutes(input: {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
 }): Promise<MeetingMinutesSnapshot> {
   const query = new URLSearchParams({
     participantId: input.participantId
   });
-  return requestJSON<MeetingMinutesSnapshot>(`/api/meetings/${input.meetingId}/minutes?${query.toString()}`);
+  return requestJSON<MeetingMinutesSnapshot>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/minutes?${query.toString()}`);
 }
 
 export async function reportAudit(input: {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
   userId?: string;
   participantRole: Participant["role"];
@@ -318,7 +322,7 @@ export async function reportAudit(input: {
   clientProfile?: ClientProfile;
 }): Promise<{ status: string }> {
   return requestJSON<{ status: string }>(
-    `/api/meetings/${input.meetingId}/participants/${input.participantId}/audit`,
+    `/api/meetings/${meetingPathSegment(input.meetingNumber)}/participants/${input.participantId}/audit`,
     {
       method: "POST",
       body: JSON.stringify({

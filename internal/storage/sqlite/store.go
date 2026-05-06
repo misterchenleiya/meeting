@@ -29,6 +29,7 @@ type UserPreference struct {
 
 type AuditEvent struct {
 	MeetingID        string
+	MeetingNumber    string
 	ParticipantID    string
 	UserID           string
 	ParticipantRole  string

@@ -247,6 +247,7 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
 		ParticipantID:   host.ID,
 		UserID:          host.UserID,
 		ParticipantRole: string(host.Role),
@@ -323,6 +324,7 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
 		ParticipantID:   participant.ID,
 		UserID:          participant.UserID,
 		ParticipantRole: string(participant.Role),
@@ -362,6 +364,7 @@ func (s *Service) LeaveMeeting(ctx context.Context, meetingID string, participan
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
 		ParticipantID:   participant.ID,
 		UserID:          participant.UserID,
 		ParticipantRole: string(participant.Role),
@@ -406,6 +409,7 @@ func (s *Service) EndMeeting(ctx context.Context, meetingID string, endedByParti
 	now := time.Now().UTC()
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
 		ParticipantID:   endedByParticipantID,
 		ParticipantRole: string(RoleHost),
 		EventType:       "meeting_ended",
@@ -459,6 +463,7 @@ func (s *Service) GrantCapability(ctx context.Context, input GrantCapabilityInpu
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
 		ParticipantID:   participant.ID,
 		UserID:          participant.UserID,
 		ParticipantRole: string(participant.Role),
@@ -518,6 +523,7 @@ func (s *Service) RequestCapability(ctx context.Context, input CapabilityRequest
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -556,6 +562,7 @@ func (s *Service) AssignAssistant(ctx context.Context, input AssignAssistantInpu
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   participant.ID,
 		UserID:          participant.UserID,
 		ParticipantRole: string(participant.Role),
@@ -609,6 +616,7 @@ func (s *Service) UpdateNickname(ctx context.Context, input UpdateNicknameInput)
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -655,6 +663,7 @@ func (s *Service) AppendChatMessage(ctx context.Context, input ChatMessageInput)
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -695,6 +704,7 @@ func (s *Service) AppendWhiteboardAction(ctx context.Context, input WhiteboardAc
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -727,6 +737,7 @@ func (s *Service) ClearWhiteboard(ctx context.Context, input ClearWhiteboardInpu
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -784,6 +795,7 @@ func (s *Service) StartReadyCheck(ctx context.Context, input StartReadyCheckInpu
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -826,6 +838,7 @@ func (s *Service) RespondReadyCheck(ctx context.Context, input RespondReadyCheck
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -874,6 +887,7 @@ func (s *Service) FinalizeReadyCheck(ctx context.Context, input FinalizeReadyChe
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:     meetingValue.ID,
+		MeetingNumber: meetingValue.MeetingNumber,
 		ParticipantID: round.StartedBy,
 		EventType:     "ready_check_completed",
 		DetailsJSON:   fmt.Sprintf(`{"roundId":%q}`, round.ID),
@@ -899,9 +913,16 @@ func (s *Service) RecordAuditReport(ctx context.Context, input AuditReportInput)
 	if err != nil {
 		return fmt.Errorf("marshal audit details: %w", err)
 	}
+	meetingID := input.MeetingID
+	meetingNumber := ""
+	if meetingValue, found := s.GetMeeting(input.MeetingID); found {
+		meetingID = meetingValue.ID
+		meetingNumber = meetingValue.MeetingNumber
+	}
 
 	return s.insertAudit(ctx, sqlite.AuditEvent{
-		MeetingID:        input.MeetingID,
+		MeetingID:        meetingID,
+		MeetingNumber:    meetingNumber,
 		ParticipantID:    input.ParticipantID,
 		UserID:           input.UserID,
 		ParticipantRole:  string(input.ParticipantRole),
@@ -939,6 +960,7 @@ func (s *Service) insertAudit(ctx context.Context, event sqlite.AuditEvent) erro
 
 	s.logger.Info("audit event recorded",
 		"meetingId", event.MeetingID,
+		"meetingNumber", event.MeetingNumber,
 		"participantId", event.ParticipantID,
 		"eventType", event.EventType,
 	)

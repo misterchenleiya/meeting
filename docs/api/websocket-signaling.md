@@ -4,8 +4,8 @@ This document describes the realtime signaling channel used by the meeting backe
 
 ## Connection
 
-- URL: `GET /ws/meetings/{meetingID}?participantId={participantID}`
-- `meetingID` may be the internal runtime id or the public 9-digit meeting number, but the frontend usually keeps one consistent identifier for the whole room.
+- URL: `GET /ws/meetings/{meetingNumber}?participantId={participantID}`
+- `meetingNumber` is the public 9-digit meeting number. During the compatibility window, legacy internal meeting ids are still accepted and normalized into the same internal room.
 - `participantId` is required.
 
 If signaling is not enabled on the server, the HTTP upgrade route returns `501` with a JSON error body.

@@ -118,27 +118,27 @@ Key endpoints that are already available:
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
 - `POST /api/meetings`
-- `GET /api/meetings/{meetingID}`
-- `GET /api/meetings/{meetingID}/minutes`
-- `POST /api/meetings/{meetingID}/join`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/leave`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/nickname`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/audit`
-- `POST /api/meetings/{meetingID}/end`
+- `GET /api/meetings/{meetingNumber}`
+- `GET /api/meetings/{meetingNumber}/minutes`
+- `POST /api/meetings/{meetingNumber}/join`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/leave`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/nickname`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/capabilities/{capability}/grant`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/audit`
+- `POST /api/meetings/{meetingNumber}/end`
 - `PUT /api/users/{userID}/preferences`
-- `GET /ws/meetings/{meetingID}`
+- `GET /ws/meetings/{meetingNumber}`
 
 Detailed contract docs live in [docs/api/README.md](docs/api/README.md).
 
 Notes:
 
 - `POST /api/meetings` now returns both the internal `id` and the public `meetingNumber`.
-- `POST /api/meetings`, `POST /api/meetings/{meetingID}/join`, and `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers` now return runtime `iceServers`; TURN credentials are short-lived and signed by the backend instead of being baked into the frontend bundle.
+- `POST /api/meetings`, `POST /api/meetings/{meetingNumber}/join`, and `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers` now return runtime `iceServers`; TURN credentials are short-lived and signed by the backend instead of being baked into the frontend bundle.
 - `chatMessages` in meeting snapshots and realtime `chat.message` events may now carry structured system-message metadata. Capability-request messages use `kind = capability_request` and an `action` object so the host UI can open the permission panel directly instead of parsing localized text.
-- Meeting-scoped REST endpoints such as `GET /api/meetings/{meetingID}` and `POST /api/meetings/{meetingID}/join` accept either the internal runtime id or the public 9-digit meeting number.
-- `GET /ws/meetings/{meetingID}` still uses the internal runtime id to keep the signaling path stable.
+- Meeting-scoped REST and WebSocket paths now use the public 9-digit `meetingNumber`; legacy internal runtime ids are still accepted during the compatibility window and normalized server-side.
+- API responses still include the internal `id` for compatibility and diagnostics, but new frontend code must use `meetingNumber` for user-facing display, REST paths, WebSocket paths, QR codes, and invite links.
 
 ## Local Development
 

@@ -16,10 +16,10 @@ type iceServersResponse struct {
 }
 
 func (s *Server) handleGetICEServers(w http.ResponseWriter, r *http.Request) {
-	meetingID := r.PathValue("meetingID")
+	meetingIdentifier := meetingIdentifierFromPath(r)
 	participantID := r.PathValue("participantID")
 
-	meetingValue, found := s.meetings.GetMeeting(meetingID)
+	meetingValue, found := s.meetings.GetMeeting(meetingIdentifier)
 	if !found {
 		writeError(w, http.StatusNotFound, "meeting not found")
 		return
@@ -38,7 +38,7 @@ func (s *Server) handleGetICEServers(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, meeting.ErrUnauthorized):
 			writeError(w, http.StatusForbidden, err.Error())
 		default:
-			s.logger.Error("authorize ice request failed", "error", err, "meetingId", meetingID, "participantId", participantID)
+			s.logger.Error("authorize ice request failed", "error", err, "meetingId", meetingValue.ID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID)
 			writeError(w, http.StatusInternalServerError, "failed to authorize ice request")
 		}
 		return
@@ -46,7 +46,7 @@ func (s *Server) handleGetICEServers(w http.ResponseWriter, r *http.Request) {
 
 	iceServers, expiresAt, err := s.buildICEBundle(participant.ID)
 	if err != nil {
-		s.logger.Error("build runtime ice servers failed", "error", err, "meetingId", meetingID, "participantId", participantID)
+		s.logger.Error("build runtime ice servers failed", "error", err, "meetingId", meetingValue.ID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID)
 		writeError(w, http.StatusInternalServerError, "failed to build meeting ice servers")
 		return
 	}

@@ -84,7 +84,7 @@ export type ReadyCheckRound = {
 };
 
 export type Meeting = {
-  id: string;
+  id?: string;
   meetingNumber: string;
   joinCode: string;
   passwordRequired: boolean;

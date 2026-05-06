@@ -16,8 +16,9 @@ This directory is the contract source of truth for backend interfaces.
 
 ## Meeting identifier rule
 
-- REST meeting-scoped endpoints accept either the internal runtime `id` or the public 9-digit meeting number
-- The frontend usually keeps using the same identifier returned by the API so REST and WebSocket traffic stay aligned
+- REST meeting-scoped endpoints are documented with the public 9-digit `meetingNumber` path parameter
+- During the compatibility window, legacy internal runtime ids are still accepted and normalized server-side
+- WebSocket connections also use the public `meetingNumber`; the signaling hub resolves it to the internal room id before registering clients
 - The WebSocket room path is documented separately in `websocket-signaling.md`
 
 ## Maintenance rule

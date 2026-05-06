@@ -207,7 +207,7 @@
 
 虽然本轮主要通过 WebSocket 完成实时交互，但 `Meeting` 快照中的 `chatMessages` 结构会变 richer：
 
-- `GET /api/meetings/{meetingID}` 返回的聊天消息快照将包含新字段
+- `GET /api/meetings/{meetingNumber}` 返回的聊天消息快照将包含新字段
 - WebSocket `chat.message` 广播也会包含新字段
 
 因此需要同步更新：

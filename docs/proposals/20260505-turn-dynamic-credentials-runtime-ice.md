@@ -120,7 +120,7 @@ fingerprint
 建议新增接口：
 
 ```text
-POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers
+POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers
 ```
 
 推荐返回结构：
@@ -151,7 +151,7 @@ POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers
 
 - 返回当前参会者可用的 `iceServers`
 
-不把 TURN 动态凭据混入 `GET /api/meetings/{meetingID}` 快照中，原因是：
+不把 TURN 动态凭据混入 `GET /api/meetings/{meetingNumber}` 快照中，原因是：
 
 - 会议快照偏静态事实；
 - TURN 凭据是短期、会过期的运行时信息；
@@ -162,7 +162,7 @@ POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers
 为减少一次额外请求，可以考虑在以下响应中直接附带首份 `iceServers`：
 
 - `POST /api/meetings`
-- `POST /api/meetings/{meetingID}/join`
+- `POST /api/meetings/{meetingNumber}/join`
 
 这样前端在首次进入会议时不需要额外再打一跳。
 
@@ -242,8 +242,8 @@ POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers
 ### 3. 后端 HTTP API
 
 - [internal/httpapi/server.go](/Users/chenlei/Codes/www/github.com/misterchenleiya/meeting/internal/httpapi/server.go)
-  - 新增 `POST /api/meetings/{meetingID}/participants/{participantID}/ice-servers`
-  - `POST /api/meetings`、`POST /api/meetings/{meetingID}/join` 的响应结构可扩展 `iceServers` 和 `iceCredentialExpiresAt`
+  - 新增 `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers`
+  - `POST /api/meetings`、`POST /api/meetings/{meetingNumber}/join` 的响应结构可扩展 `iceServers` 和 `iceCredentialExpiresAt`
 
 建议新增一个专门的内部模块来做签发逻辑，例如：
 

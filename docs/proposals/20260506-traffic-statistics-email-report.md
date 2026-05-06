@@ -50,7 +50,7 @@ No report interval setting is required. Each run always reports the previous 24 
 New persistent audit tables:
 
 - `meeting_usage_meetings`: one row per created meeting, including ID, public meeting number, title, meeting type, host identity, host IP, created time, ended time, and update time.
-- `meeting_usage_participants`: one row per participant, including meeting ID, participant ID, user ID, email snapshot, nickname, anonymous flag, IP, device type, coarse client profile JSON, role, join time, leave time, and update time.
+- `meeting_usage_participants`: one row per participant, including internal meeting ID, participant ID, user ID, email snapshot, nickname, anonymous flag, IP, device type, coarse client profile JSON, role, join time, leave time, and update time.
 
 These tables are append/update-only for normal service operation. They are not cleared automatically.
 
@@ -67,11 +67,11 @@ When the report window contains usage data, the email includes a summary table i
 
 The email also includes five detail attachments:
 
-- `users.csv`: registered user email, anonymous nickname, IP address, created meeting count, created meeting IDs.
-- `meetings.csv`: meeting ID, host, meeting type, participant count, participant list.
+- `users.csv`: registered user email, anonymous nickname, IP address, created meeting count, created meeting numbers.
+- `meetings.csv`: public meeting number, host, meeting type, participant count, participant list.
 - `new_users.csv`: email address, IP address, registration time, current nickname.
 - `email_code_logins.csv`: email address, IP address, login time.
-- `meeting_quality.csv`: meeting ID, participant ID, role, device type, sample count, average/max latency, average/max packet loss, average FPS, average bitrate, weak-network sample count.
+- `meeting_quality.csv`: public meeting number, participant ID, role, device type, sample count, average/max latency, average/max packet loss, average FPS, average bitrate, weak-network sample count.
 
 When the report window has no meeting, participant, new user, email code login, or meeting quality data, the email has no attachments and only states that there was no usage data in the past 24 hours.
 

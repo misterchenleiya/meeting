@@ -19,6 +19,7 @@ import (
 )
 
 const defaultSendAtUTC = "12:00"
+const unknownMeetingNumber = "未知会议号"
 
 type Store interface {
 	ListMeetingUsageWindow(ctx context.Context, start time.Time, end time.Time) ([]sqlite.MeetingUsageRecord, error)
@@ -150,7 +151,7 @@ func (r *Reporter) SendWindow(ctx context.Context, start time.Time, end time.Tim
 			csvAttachmentInput{filename: "meetings.csv", rows: buildMeetingRows(meetings, meetingParticipants)},
 			csvAttachmentInput{filename: "new_users.csv", rows: buildNewUserRows(newUsers)},
 			csvAttachmentInput{filename: "email_code_logins.csv", rows: buildEmailCodeLoginRows(emailCodeLogins)},
-			csvAttachmentInput{filename: "meeting_quality.csv", rows: buildMeetingQualityRows(auditEvents)},
+			csvAttachmentInput{filename: "meeting_quality.csv", rows: buildMeetingQualityRows(auditEvents, meetings)},
 		)
 		if err != nil {
 			return err
@@ -254,15 +255,15 @@ func (r *Reporter) buildHTMLBody(start time.Time, end time.Time, activity report
 func buildSummaryRows(start time.Time, end time.Time, meetings []sqlite.MeetingUsageRecord, participants []sqlite.MeetingParticipantUsageRecord, newUsers []sqlite.UserRegistrationRecord, emailCodeLogins []sqlite.EmailCodeLoginRecord, quality qualitySummary, profiles clientProfileSummary) [][]string {
 	summary := calculateMeetingSummary(start, end, meetings)
 	rows := [][]string{
-		{"指标", "数值", "会议ID"},
+		{"指标", "数值", "会议号"},
 		{"用户访问数量", fmt.Sprintf("%d", countDistinctVisitors(participants)), ""},
 		{"新增用户数", fmt.Sprintf("%d", len(newUsers)), ""},
 		{"邮件验证码登录次数", fmt.Sprintf("%d", len(emailCodeLogins)), ""},
 		{"独立登录 IP 数量", fmt.Sprintf("%d", countDistinctLoginIPs(emailCodeLogins)), ""},
 		{"会议数量", fmt.Sprintf("%d", len(meetings)), ""},
 		{"会议总时长", formatDuration(summary.TotalDuration), ""},
-		{"时间最长的会议", formatDuration(summary.LongestDuration), summary.LongestMeetingID},
-		{"时间最短的会议", formatDuration(summary.ShortestDuration), summary.ShortestMeetingID},
+		{"时间最长的会议", formatDuration(summary.LongestDuration), summary.LongestMeetingNumber},
+		{"时间最短的会议", formatDuration(summary.ShortestDuration), summary.ShortestMeetingNumber},
 		{"会议质量样本数", fmt.Sprintf("%d", quality.SampleCount), ""},
 		{"平均延迟", formatMilliseconds(quality.AverageLatencyMS), ""},
 		{"最高延迟", formatMilliseconds(float64(quality.MaxLatencyMS)), ""},
@@ -311,7 +312,7 @@ func formatSummaryHTMLTable(rows [][]string) string {
 }
 
 func buildUserRows(meetings []sqlite.MeetingUsageRecord, participants []sqlite.MeetingParticipantUsageRecord) [][]string {
-	rows := [][]string{{"注册用户邮箱", "匿名用户昵称", "IP地址", "创建的会议数量", "创建的会议ID"}}
+	rows := [][]string{{"注册用户邮箱", "匿名用户昵称", "IP地址", "创建的会议数量", "创建的会议号"}}
 	users := aggregateUsers(meetings, participants)
 	keys := make([]string, 0, len(users))
 	for key := range users {
@@ -320,20 +321,20 @@ func buildUserRows(meetings []sqlite.MeetingUsageRecord, participants []sqlite.M
 	sort.Strings(keys)
 	for _, key := range keys {
 		user := users[key]
-		sort.Strings(user.CreatedMeetingIDs)
+		sort.Strings(user.CreatedMeetingNumbers)
 		rows = append(rows, []string{
 			user.Email,
 			user.AnonymousNickname,
 			user.IPAddress,
-			fmt.Sprintf("%d", len(user.CreatedMeetingIDs)),
-			strings.Join(user.CreatedMeetingIDs, " "),
+			fmt.Sprintf("%d", len(user.CreatedMeetingNumbers)),
+			strings.Join(user.CreatedMeetingNumbers, " "),
 		})
 	}
 	return rows
 }
 
 func buildMeetingRows(meetings []sqlite.MeetingUsageRecord, participants []sqlite.MeetingParticipantUsageRecord) [][]string {
-	rows := [][]string{{"会议ID", "主持人", "会议类型", "参会人数", "参会人员"}}
+	rows := [][]string{{"会议号", "主持人", "会议类型", "参会人数", "参会人员"}}
 	participantsByMeeting := make(map[string][]sqlite.MeetingParticipantUsageRecord)
 	for _, participant := range participants {
 		participantsByMeeting[participant.MeetingID] = append(participantsByMeeting[participant.MeetingID], participant)
@@ -345,7 +346,7 @@ func buildMeetingRows(meetings []sqlite.MeetingUsageRecord, participants []sqlit
 	for _, meeting := range meetings {
 		meetingParticipants := participantsByMeeting[meeting.ID]
 		rows = append(rows, []string{
-			meeting.ID,
+			reportMeetingNumber(meeting),
 			hostLabel(meeting),
 			meeting.MeetingType,
 			fmt.Sprintf("%d", len(meetingParticipants)),
@@ -387,9 +388,10 @@ func buildEmailCodeLoginRows(logins []sqlite.EmailCodeLoginRecord) [][]string {
 	return rows
 }
 
-func buildMeetingQualityRows(events []sqlite.AuditEvent) [][]string {
-	rows := [][]string{{"会议ID", "参会者ID", "角色", "设备类型", "样本数", "平均延迟ms", "最高延迟ms", "平均丢包率", "最高丢包率", "平均FPS", "平均码率Kbps", "弱网样本数"}}
+func buildMeetingQualityRows(events []sqlite.AuditEvent, meetings []sqlite.MeetingUsageRecord) [][]string {
+	rows := [][]string{{"会议号", "参会者ID", "角色", "设备类型", "样本数", "平均延迟ms", "最高延迟ms", "平均丢包率", "最高丢包率", "平均FPS", "平均码率Kbps", "弱网样本数"}}
 	aggregates := aggregateQualityEvents(events)
+	meetingNumbers := meetingNumberByID(meetings)
 	keys := make([]string, 0, len(aggregates))
 	for key := range aggregates {
 		keys = append(keys, key)
@@ -398,7 +400,7 @@ func buildMeetingQualityRows(events []sqlite.AuditEvent) [][]string {
 	for _, key := range keys {
 		aggregate := aggregates[key]
 		rows = append(rows, []string{
-			aggregate.MeetingID,
+			displayMeetingNumber(meetingNumbers[aggregate.MeetingID]),
 			aggregate.ParticipantID,
 			aggregate.ParticipantRole,
 			aggregate.DeviceType,
@@ -416,11 +418,11 @@ func buildMeetingQualityRows(events []sqlite.AuditEvent) [][]string {
 }
 
 type meetingSummary struct {
-	TotalDuration     time.Duration
-	LongestMeetingID  string
-	LongestDuration   time.Duration
-	ShortestMeetingID string
-	ShortestDuration  time.Duration
+	TotalDuration         time.Duration
+	LongestMeetingNumber  string
+	LongestDuration       time.Duration
+	ShortestMeetingNumber string
+	ShortestDuration      time.Duration
 }
 
 type qualitySummary struct {
@@ -629,11 +631,11 @@ func calculateMeetingSummary(start time.Time, end time.Time, meetings []sqlite.M
 		duration := overlapDuration(start, end, meeting)
 		summary.TotalDuration += duration
 		if index == 0 || duration > summary.LongestDuration {
-			summary.LongestMeetingID = meeting.ID
+			summary.LongestMeetingNumber = reportMeetingNumber(meeting)
 			summary.LongestDuration = duration
 		}
 		if index == 0 || duration < summary.ShortestDuration {
-			summary.ShortestMeetingID = meeting.ID
+			summary.ShortestMeetingNumber = reportMeetingNumber(meeting)
 			summary.ShortestDuration = duration
 		}
 	}
@@ -676,10 +678,10 @@ func countDistinctLoginIPs(logins []sqlite.EmailCodeLoginRecord) int {
 }
 
 type userAggregate struct {
-	Email             string
-	AnonymousNickname string
-	IPAddress         string
-	CreatedMeetingIDs []string
+	Email                 string
+	AnonymousNickname     string
+	IPAddress             string
+	CreatedMeetingNumbers []string
 }
 
 func aggregateUsers(meetings []sqlite.MeetingUsageRecord, participants []sqlite.MeetingParticipantUsageRecord) map[string]*userAggregate {
@@ -705,7 +707,7 @@ func aggregateUsers(meetings []sqlite.MeetingUsageRecord, participants []sqlite.
 			}
 			users[key] = user
 		}
-		user.CreatedMeetingIDs = append(user.CreatedMeetingIDs, meeting.ID)
+		user.CreatedMeetingNumbers = append(user.CreatedMeetingNumbers, reportMeetingNumber(meeting))
 	}
 
 	return users
@@ -731,6 +733,25 @@ func meetingIDs(meetings []sqlite.MeetingUsageRecord) []string {
 		ids = append(ids, meeting.ID)
 	}
 	return ids
+}
+
+func meetingNumberByID(meetings []sqlite.MeetingUsageRecord) map[string]string {
+	numbers := make(map[string]string, len(meetings))
+	for _, meeting := range meetings {
+		numbers[meeting.ID] = reportMeetingNumber(meeting)
+	}
+	return numbers
+}
+
+func reportMeetingNumber(meeting sqlite.MeetingUsageRecord) string {
+	return displayMeetingNumber(meeting.MeetingNumber)
+}
+
+func displayMeetingNumber(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return unknownMeetingNumber
+	}
+	return strings.TrimSpace(value)
 }
 
 type csvAttachmentInput struct {

@@ -245,12 +245,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}:
+  /api/meetings/{meetingNumber}:
     get:
       tags: [Meetings]
       summary: Get a meeting snapshot
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
       responses:
         "200":
           description: Meeting snapshot
@@ -264,12 +264,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/minutes:
+  /api/meetings/{meetingNumber}/minutes:
     get:
       tags: [Meetings]
       summary: Get the temporary minutes snapshot
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantIDQuery"
       responses:
         "200":
@@ -290,12 +290,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/join:
+  /api/meetings/{meetingNumber}/join:
     post:
       tags: [Meetings]
       summary: Join a meeting
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
       requestBody:
         required: true
         content:
@@ -327,12 +327,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/participants/{participantID}/ice-servers:
+  /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers:
     post:
       tags: [Meetings]
       summary: Get runtime ICE servers for a participant
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantID"
       responses:
         "200":
@@ -359,12 +359,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/participants/{participantID}/leave:
+  /api/meetings/{meetingNumber}/participants/{participantID}/leave:
     post:
       tags: [Meetings]
       summary: Leave a meeting
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantID"
       requestBody:
         required: false
@@ -391,12 +391,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/participants/{participantID}/nickname:
+  /api/meetings/{meetingNumber}/participants/{participantID}/nickname:
     post:
       tags: [Meetings]
       summary: Update participant nickname
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantID"
       requestBody:
         required: true
@@ -423,12 +423,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant:
+  /api/meetings/{meetingNumber}/participants/{participantID}/capabilities/{capability}/grant:
     post:
       tags: [Meetings]
       summary: Grant a capability to a participant
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantID"
         - $ref: "#/components/parameters/Capability"
       requestBody:
@@ -462,12 +462,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/participants/{participantID}/audit:
+  /api/meetings/{meetingNumber}/participants/{participantID}/audit:
     post:
       tags: [Meetings]
       summary: Upload a media audit report
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantID"
       requestBody:
         required: true
@@ -494,12 +494,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/end:
+  /api/meetings/{meetingNumber}/end:
     post:
       tags: [Meetings]
       summary: End a meeting as the host
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
       requestBody:
         required: true
         content:
@@ -577,11 +577,11 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
   parameters:
-    MeetingID:
-      name: meetingID
+    MeetingNumber:
+      name: meetingNumber
       in: path
       required: true
-      description: Internal runtime meeting id or public 9-digit meeting number. REST handlers accept either.
+      description: Public 9-digit meeting number. During the compatibility window, legacy internal meeting ids are still accepted.
       schema:
         type: string
     ParticipantID:
@@ -809,9 +809,9 @@ components:
           $ref: "#/components/schemas/Meeting"
     MeetingMinutesResponse:
       type: object
-      required: [meetingId, title, chatMessages, whiteboardActions, temporaryMinutes]
+      required: [meetingNumber, title, chatMessages, whiteboardActions, temporaryMinutes]
       properties:
-        meetingId:
+        meetingNumber:
           type: string
         title:
           type: string
@@ -983,7 +983,6 @@ components:
     Meeting:
       type: object
       required:
-        - id
         - meetingNumber
         - joinCode
         - passwordRequired
@@ -996,6 +995,7 @@ components:
       properties:
         id:
           type: string
+          description: Internal runtime id retained for compatibility and diagnostics. Clients should use meetingNumber for user-facing display, invite links, REST paths, and WebSocket paths.
         meetingNumber:
           type: string
         joinCode:
