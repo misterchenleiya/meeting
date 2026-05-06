@@ -33,6 +33,7 @@ Both directions use the same JSON envelope shape:
 | `signal.ice_candidate` | `{ "targetParticipantId": "...", "data": { ...candidate... } }` | Forward an ICE candidate |
 | `capability.request` | `{ "capability": "camera" }` | Ask the host for a capability; the server also appends a structured system chat message for the whole room |
 | `capability.grant` | `{ "targetParticipantId": "...", "capability": "camera" }` | Host grants a capability |
+| `capability.revoke` | `{ "targetParticipantId": "...", "capability": "camera" }` | Host revokes a previously granted capability |
 | `role.assign_assistant` | `{ "targetParticipantId": "..." }` | Host promotes a participant to assistant |
 | `chat.message` | `{ "message": "..." }` | Send a chat message |
 | `whiteboard.draw` | `{ "action": { ...whiteboard action... } }` | Append a whiteboard action |
@@ -51,6 +52,7 @@ Both directions use the same JSON envelope shape:
 | `participant.left` | `{ "participantId": "..." }` | A participant left the meeting |
 | `capability.requested` | `{ "fromParticipantId": "...", "capability": "camera" }` | Host-only realtime notification that a participant requested permission |
 | `capability.granted` | `{ "targetParticipantId": "...", "grantedBy": "...", "capability": "camera" }` | Host granted a capability |
+| `capability.revoked` | `{ "targetParticipantId": "...", "revokedBy": "...", "capability": "camera" }` | Host revoked a capability |
 | `role.assistant_assigned` | `{ "participant": { ... }, "assignedBy": "..." }` | Host promoted a participant to assistant |
 | `participant.nickname_updated` | `{ "participant": { ... }, "previousNickname": "...", "systemMessage": { ... } }` | A nickname changed |
 | `chat.message` | `{ "message": { ... } }` | A chat or system message was appended; system messages may include structured action metadata |
@@ -65,7 +67,7 @@ Both directions use the same JSON envelope shape:
 ## Event notes
 
 - `signal.offer` / `signal.answer` / `signal.ice_candidate` are forwarded to the target participant unchanged except for `fromParticipantId`
-- `capability.grant` and `role.assign_assistant` are enforced by the meeting service; the server rejects unauthorized actors
+- `capability.grant`, `capability.revoke`, and `role.assign_assistant` are enforced by the meeting service; the server rejects unauthorized actors
 - `capability.request` currently supports runtime requests for `microphone` / `camera` / `screen_share` / `record`; the broadcast chat message uses `message.kind = capability_request` and an `action` object so the host UI can open the permission panel directly
 - `whiteboard.clear` and `ready_check.start` are host / capability guarded through the meeting service
 - `meeting.ended` is broadcast after the host ends the room and the signaling hub closes the room

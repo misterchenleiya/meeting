@@ -140,6 +140,35 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 		t.Fatalf("targetParticipantId = %v, want %s", grantedPayload["targetParticipantId"], participant.ID)
 	}
 
+	writeEvent(t, hostConn, map[string]any{
+		"type": "capability.revoke",
+		"payload": map[string]any{
+			"targetParticipantId": participant.ID,
+			"capability":          "camera",
+		},
+	})
+
+	revokedOnHost := readEvent(t, hostConn, "capability.revoked")
+	if revokedOnHost["type"] != "capability.revoked" {
+		t.Fatalf("host event type = %v, want capability.revoked", revokedOnHost["type"])
+	}
+
+	revokedOnParticipant := readEvent(t, participantConn, "capability.revoked")
+	revokedPayload := revokedOnParticipant["payload"].(map[string]any)
+	if revokedPayload["targetParticipantId"] != participant.ID {
+		t.Fatalf("revoked targetParticipantId = %v, want %s", revokedPayload["targetParticipantId"], participant.ID)
+	}
+	if revokedPayload["revokedBy"] != host.ID {
+		t.Fatalf("revokedBy = %v, want %s", revokedPayload["revokedBy"], host.ID)
+	}
+	if meetingSnapshot, ok := meetingService.GetMeeting(meetingValue.ID); ok {
+		if _, exists := meetingSnapshot.Participants[participant.ID].GrantedCapabilities[meeting.CapabilityCamera]; exists {
+			t.Fatalf("camera capability still granted after revoke")
+		}
+	} else {
+		t.Fatalf("meeting not found after revoke")
+	}
+
 	writeEvent(t, participantConn, map[string]any{
 		"type": "signal.offer",
 		"payload": map[string]any{

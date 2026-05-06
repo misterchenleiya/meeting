@@ -261,6 +261,7 @@ function App() {
   const [pendingCapabilityRequest, setPendingCapabilityRequest] = useState<CapabilityRequestState | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [reviewedCapabilityRequestIds, setReviewedCapabilityRequestIds] = useState<Set<string>>(() => new Set());
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [capabilityToRequest, setCapabilityToRequest] = useState<Capability>("camera");
   const [grantTargetId, setGrantTargetId] = useState("");
@@ -670,6 +671,7 @@ function App() {
   function replaceChatMessages(nextMessages: ChatMessage[]) {
     chatMessageIdsRef.current = new Set(nextMessages.map((message) => message.id));
     setChatMessages(nextMessages);
+    setReviewedCapabilityRequestIds(new Set());
     setUnreadChatCount(0);
   }
 
@@ -684,6 +686,17 @@ function App() {
       setUnreadChatCount((current) => current + 1);
     }
     return true;
+  }
+
+  function markCapabilityRequestReviewed(messageId: string) {
+    setReviewedCapabilityRequestIds((current) => {
+      if (current.has(messageId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(messageId);
+      return next;
+    });
   }
 
   function sendMeetingSignal(type: string, payload?: unknown): boolean {
@@ -772,6 +785,41 @@ function App() {
     });
   });
 
+  const removeParticipantCapability = useEffectEvent((participantId: string, capability: string) => {
+    setMeetingSession((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const participant = current.meeting.participants[participantId];
+      if (!participant) {
+        return current;
+      }
+
+      const nextCapabilities = {
+        ...participant.grantedCapabilities
+      };
+      delete nextCapabilities[capability];
+
+      const nextParticipant = {
+        ...participant,
+        grantedCapabilities: nextCapabilities
+      };
+
+      return {
+        meeting: {
+          ...current.meeting,
+          participants: {
+            ...current.meeting.participants,
+            [participantId]: nextParticipant
+          }
+        },
+        participant:
+          current.participant.id === participantId ? nextParticipant : current.participant
+      };
+    });
+  });
+
   const applyNicknameUpdate = useEffectEvent((payload: {
     participant: Participant;
     previousNickname: string;
@@ -797,6 +845,62 @@ function App() {
       "participant.nickname_updated",
       `${payload.previousNickname} 已将昵称修改为 ${payload.participant.nickname}`
     );
+  });
+
+  const closeRevokedLocalCapability = useEffectEvent((capability: Capability) => {
+    const nextStatus = describeCapabilityRevokedFollowup(capability);
+    const setRevokedStatusAfter = (operation: Promise<void>) => {
+      void operation
+        .then(() => {
+          setStatusMessage(nextStatus);
+        })
+        .catch((error: unknown) => {
+          setErrorMessage(asMessage(error));
+        });
+    };
+
+    switch (capability) {
+      case "microphone": {
+        const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+        const operation = syncBaseMediaPreference(
+          {
+            camera: currentPreference.camera,
+            microphone: false
+          },
+          { skipCapabilityCheck: true }
+        );
+        setRevokedStatusAfter(operation);
+        return;
+      }
+      case "camera": {
+        const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+        const operation = syncBaseMediaPreference(
+          {
+            camera: false,
+            microphone: currentPreference.microphone
+          },
+          { skipCapabilityCheck: true }
+        );
+        setRevokedStatusAfter(operation);
+        return;
+      }
+      case "screen_share":
+        if (screenShareStreamRef.current) {
+          setRevokedStatusAfter(handleStopScreenShare());
+          return;
+        }
+        setStatusMessage(nextStatus);
+        return;
+      case "record":
+        if (recorderRef.current) {
+          setRevokedStatusAfter(handleStopRecording());
+          return;
+        }
+        setStatusMessage(nextStatus);
+        return;
+      default:
+        setStatusMessage(nextStatus);
+    }
   });
 
   const cacheRuntimeIceState = useEffectEvent(
@@ -1164,6 +1268,34 @@ function App() {
         if (payload.grantedBy === sessionRef.current?.participant.id) {
           setPermissionFeedback(
             `已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(grantedCapability)}权限。`
+          );
+          setErrorMessage("");
+        }
+        return;
+      }
+      case "capability.revoked": {
+        const payload = event.payload as {
+          targetParticipantId: string;
+          revokedBy: string;
+          capability: string;
+        };
+        const revokedCapability = payload.capability as Capability;
+        const currentParticipants = Object.values(sessionRef.current?.meeting.participants ?? {});
+        removeParticipantCapability(payload.targetParticipantId, payload.capability);
+        appendEvent(
+          "capability.revoked",
+          `${findParticipantLabel(currentParticipants, payload.revokedBy)} 已禁止 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 使用${formatCapabilityLabel(revokedCapability)}权限`
+        );
+        appendTemporaryMinute(
+          `${findParticipantLabel(currentParticipants, payload.revokedBy)} 已禁止 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 使用${formatCapabilityLabel(revokedCapability)}权限。`
+        );
+        if (payload.targetParticipantId === sessionRef.current?.participant.id) {
+          closeRevokedLocalCapability(revokedCapability);
+          setErrorMessage("");
+        }
+        if (payload.revokedBy === sessionRef.current?.participant.id) {
+          setPermissionFeedback(
+            `已禁止 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 使用${formatCapabilityLabel(revokedCapability)}权限。`
           );
           setErrorMessage("");
         }
@@ -2702,13 +2834,22 @@ function App() {
     setCurrentModal("none");
   }
 
-  function openPermissionGrantContext(action: NonNullable<ChatMessage["action"]>) {
+  function openPermissionGrantContext(message: ChatMessage) {
+    const action = message.action;
+    if (!action) {
+      return;
+    }
+    markCapabilityRequestReviewed(message.id);
     setGrantTargetId(action.targetParticipantId);
     setGrantCapability(action.capability);
     setCurrentSidebar("none");
     openMeetingModal("permissions");
+    const target = sessionRef.current?.meeting.participants[action.targetParticipantId];
+    const targetHasCapability = participantHasCapability(target, action.capability);
     setPermissionFeedback(
-      `已选择 ${formatCapabilityLabel(action.capability)} 权限申请，确认目标后点击“主持人授权”。`
+      targetHasCapability
+        ? `该申请已查看，可继续授权或禁止 ${target?.nickname ?? action.targetParticipantId} 的${formatCapabilityLabel(action.capability)}权限。`
+        : `已选择 ${formatCapabilityLabel(action.capability)} 权限申请，确认目标后点击“主持人授权”。`
     );
     setStatusMessage(`已定位到${formatCapabilityLabel(action.capability)}权限申请，可直接处理。`);
     setErrorMessage("");
@@ -2730,6 +2871,26 @@ function App() {
     ) {
       setPermissionFeedback(
         `已发送授权操作：${findParticipantLabel(participants, targetParticipantId)} / ${formatCapabilityLabel(grantCapability)}。`
+      );
+    }
+  }
+
+  function handleRevokeCapability() {
+    const targetParticipantId = grantTargetId.trim();
+    if (!targetParticipantId) {
+      setErrorMessage("请先选择授权目标");
+      setPermissionFeedback("");
+      return;
+    }
+
+    if (
+      sendMeetingSignal("capability.revoke", {
+        targetParticipantId,
+        capability: grantCapability
+      })
+    ) {
+      setPermissionFeedback(
+        `已发送禁止权限操作：${findParticipantLabel(participants, targetParticipantId)} / ${formatCapabilityLabel(grantCapability)}。`
       );
     }
   }
@@ -3042,6 +3203,8 @@ function App() {
   const assistantTargetOptions = permissionTargetOptions.filter(
     (participant) => participant.role !== "assistant"
   );
+  const selectedGrantTarget = participants.find((participant) => participant.id === grantTargetId.trim());
+  const selectedGrantTargetHasCapability = participantHasCapability(selectedGrantTarget, grantCapability);
   const stageParticipants = participants.filter(
     (participant) =>
       participant.id === meetingSession?.participant.id || onlineParticipantIds.includes(participant.id)
@@ -4110,16 +4273,25 @@ function App() {
                       isHost &&
                       message.kind === "capability_request" &&
                       message.action?.type === "open_permissions";
+                    const isCapabilityRequestReviewed = reviewedCapabilityRequestIds.has(message.id);
+                    const actionTargetHasCapability = message.action
+                      ? participantHasCapability(
+                          meetingSession?.meeting.participants[message.action.targetParticipantId],
+                          message.action.capability
+                        )
+                      : false;
 
                     return (
                       <li
-                        className={`chat-row ${isSystemMessage ? "is-system" : ""} ${canOpenPermissionRequest ? "is-actionable" : ""}`}
+                        className={`chat-row ${isSystemMessage ? "is-system" : ""} ${canOpenPermissionRequest ? "is-actionable" : ""} ${isCapabilityRequestReviewed ? "is-reviewed" : ""}`}
                         key={message.id}
                       >
                         <div className="chat-row-header">
                           <strong>{message.nickname}</strong>
                           {message.kind === "capability_request" ? (
-                            <span className="chat-kind-badge">权限申请</span>
+                            <span className="chat-kind-badge">
+                              {isCapabilityRequestReviewed ? "已查看" : "权限申请"}
+                            </span>
                           ) : message.kind === "system" ? (
                             <span className="chat-kind-badge">系统</span>
                           ) : null}
@@ -4128,11 +4300,17 @@ function App() {
                           {canOpenPermissionRequest && message.action ? (
                             <button
                               className="chat-message-action"
-                              onClick={() => openPermissionGrantContext(message.action!)}
+                              onClick={() => openPermissionGrantContext(message)}
                               type="button"
                             >
                               <span className="chat-message-copy">{message.message}</span>
-                              <span className="chat-message-link">点此快速处理</span>
+                              <span className="chat-message-link">
+                                {isCapabilityRequestReviewed
+                                  ? actionTargetHasCapability
+                                    ? "再次处理 / 禁止权限"
+                                    : "再次处理"
+                                  : "点此快速处理"}
+                              </span>
                             </button>
                           ) : (
                             <span className="chat-message-copy">{message.message}</span>
@@ -4341,12 +4519,12 @@ function App() {
                         </select>
                       </label>
                       <button
-                        className="secondary-button"
+                        className={selectedGrantTargetHasCapability ? "danger-button" : "secondary-button"}
                         disabled={!grantTargetId.trim()}
-                        onClick={handleGrantCapability}
+                        onClick={selectedGrantTargetHasCapability ? handleRevokeCapability : handleGrantCapability}
                         type="button"
                       >
-                        主持人授权
+                        {selectedGrantTargetHasCapability ? "禁止该权限" : "主持人授权"}
                       </button>
                       <label>
                         助理目标
@@ -5058,7 +5236,11 @@ function ReadyCheckOverlay(props: {
 }
 
 function hasCapability(session: SessionState, capability: Capability): boolean {
-  return Object.prototype.hasOwnProperty.call(session.participant.grantedCapabilities, capability);
+  return participantHasCapability(session.participant, capability);
+}
+
+function participantHasCapability(participant: Participant | undefined, capability: Capability): boolean {
+  return Boolean(participant && Object.prototype.hasOwnProperty.call(participant.grantedCapabilities, capability));
 }
 
 function isParticipantCapabilityRequestable(capability: Capability): boolean {
@@ -5088,6 +5270,10 @@ function formatCapabilityLabel(capability: Capability): string {
 
 function describeCapabilityGrantFollowup(capability: Capability): string {
   return `主持人已授权${formatCapabilityLabel(capability)}权限，可重新尝试。`;
+}
+
+function describeCapabilityRevokedFollowup(capability: Capability): string {
+  return `主持人已禁止${formatCapabilityLabel(capability)}权限，当前能力已关闭。`;
 }
 
 function findParticipantLabel(participants: Participant[], participantId: string): string {

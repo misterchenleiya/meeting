@@ -113,6 +113,16 @@ body {
   background: rgba(255, 159, 10, 0.08);
 }
 
+.chat-row.is-reviewed {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
+  opacity: 0.72;
+}
+
+.chat-row.is-reviewed .chat-message-link {
+  color: #c9cbd2;
+}
+
 .chat-row-header {
   display: flex;
   align-items: center;
@@ -178,6 +188,7 @@ select {
 .chat-composer button,
 .tool,
 .primary,
+.danger,
 .ghost {
   border: 0;
   border-radius: 14px;
@@ -260,6 +271,11 @@ select {
 
 .primary {
   background: #2f7dff;
+}
+
+.danger {
+  background: rgba(255, 69, 58, 0.18);
+  color: #ffd1cc;
 }
 
 .ghost {

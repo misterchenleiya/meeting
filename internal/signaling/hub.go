@@ -35,6 +35,7 @@ type MeetingService interface {
 	LeaveMeeting(ctx context.Context, meetingID string, participantID string, deviceType string, ipAddress string) error
 	RequestCapability(ctx context.Context, input meeting.CapabilityRequestInput) (*meeting.ChatMessage, error)
 	GrantCapability(ctx context.Context, input meeting.GrantCapabilityInput) error
+	RevokeCapability(ctx context.Context, input meeting.RevokeCapabilityInput) error
 	AssignAssistant(ctx context.Context, input meeting.AssignAssistantInput) (*meeting.Participant, error)
 	UpdateNickname(ctx context.Context, input meeting.UpdateNicknameInput) (*meeting.Participant, *meeting.ChatMessage, string, error)
 	AppendChatMessage(ctx context.Context, input meeting.ChatMessageInput) (*meeting.ChatMessage, error)
@@ -101,6 +102,12 @@ type capabilityRequestPayload struct {
 type capabilityGrantedPayload struct {
 	TargetParticipantID string             `json:"targetParticipantId"`
 	GrantedBy           string             `json:"grantedBy"`
+	Capability          meeting.Capability `json:"capability"`
+}
+
+type capabilityRevokedPayload struct {
+	TargetParticipantID string             `json:"targetParticipantId"`
+	RevokedBy           string             `json:"revokedBy"`
 	Capability          meeting.Capability `json:"capability"`
 }
 
@@ -235,6 +242,17 @@ func (h *Hub) NotifyCapabilityGranted(meetingID string, grantedBy string, partic
 		Payload: capabilityGrantedPayload{
 			TargetParticipantID: participantID,
 			GrantedBy:           grantedBy,
+			Capability:          capability,
+		},
+	}, "")
+}
+
+func (h *Hub) NotifyCapabilityRevoked(meetingID string, revokedBy string, participantID string, capability meeting.Capability) {
+	h.broadcast(meetingID, serverEnvelope{
+		Type: "capability.revoked",
+		Payload: capabilityRevokedPayload{
+			TargetParticipantID: participantID,
+			RevokedBy:           revokedBy,
 			Capability:          capability,
 		},
 	}, "")
@@ -612,6 +630,8 @@ func (c *client) handleMessage(message envelope) error {
 		return c.handleCapabilityRequest(message.Payload)
 	case "capability.grant":
 		return c.handleCapabilityGrant(message.Payload)
+	case "capability.revoke":
+		return c.handleCapabilityRevoke(message.Payload)
 	case "role.assign_assistant":
 		return c.handleAssignAssistant(message.Payload)
 	case "chat.message":
@@ -726,6 +746,41 @@ func (c *client) handleCapabilityGrant(rawPayload json.RawMessage) error {
 	}
 
 	c.hub.NotifyCapabilityGranted(c.meetingID, participant.ID, payload.TargetParticipantID, payload.Capability)
+	return nil
+}
+
+func (c *client) handleCapabilityRevoke(rawPayload json.RawMessage) error {
+	meetingValue, participant, err := c.meetingParticipant()
+	if err != nil {
+		return err
+	}
+
+	if participant.Role != meeting.RoleHost {
+		return meeting.ErrUnauthorized
+	}
+
+	var payload struct {
+		TargetParticipantID string             `json:"targetParticipantId"`
+		Capability          meeting.Capability `json:"capability"`
+	}
+	if err := json.Unmarshal(rawPayload, &payload); err != nil {
+		return fmt.Errorf("%w: decode capability revoke: %v", ErrInvalidMessage, err)
+	}
+
+	if payload.TargetParticipantID == "" || payload.Capability == "" {
+		return fmt.Errorf("%w: targetParticipantId and capability are required", ErrInvalidMessage)
+	}
+
+	if err := c.hub.meetings.RevokeCapability(context.Background(), meeting.RevokeCapabilityInput{
+		MeetingID:     meetingValue.ID,
+		HostID:        participant.ID,
+		ParticipantID: payload.TargetParticipantID,
+		Capability:    payload.Capability,
+	}); err != nil {
+		return err
+	}
+
+	c.hub.NotifyCapabilityRevoked(c.meetingID, participant.ID, payload.TargetParticipantID, payload.Capability)
 	return nil
 }
 

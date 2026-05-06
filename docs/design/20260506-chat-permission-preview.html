@@ -57,6 +57,19 @@
                 <span class="chat-row-time">02:07:18</span>
               </div>
             </li>
+            <li class="chat-row is-system is-actionable is-reviewed">
+              <div class="chat-row-header">
+                <strong>系统消息</strong>
+                <span class="chat-kind-badge">已查看</span>
+              </div>
+              <div class="chat-meta">
+                <button class="chat-message-action" id="reviewedAction" type="button">
+                  <span class="chat-message-copy">@主持人，匿名用户 申请开启摄像头权限。</span>
+                  <span class="chat-message-link">再次处理 / 禁止权限</span>
+                </button>
+                <span class="chat-row-time">02:08:06</span>
+              </div>
+            </li>
           </ul>
 
           <form class="chat-composer">
@@ -93,6 +106,7 @@
             </select>
           </label>
           <button class="primary" id="grantButton" type="button">主持人授权</button>
+          <button class="danger" id="revokeButton" type="button">禁止该权限</button>
           <label>
             助理目标
             <select>
@@ -112,8 +126,15 @@
         modal.classList.add("is-open");
         feedback.textContent = "已选择麦克风权限申请，确认目标后点击“主持人授权”。";
       });
+      document.querySelector("#reviewedAction").addEventListener("click", () => {
+        modal.classList.add("is-open");
+        feedback.textContent = "该申请已查看，可继续授权或禁止该参会者的摄像头权限。";
+      });
       document.querySelector("#grantButton").addEventListener("click", () => {
         feedback.textContent = "已发送授权操作：匿名用户 / 麦克风。";
+      });
+      document.querySelector("#revokeButton").addEventListener("click", () => {
+        feedback.textContent = "已发送禁止权限操作：匿名用户 / 摄像头。";
       });
       document.querySelector("#assistantButton").addEventListener("click", () => {
         feedback.textContent = "已发送设为助理操作：mister.chenlei。";

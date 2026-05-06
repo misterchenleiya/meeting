@@ -1381,6 +1381,16 @@ p {
   background: rgba(255, 159, 10, 0.08);
 }
 
+.chat-row.is-reviewed {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
+  opacity: 0.72;
+}
+
+.chat-row.is-reviewed .chat-message-link {
+  color: var(--muted);
+}
+
 .chat-kind-badge {
   display: inline-flex;
   align-items: center;

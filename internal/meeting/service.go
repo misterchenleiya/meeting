@@ -78,6 +78,13 @@ type GrantCapabilityInput struct {
 	Capability    Capability
 }
 
+type RevokeCapabilityInput struct {
+	MeetingID     string
+	HostID        string
+	ParticipantID string
+	Capability    Capability
+}
+
 type CapabilityRequestInput struct {
 	MeetingID     string
 	ParticipantID string
@@ -470,6 +477,52 @@ func (s *Service) GrantCapability(ctx context.Context, input GrantCapabilityInpu
 		EventType:       "capability_granted",
 		DetailsJSON:     fmt.Sprintf(`{"capability":%q,"grantedBy":%q}`, input.Capability, input.HostID),
 		CreatedAt:       time.Now().UTC(),
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) RevokeCapability(ctx context.Context, input RevokeCapabilityInput) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meeting, _, ok := s.meetingByIdentifierLocked(input.MeetingID)
+	if !ok {
+		return ErrMeetingNotFound
+	}
+
+	if meeting.HostParticipantID != input.HostID {
+		return ErrUnauthorized
+	}
+
+	if !isHostGrantableCapability(input.Capability) {
+		return ErrUnauthorized
+	}
+
+	participant, ok := meeting.Participants[input.ParticipantID]
+	if !ok {
+		return ErrParticipantNotFound
+	}
+
+	if participant.Role == RoleHost {
+		return ErrUnauthorized
+	}
+
+	delete(participant.GrantedCapabilities, input.Capability)
+	now := time.Now().UTC()
+	addMinuteLocked(meeting, now, fmt.Sprintf("%s 已禁止 %s 使用 %s。", actorLabel(meeting, input.HostID), participant.Nickname, input.Capability))
+
+	if err := s.insertAudit(ctx, sqlite.AuditEvent{
+		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
+		ParticipantID:   participant.ID,
+		UserID:          participant.UserID,
+		ParticipantRole: string(participant.Role),
+		EventType:       "capability_revoked",
+		DetailsJSON:     fmt.Sprintf(`{"capability":%q,"revokedBy":%q}`, input.Capability, input.HostID),
+		CreatedAt:       now,
 	}); err != nil {
 		return err
 	}
@@ -1161,6 +1214,16 @@ func normalizeMeetingType(value MeetingType) MeetingType {
 
 func isParticipantCapabilityRequestable(capability Capability) bool {
 	for _, candidate := range requestableParticipantCapabilities() {
+		if capability == candidate {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isHostGrantableCapability(capability Capability) bool {
+	for _, candidate := range hostGrantableCapabilities() {
 		if capability == candidate {
 			return true
 		}
