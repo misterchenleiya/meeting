@@ -1,5 +1,6 @@
 import { createClientLogger } from "./logger";
 import { normalizeIceServers, resolveApiUrl, type RuntimeIceServer } from "./runtime-config";
+import type { ClientProfile } from "./clientProfile";
 import type {
   AuthUser,
   ChatMessage,
@@ -132,6 +133,7 @@ export async function createMeeting(input: {
   hostUserId: string;
   hostNickname: string;
   deviceType: string;
+  clientProfile?: ClientProfile;
 }): Promise<CreateMeetingResponse> {
   const response = await requestJSON<RawCreateMeetingResponse>("/api/meetings", {
     method: "POST",
@@ -203,6 +205,7 @@ export async function joinMeeting(input: {
   userId?: string;
   nickname: string;
   deviceType: string;
+  clientProfile?: ClientProfile;
   isAnonymous: boolean;
   requestCameraEnabled?: boolean;
   requestMicrophoneEnabled?: boolean;
@@ -214,6 +217,7 @@ export async function joinMeeting(input: {
       userId: input.userId ?? "",
       nickname: input.nickname,
       deviceType: input.deviceType,
+      clientProfile: input.clientProfile ?? {},
       isAnonymous: input.isAnonymous,
       requestCameraEnabled: input.requestCameraEnabled,
       requestMicrophoneEnabled: input.requestMicrophoneEnabled
@@ -311,6 +315,7 @@ export async function reportAudit(input: {
   averageFps: number;
   averageBitrateKbps: number;
   details: Record<string, unknown>;
+  clientProfile?: ClientProfile;
 }): Promise<{ status: string }> {
   return requestJSON<{ status: string }>(
     `/api/meetings/${input.meetingId}/participants/${input.participantId}/audit`,
@@ -324,7 +329,10 @@ export async function reportAudit(input: {
         packetLossRate: input.packetLossRate,
         averageFps: input.averageFps,
         averageBitrateKbps: Math.round(input.averageBitrateKbps),
-        details: input.details
+        details: {
+          ...input.details,
+          clientProfile: input.clientProfile ?? {}
+        }
       })
     }
   );

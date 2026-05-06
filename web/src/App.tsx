@@ -2,6 +2,7 @@ import { startTransition, useEffect, useEffectEvent, useRef, useState, type Reac
 import jsQR from "jsqr";
 import QRCode from "qrcode";
 import { createClientLogger, formatClientLogs } from "./logger";
+import { collectClientProfile } from "./clientProfile";
 import {
   completeLogin,
   completePasswordLogin,
@@ -1317,6 +1318,7 @@ function App() {
       packetLossRate: aggregated.packetLossRate,
       averageFps: aggregated.averageFps,
       averageBitrateKbps: aggregated.averageBitrateKbps,
+      clientProfile: collectClientProfile(),
       details: {
         peerCount: aggregated.peerCount,
         screenSharing,
@@ -1888,7 +1890,8 @@ function App() {
         meetingType: "scheduled",
         hostUserId: currentUser.id,
         hostNickname: currentUser.nickname || "主持人",
-        deviceType
+        deviceType,
+        clientProfile: collectClientProfile()
       });
       cacheRuntimeIceState(
         response.meeting,
@@ -1938,7 +1941,8 @@ function App() {
         meetingType: "quick",
         hostUserId: currentUser.id,
         hostNickname: currentUser.nickname || "主持人",
-        deviceType
+        deviceType,
+        clientProfile: collectClientProfile()
       });
       cacheRuntimeIceState(
         response.meeting,
@@ -1980,6 +1984,7 @@ function App() {
       userId: isAuthenticated && currentUser ? currentUser.id : "",
       nickname: joinForm.nickname.trim(),
       deviceType,
+      clientProfile: collectClientProfile(),
       isAnonymous: !isAuthenticated,
       requestCameraEnabled: joinForm.requestCameraEnabled,
       requestMicrophoneEnabled: joinForm.requestMicrophoneEnabled

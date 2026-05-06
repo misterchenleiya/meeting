@@ -46,14 +46,15 @@ type Service struct {
 }
 
 type CreateMeetingInput struct {
-	Title        string
-	Password     string
-	MeetingType  MeetingType
-	HostUserID   string
-	HostEmail    string
-	HostNickname string
-	DeviceType   string
-	IPAddress    string
+	Title         string
+	Password      string
+	MeetingType   MeetingType
+	HostUserID    string
+	HostEmail     string
+	HostNickname  string
+	DeviceType    string
+	ClientProfile map[string]string
+	IPAddress     string
 }
 
 type JoinMeetingInput struct {
@@ -63,6 +64,7 @@ type JoinMeetingInput struct {
 	Email                    string
 	Nickname                 string
 	DeviceType               string
+	ClientProfile            map[string]string
 	IPAddress                string
 	IsAnonymous              bool
 	RequestCameraEnabled     *bool
@@ -964,33 +966,35 @@ func (s *Service) recordMeetingCreated(ctx context.Context, meetingValue *Meetin
 	}
 
 	return s.store.UpsertMeetingParticipantUsage(ctx, sqlite.MeetingParticipantUsageRecord{
-		MeetingID:       meetingValue.ID,
-		ParticipantID:   host.ID,
-		UserID:          host.UserID,
-		Email:           hostEmail,
-		Nickname:        host.Nickname,
-		IsAnonymous:     host.IsAnonymous,
-		IPAddress:       input.IPAddress,
-		DeviceType:      input.DeviceType,
-		ParticipantRole: string(host.Role),
-		JoinedAt:        host.JoinedAt,
-		UpdatedAt:       host.JoinedAt,
+		MeetingID:         meetingValue.ID,
+		ParticipantID:     host.ID,
+		UserID:            host.UserID,
+		Email:             hostEmail,
+		Nickname:          host.Nickname,
+		IsAnonymous:       host.IsAnonymous,
+		IPAddress:         input.IPAddress,
+		DeviceType:        input.DeviceType,
+		ClientProfileJSON: encodeClientProfile(input.ClientProfile),
+		ParticipantRole:   string(host.Role),
+		JoinedAt:          host.JoinedAt,
+		UpdatedAt:         host.JoinedAt,
 	})
 }
 
 func (s *Service) recordParticipantJoined(ctx context.Context, meetingID string, participant *Participant, email string, input JoinMeetingInput) error {
 	return s.store.UpsertMeetingParticipantUsage(ctx, sqlite.MeetingParticipantUsageRecord{
-		MeetingID:       meetingID,
-		ParticipantID:   participant.ID,
-		UserID:          participant.UserID,
-		Email:           email,
-		Nickname:        participant.Nickname,
-		IsAnonymous:     participant.IsAnonymous,
-		IPAddress:       input.IPAddress,
-		DeviceType:      input.DeviceType,
-		ParticipantRole: string(participant.Role),
-		JoinedAt:        participant.JoinedAt,
-		UpdatedAt:       participant.JoinedAt,
+		MeetingID:         meetingID,
+		ParticipantID:     participant.ID,
+		UserID:            participant.UserID,
+		Email:             email,
+		Nickname:          participant.Nickname,
+		IsAnonymous:       participant.IsAnonymous,
+		IPAddress:         input.IPAddress,
+		DeviceType:        input.DeviceType,
+		ClientProfileJSON: encodeClientProfile(input.ClientProfile),
+		ParticipantRole:   string(participant.Role),
+		JoinedAt:          participant.JoinedAt,
+		UpdatedAt:         participant.JoinedAt,
 	})
 }
 
@@ -1017,6 +1021,51 @@ func (s *Service) resolveUserEmail(ctx context.Context, userID string, email str
 	}
 
 	return strings.TrimSpace(user.Email), nil
+}
+
+func encodeClientProfile(profile map[string]string) string {
+	if len(profile) == 0 {
+		return "{}"
+	}
+
+	allowedKeys := map[string]struct{}{
+		"browser":               {},
+		"os":                    {},
+		"deviceCategory":        {},
+		"language":              {},
+		"timeZone":              {},
+		"screenWidthBucket":     {},
+		"viewportWidthBucket":   {},
+		"colorScheme":           {},
+		"networkEffectiveType":  {},
+		"webRTCSupported":       {},
+		"mediaDevicesSupported": {},
+		"audioInputSupported":   {},
+		"videoInputSupported":   {},
+	}
+	sanitized := make(map[string]string, len(profile))
+	for key, value := range profile {
+		normalizedKey := strings.TrimSpace(key)
+		if _, ok := allowedKeys[normalizedKey]; !ok {
+			continue
+		}
+		normalizedValue := strings.TrimSpace(value)
+		if len(normalizedValue) > 80 {
+			normalizedValue = normalizedValue[:80]
+		}
+		if normalizedValue != "" {
+			sanitized[normalizedKey] = normalizedValue
+		}
+	}
+	if len(sanitized) == 0 {
+		return "{}"
+	}
+
+	data, err := json.Marshal(sanitized)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }
 
 func (s *Service) resolvePreference(

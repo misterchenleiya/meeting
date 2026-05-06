@@ -17,7 +17,7 @@ The system needs a daily traffic statistics email with an in-body summary table 
 - Send at `MEETING_STATS_REPORT_SEND_AT_UTC`, defaulting to `12:00` UTC.
 - Report the previous 24 hours on every run.
 - Persist meeting and participant statistics in SQLite by default and do not automatically delete them.
-- Render summary metrics directly in the email body and attach CSV files for user details and meeting details when the window contains usage data.
+- Render summary metrics directly in the email body and attach CSV files for user details, meeting details, new users, email code logins, and meeting quality when the window contains usage data.
 - Include backend version information in the email footer: tag, commit, and build time.
 
 ## Non-goals
@@ -34,6 +34,8 @@ The system needs a daily traffic statistics email with an in-body summary table 
 - A meeting is counted in a report window when it was created, active, or ended within the window.
 - Meeting duration is calculated as the overlap between the meeting lifetime and the report window; active meetings use the report window end as the temporary end time.
 - User visit count is counted by distinct registered `user_id` and distinct anonymous `IP + nickname` visitor keys within the window.
+- New registered users are counted from `users.created_at` within the report window.
+- Email verification code logins are counted from consumed `auth_verification_codes` rows where `purpose = login`; `consumed_at` is treated as the login time for reporting.
 - Quick and scheduled meetings share the same create-meeting API, with a new `meetingType` field identifying the source flow.
 
 ## Configuration
@@ -48,27 +50,36 @@ No report interval setting is required. Each run always reports the previous 24 
 New persistent audit tables:
 
 - `meeting_usage_meetings`: one row per created meeting, including ID, public meeting number, title, meeting type, host identity, host IP, created time, ended time, and update time.
-- `meeting_usage_participants`: one row per participant, including meeting ID, participant ID, user ID, email snapshot, nickname, anonymous flag, IP, device type, role, join time, leave time, and update time.
+- `meeting_usage_participants`: one row per participant, including meeting ID, participant ID, user ID, email snapshot, nickname, anonymous flag, IP, device type, coarse client profile JSON, role, join time, leave time, and update time.
 
 These tables are append/update-only for normal service operation. They are not cleared automatically.
+
+The report also reads existing authentication tables:
+
+- `users`: email, current nickname, and registration time for newly created email users.
+- `auth_verification_codes`: consumed login-purpose codes for email verification code login details.
 
 ## Email and attachments
 
 When the report window contains usage data, the email includes a summary table in the email body:
 
-- user visit count, meeting count, total meeting duration, longest meeting and ID, shortest meeting and ID.
+- user visit count, new user count, email code login count, distinct login IP count, meeting count, total meeting duration, longest meeting and ID, shortest meeting and ID, meeting quality summary, and client profile distributions.
 
-The email also includes two detail attachments:
+The email also includes five detail attachments:
 
 - `users.csv`: registered user email, anonymous nickname, IP address, created meeting count, created meeting IDs.
 - `meetings.csv`: meeting ID, host, meeting type, participant count, participant list.
+- `new_users.csv`: email address, IP address, registration time, current nickname.
+- `email_code_logins.csv`: email address, IP address, login time.
+- `meeting_quality.csv`: meeting ID, participant ID, role, device type, sample count, average/max latency, average/max packet loss, average FPS, average bitrate, weak-network sample count.
 
-When the report window has no usage data, the email has no attachments and only states that there was no usage data in the past 24 hours.
+When the report window has no meeting, participant, new user, email code login, or meeting quality data, the email has no attachments and only states that there was no usage data in the past 24 hours.
 
 ## Compatibility and migration
 
 - Existing databases are migrated with `CREATE TABLE IF NOT EXISTS`; no existing table is removed or rewritten.
 - Existing clients that do not send `meetingType` continue to work and are treated as `quick`.
+- Existing clients that do not send `clientProfile` continue to work; profile distributions simply omit unknown values.
 - Existing mailer configuration continues to be used for sending both verification emails and statistics reports.
 
 ## Risks

@@ -80,7 +80,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - [~] Meeting minutes
   Temporary minutes, chat history, whiteboard counts, and ready check summaries can be exported, but there is no host-side save reminder at meeting end yet.
 - [~] Audit logging
-  The frontend already reports latency, packet loss, frame rate, bitrate, and connection summary, but device fingerprinting and richer network context are still missing.
+  The frontend reports latency, packet loss, frame rate, bitrate, connection summary, and coarse client profile buckets for statistics. It intentionally avoids stable device fingerprinting.
 - [~] TURN / coturn runtime relay access
   The backend now issues runtime ICE / TURN credentials and the release template now uses `coturn use-auth-secret`, but production still needs the shared secret, certificate readability, and firewall validation to be wired correctly in each environment.
 - [~] WeChat mini program client
@@ -218,7 +218,7 @@ The repository also ships a production template at [scripts/env.example](scripts
 
 When `MEETING_STATS_REPORT_TO` is configured, the backend sends one traffic statistics email every day at `MEETING_STATS_REPORT_SEND_AT_UTC` and reports the previous 24 hours. The default send time is `12:00` UTC. Usage details are persisted in SQLite and are not automatically deleted.
 
-Reports with usage data show the summary directly in the email body as an HTML table and include two detail CSV attachments: `users.csv` and `meetings.csv`. If the previous 24 hours had no usage data, the backend still sends a short email without attachments. Every report footer includes backend `tag`, `commit`, and `build time`.
+Reports with usage data show the summary directly in the email body as an HTML table, including visits, new users, email code logins, meeting duration, meeting quality, and client profile distributions. The email includes five detail CSV attachments: `users.csv`, `meetings.csv`, `new_users.csv`, `email_code_logins.csv`, and `meeting_quality.csv`. If the previous 24 hours had no meeting, participant, new user, email code login, or meeting quality data, the backend still sends a short email without attachments. Every report footer includes backend `tag`, `commit`, and `build time`.
 
 ### WeChat Mini Program
 

@@ -784,6 +784,8 @@ components:
         deviceType:
           type: string
           description: Browser or client label. The backend stores it as-is.
+        clientProfile:
+          $ref: "#/components/schemas/ClientProfile"
     CreateMeetingResponse:
       type: object
       required: [meeting, host, iceServers]
@@ -841,6 +843,8 @@ components:
           type: string
         deviceType:
           type: string
+        clientProfile:
+          $ref: "#/components/schemas/ClientProfile"
         isAnonymous:
           type: boolean
           description: Whether the joiner is anonymous. When false and userId is provided, saved preferences may be used.
@@ -888,6 +892,19 @@ components:
           type: string
         credential:
           type: string
+    ClientProfile:
+      type: object
+      description: Optional low-sensitivity client profile for statistics. Values should be coarse buckets rather than stable device fingerprints.
+      additionalProperties:
+        type: string
+      example:
+        browser: Chrome
+        os: macOS
+        deviceCategory: desktop
+        language: zh-CN
+        timeZone: Asia/Shanghai
+        viewportWidthBucket: 1024-1439
+        networkEffectiveType: 4g
     LeaveMeetingRequest:
       type: object
       properties:

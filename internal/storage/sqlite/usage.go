@@ -25,18 +25,19 @@ type MeetingUsageRecord struct {
 }
 
 type MeetingParticipantUsageRecord struct {
-	MeetingID       string
-	ParticipantID   string
-	UserID          string
-	Email           string
-	Nickname        string
-	IsAnonymous     bool
-	IPAddress       string
-	DeviceType      string
-	ParticipantRole string
-	JoinedAt        time.Time
-	LeftAt          *time.Time
-	UpdatedAt       time.Time
+	MeetingID         string
+	ParticipantID     string
+	UserID            string
+	Email             string
+	Nickname          string
+	IsAnonymous       bool
+	IPAddress         string
+	DeviceType        string
+	ClientProfileJSON string
+	ParticipantRole   string
+	JoinedAt          time.Time
+	LeftAt            *time.Time
+	UpdatedAt         time.Time
 }
 
 func (s *Store) UpsertMeetingUsage(ctx context.Context, record MeetingUsageRecord) error {
@@ -110,8 +111,8 @@ func (s *Store) UpsertMeetingParticipantUsage(ctx context.Context, record Meetin
 	const statement = `
 INSERT INTO meeting_usage_participants (
     meeting_id, participant_id, user_id, email, nickname, is_anonymous, ip_address,
-    device_type, participant_role, joined_at, left_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    device_type, client_profile_json, participant_role, joined_at, left_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(meeting_id, participant_id) DO UPDATE SET
     user_id = excluded.user_id,
     email = excluded.email,
@@ -119,6 +120,7 @@ ON CONFLICT(meeting_id, participant_id) DO UPDATE SET
     is_anonymous = excluded.is_anonymous,
     ip_address = excluded.ip_address,
     device_type = excluded.device_type,
+    client_profile_json = excluded.client_profile_json,
     participant_role = excluded.participant_role,
     joined_at = excluded.joined_at,
     left_at = COALESCE(excluded.left_at, meeting_usage_participants.left_at),
@@ -140,6 +142,7 @@ ON CONFLICT(meeting_id, participant_id) DO UPDATE SET
 		boolToInteger(record.IsAnonymous),
 		record.IPAddress,
 		record.DeviceType,
+		defaultJSON(record.ClientProfileJSON),
 		record.ParticipantRole,
 		record.JoinedAt.UTC().Format(time.RFC3339Nano),
 		leftAt,
@@ -236,7 +239,7 @@ ORDER BY created_at ASC`
 func (s *Store) ListParticipantUsageWindow(ctx context.Context, start time.Time, end time.Time) ([]MeetingParticipantUsageRecord, error) {
 	const query = `
 SELECT meeting_id, participant_id, user_id, email, nickname, is_anonymous, ip_address,
-       device_type, participant_role, joined_at, left_at, updated_at
+       device_type, client_profile_json, participant_role, joined_at, left_at, updated_at
 FROM meeting_usage_participants
 WHERE joined_at < ? AND (left_at IS NULL OR left_at >= ?)
 ORDER BY joined_at ASC`
@@ -269,7 +272,7 @@ func (s *Store) ListParticipantsForMeetings(ctx context.Context, meetingIDs []st
 
 	query := fmt.Sprintf(`
 SELECT meeting_id, participant_id, user_id, email, nickname, is_anonymous, ip_address,
-       device_type, participant_role, joined_at, left_at, updated_at
+       device_type, client_profile_json, participant_role, joined_at, left_at, updated_at
 FROM meeting_usage_participants
 WHERE meeting_id IN (%s)
 ORDER BY meeting_id ASC, joined_at ASC`, strings.Join(placeholders, ","))
@@ -361,6 +364,7 @@ func scanParticipantUsageRecords(rows *sql.Rows) ([]MeetingParticipantUsageRecor
 			&isAnonymous,
 			&record.IPAddress,
 			&record.DeviceType,
+			&record.ClientProfileJSON,
 			&record.ParticipantRole,
 			&joinedAtRaw,
 			&leftAtRaw,
@@ -395,4 +399,11 @@ func scanParticipantUsageRecords(rows *sql.Rows) ([]MeetingParticipantUsageRecor
 	}
 
 	return records, nil
+}
+
+func defaultJSON(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "{}"
+	}
+	return value
 }

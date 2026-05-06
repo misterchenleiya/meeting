@@ -112,6 +112,9 @@ ON auth_verification_codes(ip_address, created_at DESC)
 WHERE ip_address <> ''`); err != nil {
 		return err
 	}
+	if err := s.ensureColumn(ctx, "meeting_usage_participants", "client_profile_json", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		return err
+	}
 
 	return nil
 }

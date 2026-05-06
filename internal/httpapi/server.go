@@ -131,12 +131,13 @@ func (s *Server) handleClientLogs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Title        string `json:"title"`
-		Password     string `json:"password"`
-		MeetingType  string `json:"meetingType"`
-		HostUserID   string `json:"hostUserId"`
-		HostNickname string `json:"hostNickname"`
-		DeviceType   string `json:"deviceType"`
+		Title         string            `json:"title"`
+		Password      string            `json:"password"`
+		MeetingType   string            `json:"meetingType"`
+		HostUserID    string            `json:"hostUserId"`
+		HostNickname  string            `json:"hostNickname"`
+		DeviceType    string            `json:"deviceType"`
+		ClientProfile map[string]string `json:"clientProfile"`
 	}
 
 	if !decodeJSON(w, r, &request) {
@@ -154,14 +155,15 @@ func (s *Server) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meetingValue, host, err := s.meetings.CreateMeeting(r.Context(), meeting.CreateMeetingInput{
-		Title:        request.Title,
-		Password:     request.Password,
-		MeetingType:  meeting.MeetingType(request.MeetingType),
-		HostUserID:   currentUser.ID,
-		HostEmail:    currentUser.Email,
-		HostNickname: currentUser.Nickname,
-		DeviceType:   request.DeviceType,
-		IPAddress:    clientIP(r),
+		Title:         request.Title,
+		Password:      request.Password,
+		MeetingType:   meeting.MeetingType(request.MeetingType),
+		HostUserID:    currentUser.ID,
+		HostEmail:     currentUser.Email,
+		HostNickname:  currentUser.Nickname,
+		DeviceType:    request.DeviceType,
+		ClientProfile: request.ClientProfile,
+		IPAddress:     clientIP(r),
 	})
 	if err != nil {
 		s.logger.Error("create meeting failed", "error", err)
@@ -177,9 +179,9 @@ func (s *Server) handleCreateMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"meeting":               meetingValue,
-		"host":                  host,
-		"iceServers":            iceServers,
+		"meeting":                meetingValue,
+		"host":                   host,
+		"iceServers":             iceServers,
 		"iceCredentialExpiresAt": formatOptionalTimestamp(expiresAt),
 	})
 }
@@ -231,13 +233,14 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 	meetingID := r.PathValue("meetingID")
 
 	var request struct {
-		Password                 string `json:"password"`
-		UserID                   string `json:"userId"`
-		Nickname                 string `json:"nickname"`
-		DeviceType               string `json:"deviceType"`
-		IsAnonymous              bool   `json:"isAnonymous"`
-		RequestCameraEnabled     *bool  `json:"requestCameraEnabled"`
-		RequestMicrophoneEnabled *bool  `json:"requestMicrophoneEnabled"`
+		Password                 string            `json:"password"`
+		UserID                   string            `json:"userId"`
+		Nickname                 string            `json:"nickname"`
+		DeviceType               string            `json:"deviceType"`
+		ClientProfile            map[string]string `json:"clientProfile"`
+		IsAnonymous              bool              `json:"isAnonymous"`
+		RequestCameraEnabled     *bool             `json:"requestCameraEnabled"`
+		RequestMicrophoneEnabled *bool             `json:"requestMicrophoneEnabled"`
 	}
 
 	if !decodeJSON(w, r, &request) {
@@ -263,6 +266,7 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 		UserID:                   request.UserID,
 		Nickname:                 strings.TrimSpace(request.Nickname),
 		DeviceType:               request.DeviceType,
+		ClientProfile:            request.ClientProfile,
 		IPAddress:                clientIP(r),
 		IsAnonymous:              request.IsAnonymous,
 		RequestCameraEnabled:     request.RequestCameraEnabled,
@@ -285,9 +289,9 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"meeting":               meetingValue,
-		"participant":           participant,
-		"iceServers":            iceServers,
+		"meeting":                meetingValue,
+		"participant":            participant,
+		"iceServers":             iceServers,
 		"iceCredentialExpiresAt": formatOptionalTimestamp(expiresAt),
 	})
 }

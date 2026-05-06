@@ -44,6 +44,19 @@ type SessionRecord struct {
 	IPAddress string
 }
 
+type EmailCodeLoginRecord struct {
+	Email     string
+	IPAddress string
+	LoginAt   time.Time
+}
+
+type UserRegistrationRecord struct {
+	Email     string
+	Nickname  string
+	IPAddress string
+	CreatedAt time.Time
+}
+
 func (s *Store) GetUserByID(ctx context.Context, userID string) (UserRecord, bool, error) {
 	const query = `
 SELECT id, email, password_hash, wechat_openid, nickname, email_verified_at, created_at, updated_at
