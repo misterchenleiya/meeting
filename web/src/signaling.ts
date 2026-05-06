@@ -7,7 +7,7 @@ export type SignalEnvelope = {
 
 type SignalClientOptions = {
   onOpen?: () => void;
-  onClose?: () => void;
+  onClose?: (event: CloseEvent) => void;
   onError?: (message: string) => void;
   onMessage?: (event: SignalEnvelope) => void;
 };
@@ -31,12 +31,12 @@ export class SignalClient {
       options.onOpen?.();
     });
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       if (this.socket !== socket) {
         return;
       }
       this.socket = null;
-      options.onClose?.();
+      options.onClose?.(event);
     });
 
     socket.addEventListener("error", () => {

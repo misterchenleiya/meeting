@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 1 << 20
+	writeWait              = 10 * time.Second
+	pongWait               = 60 * time.Second
+	pingPeriod             = (pongWait * 9) / 10
+	maxMessageSize         = 1 << 20
+	meetingEndedCloseDelay = 500 * time.Millisecond
 )
 
 var disconnectGracePeriod = 3 * time.Second
@@ -306,6 +307,7 @@ func (h *Hub) NotifyReadyCheckFinished(meetingID string, round *meeting.ReadyChe
 }
 
 func (h *Hub) NotifyMeetingEnded(meetingID string, endedByParticipantID string) {
+	meetingID = h.canonicalMeetingID(meetingID)
 	h.broadcast(meetingID, serverEnvelope{
 		Type: "meeting.ended",
 		Payload: meetingEndedPayload{
@@ -313,7 +315,9 @@ func (h *Hub) NotifyMeetingEnded(meetingID string, endedByParticipantID string) 
 		},
 	}, "")
 
-	h.closeRoom(meetingID)
+	time.AfterFunc(meetingEndedCloseDelay, func() {
+		h.closeRoom(meetingID)
+	})
 }
 
 func (h *Hub) register(clientValue *client) []string {

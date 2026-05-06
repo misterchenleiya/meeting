@@ -2,8 +2,10 @@ package signaling_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -156,6 +158,59 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 	}
 }
 
+func TestNotifyMeetingEndedBroadcastsBeforeClosingRoom(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	meetingService := meeting.NewService(logger, stubStore{})
+	hub := signaling.NewHub(logger, meetingService)
+
+	server := httptest.NewServer(httpapi.NewServer(logger, nil, meetingService, nil, hub, nil).Routes())
+	defer server.Close()
+
+	ctx := context.Background()
+	meetingValue, host, err := meetingService.CreateMeeting(ctx, meeting.CreateMeetingInput{
+		Title:        "demo",
+		Password:     "",
+		HostUserID:   "host-user",
+		HostNickname: "主持人",
+		DeviceType:   "desktop",
+		IPAddress:    "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CreateMeeting() error = %v", err)
+	}
+
+	_, participant, err := meetingService.JoinMeeting(ctx, meeting.JoinMeetingInput{
+		MeetingID:   meetingValue.ID,
+		Password:    "",
+		Nickname:    "参与者",
+		IsAnonymous: true,
+		DeviceType:  "desktop",
+		IPAddress:   "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("JoinMeeting() error = %v", err)
+	}
+
+	hostConn := dialWebSocket(t, server.URL, meetingValue.MeetingNumber, host.ID)
+	defer func() { _ = hostConn.Close() }()
+	participantConn := dialWebSocket(t, server.URL, meetingValue.MeetingNumber, participant.ID)
+	defer func() { _ = participantConn.Close() }()
+
+	readEvent(t, hostConn, "session.welcome")
+	readEvent(t, participantConn, "session.welcome")
+
+	hub.NotifyMeetingEnded(meetingValue.ID, host.ID)
+
+	event := readEvent(t, participantConn, "meeting.ended")
+	payload := event["payload"].(map[string]any)
+	if payload["endedByParticipantId"] != host.ID {
+		t.Fatalf("endedByParticipantId = %v, want %s", payload["endedByParticipantId"], host.ID)
+	}
+	assertWebSocketCloses(t, participantConn)
+}
+
 func dialWebSocket(t *testing.T, serverURL string, meetingIdentifier string, participantID string) *websocket.Conn {
 	t.Helper()
 
@@ -191,6 +246,24 @@ func readEvent(t *testing.T, conn *websocket.Conn, expectedType string) map[stri
 		if response["type"] == expectedType {
 			return response
 		}
+	}
+}
+
+func assertWebSocketCloses(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("SetReadDeadline() error = %v", err)
+	}
+
+	var response map[string]any
+	err := conn.ReadJSON(&response)
+	if err == nil {
+		t.Fatalf("ReadJSON() succeeded after meeting ended, response = %v", response)
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		t.Fatalf("timed out waiting for websocket close after meeting ended")
 	}
 }
 

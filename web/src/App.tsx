@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { createClientLogger, formatClientLogs } from "./logger";
 import { collectClientProfile } from "./clientProfile";
 import {
+  ApiError,
   completeLogin,
   completePasswordLogin,
   completeRegister,
@@ -1442,6 +1443,69 @@ function App() {
     track.addEventListener("ended", () => handleBaseMediaTrackEnded(track), { once: true });
   }
 
+  function isCurrentSignalGeneration(session: SessionState, connectionGeneration: number) {
+    const currentSession = sessionRef.current;
+    return (
+      signalConnectionGenerationRef.current === connectionGeneration &&
+      !!currentSession &&
+      getMeetingPublicNumber(currentSession.meeting) === getMeetingPublicNumber(session.meeting) &&
+      currentSession.participant.id === session.participant.id
+    );
+  }
+
+  const recoverClosedSignalSession = useEffectEvent(async (session: SessionState, connectionGeneration: number) => {
+    if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+      return;
+    }
+
+    try {
+      const response = await getMeeting({
+        meetingNumber: getMeetingPublicNumber(session.meeting)
+      });
+      if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+        return;
+      }
+      if (response.meeting.status === "ended") {
+        logger.info("signal.close_resolved_as_meeting_ended", {
+          ...meetingLogFields(session.meeting),
+          participantId: session.participant.id,
+          reason: "meeting_status_ended"
+        });
+        exitMeetingShell("会议已结束");
+        return;
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+          return;
+        }
+        logger.info("signal.close_resolved_as_meeting_ended", {
+          ...meetingLogFields(session.meeting),
+          participantId: session.participant.id,
+          reason: "meeting_not_found"
+        });
+        exitMeetingShell("会议已结束");
+        return;
+      }
+
+      if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+        return;
+      }
+      logger.warn("signal.meeting_status_check_failed", {
+        ...meetingLogFields(session.meeting),
+        participantId: session.participant.id,
+        error
+      });
+      setErrorMessage(asMessage(error));
+    }
+
+    if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+      return;
+    }
+    setStatusMessage("WSS 信令已断开，正在准备自动重连");
+    scheduleSignalReconnect(session);
+  });
+
   const connectSignalForSession = useEffectEvent(async (session: SessionState) => {
     const iceServers = await ensureRuntimeIceServers(session);
     if (
@@ -1478,7 +1542,7 @@ function App() {
         setWsConnected(true);
         setStatusMessage("WSS 信令已连接");
       },
-      onClose: () => {
+      onClose: (event) => {
         if (!isCurrentConnection()) {
           return;
         }
@@ -1486,7 +1550,10 @@ function App() {
           ...meetingLogFields(session.meeting),
           participantId: session.participant.id,
           endingMeetingFlow: endingMeetingRef.current,
-          summaryPrepared: meetingEndSummaryPreparedRef.current
+          summaryPrepared: meetingEndSummaryPreparedRef.current,
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
         });
         signalClientRef.current = null;
         setWsConnected(false);
@@ -1503,11 +1570,9 @@ function App() {
           preparePostEndSummary();
           return;
         }
-        if (sessionRef.current) {
-          setStatusMessage("WSS 信令已断开，正在准备自动重连");
-        }
         disposeRtc(false);
-        scheduleSignalReconnect(session);
+        setStatusMessage("WSS 信令已断开，正在确认会议状态");
+        void recoverClosedSignalSession(session, connectionGeneration);
       },
       onError: (message) => {
         if (!isCurrentConnection()) {

@@ -80,6 +80,16 @@ export type MeetingMinutesSnapshot = {
 
 const logger = createClientLogger("frontend.api");
 
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 function meetingPathSegment(meetingNumber: string): string {
   return encodeURIComponent(meetingNumber);
 }
@@ -118,7 +128,7 @@ async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
       status: response.status,
       error: data.error ?? `Request failed with status ${response.status}`
     });
-    throw new Error(data.error ?? `Request failed with status ${response.status}`);
+    throw new ApiError(data.error ?? `Request failed with status ${response.status}`, response.status);
   }
 
   logger.debug("request.succeeded", {
