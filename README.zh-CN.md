@@ -131,6 +131,7 @@
 - `POST /api/auth/register/code`、`POST /api/auth/register/verify`、`POST /api/auth/login/code`、`POST /api/auth/login/verify`、`GET /api/auth/me`、`POST /api/auth/logout`：注册 / 登录 / 当前用户 / 退出登录接口
 - `POST /api/auth/login/password`：最小密码登录接口；未设置密码的账号会返回“请使用邮箱验证码登录”的明确提示
 - `POST /api/auth/wechat/mini/login`：微信小程序快捷登录接口；后端使用 `wx.login` 返回的 code 换取 `openid`，并返回显式 `sessionToken`
+- 账号登录态采用单账号单有效会话策略；同一账号新登录会撤销旧 session，注册用户从新设备重新加入同一会议时会移除旧参会身份。
 - `POST /api/meetings` 返回的会议对象现在同时包含内部 `id` 和公开 `meetingNumber`。
 - `POST /api/meetings`、`POST /api/meetings/{meetingNumber}/join` 和 `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers` 现在都会返回运行时 `iceServers`；TURN 凭据改为由后端按短期动态方式签发，不再打进前端发布包。
 - 会议快照里的 `chatMessages` 与 WebSocket `chat.message` 事件现在可能带有结构化系统消息元数据；权限申请消息会通过 `kind = capability_request` 和 `action` 字段暴露“快速处理”上下文，而不是依赖前端解析中文文案。

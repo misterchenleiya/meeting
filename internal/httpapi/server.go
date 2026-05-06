@@ -259,14 +259,20 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if request.UserID == "" && s.auth != nil {
-		if currentUser, _, err := s.currentAuthenticatedUser(r); err == nil {
+	if s.auth != nil {
+		currentUser, _, err := s.currentAuthenticatedUser(r)
+		switch {
+		case err == nil:
 			request.UserID = currentUser.ID
 			request.Nickname = strings.TrimSpace(request.Nickname)
 			request.IsAnonymous = false
+		case strings.TrimSpace(request.UserID) != "":
+			s.writeAuthError(w, err)
+			return
 		}
 	}
 
+	replacedParticipantIDs := s.activeRegisteredParticipantIDs(meetingIdentifier, request.UserID, request.IsAnonymous)
 	meetingValue, participant, err := s.meetings.JoinMeeting(r.Context(), meeting.JoinMeetingInput{
 		MeetingID:                meetingIdentifier,
 		Password:                 request.Password,
@@ -285,6 +291,13 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.signaling != nil {
+		for _, replacedParticipantID := range replacedParticipantIDs {
+			if replacedParticipantID == participant.ID {
+				continue
+			}
+			s.signaling.NotifyParticipantLeft(meetingValue.ID, replacedParticipantID)
+			s.signaling.DisconnectParticipant(meetingValue.ID, replacedParticipantID, "single_account_replaced")
+		}
 		s.signaling.NotifyParticipantJoined(meetingValue.ID, participant)
 	}
 
@@ -301,6 +314,28 @@ func (s *Server) handleJoinMeeting(w http.ResponseWriter, r *http.Request) {
 		"iceServers":             iceServers,
 		"iceCredentialExpiresAt": formatOptionalTimestamp(expiresAt),
 	})
+}
+
+func (s *Server) activeRegisteredParticipantIDs(meetingIdentifier string, userID string, isAnonymous bool) []string {
+	if strings.TrimSpace(userID) == "" || isAnonymous {
+		return nil
+	}
+
+	meetingValue, found := s.meetings.GetMeeting(meetingIdentifier)
+	if !found {
+		return nil
+	}
+
+	participantIDs := make([]string, 0, 1)
+	for participantID, participant := range meetingValue.Participants {
+		if participant.UserID != userID || participant.LeftAt != nil || participant.Role == meeting.RoleHost {
+			continue
+		}
+		participantIDs = append(participantIDs, participantID)
+	}
+
+	sort.Strings(participantIDs)
+	return participantIDs
 }
 
 func (s *Server) handleLeaveMeeting(w http.ResponseWriter, r *http.Request) {
@@ -554,6 +589,30 @@ func (s *Server) handleWebSocketPlaceholder(w http.ResponseWriter, r *http.Reque
 			"meetingNumber": meetingIdentifier,
 		})
 		return
+	}
+
+	if s.auth != nil {
+		meetingValue, found := s.meetings.GetMeeting(meetingIdentifier)
+		if !found {
+			writeError(w, http.StatusNotFound, "meeting not found")
+			return
+		}
+		participant, ok := meetingValue.Participants[participantID]
+		if !ok {
+			writeError(w, http.StatusNotFound, "participant not found")
+			return
+		}
+		if participant.UserID != "" {
+			currentUser, _, err := s.currentAuthenticatedUser(r)
+			if err != nil {
+				s.writeAuthError(w, err)
+				return
+			}
+			if currentUser.ID != participant.UserID {
+				writeError(w, http.StatusForbidden, "participant does not match current session")
+				return
+			}
+		}
 	}
 
 	if err := s.signaling.ServeWS(w, r, meetingIdentifier, participantID); err != nil {

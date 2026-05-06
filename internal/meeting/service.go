@@ -292,6 +292,10 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 		return nil, nil, ErrMeetingPassword
 	}
 
+	if host := activeRegisteredHostParticipant(meeting, input.UserID, input.IsAnonymous); host != nil {
+		return copyMeeting(meeting), copyParticipant(host), nil
+	}
+
 	pref, err := s.resolvePreference(
 		ctx,
 		input.UserID,
@@ -310,6 +314,10 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 	}
 
 	now := time.Now().UTC()
+	if err := s.replaceActiveRegisteredParticipantLocked(ctx, meeting, input, now); err != nil {
+		return nil, nil, err
+	}
+
 	participant := &Participant{
 		ID:                       participantID,
 		UserID:                   input.UserID,
@@ -366,24 +374,7 @@ func (s *Service) LeaveMeeting(ctx context.Context, meetingID string, participan
 	}
 
 	now := time.Now().UTC()
-	participant.LeftAt = &now
-	addMinuteLocked(meeting, now, fmt.Sprintf("%s 离开会议。", participant.Nickname))
-
-	if err := s.insertAudit(ctx, sqlite.AuditEvent{
-		MeetingID:       meeting.ID,
-		MeetingNumber:   meeting.MeetingNumber,
-		ParticipantID:   participant.ID,
-		UserID:          participant.UserID,
-		ParticipantRole: string(participant.Role),
-		EventType:       "participant_left",
-		IPAddress:       ipAddress,
-		DeviceType:      deviceType,
-		CreatedAt:       now,
-	}); err != nil {
-		return err
-	}
-
-	if err := s.recordParticipantLeft(ctx, meeting.ID, participant.ID, now); err != nil {
+	if err := s.markParticipantLeftLocked(ctx, meeting, participant, now, deviceType, ipAddress, fmt.Sprintf("%s 离开会议。", participant.Nickname)); err != nil {
 		return err
 	}
 
@@ -1230,6 +1221,67 @@ func isHostGrantableCapability(capability Capability) bool {
 	}
 
 	return false
+}
+
+func (s *Service) replaceActiveRegisteredParticipantLocked(ctx context.Context, meeting *Meeting, input JoinMeetingInput, now time.Time) error {
+	if !isRegisteredParticipant(input.UserID, input.IsAnonymous) {
+		return nil
+	}
+
+	for participantID, participant := range meeting.Participants {
+		if participant.UserID != input.UserID || participant.LeftAt != nil {
+			continue
+		}
+		if participant.Role == RoleHost {
+			continue
+		}
+
+		message := fmt.Sprintf("%s 已在其他设备重新加入会议，当前设备自动离开。", participant.Nickname)
+		if err := s.markParticipantLeftLocked(ctx, meeting, participant, now, "single_account_replaced", input.IPAddress, message); err != nil {
+			return err
+		}
+		delete(meeting.Participants, participantID)
+	}
+
+	return nil
+}
+
+func activeRegisteredHostParticipant(meeting *Meeting, userID string, isAnonymous bool) *Participant {
+	if !isRegisteredParticipant(userID, isAnonymous) {
+		return nil
+	}
+
+	host := meeting.Participants[meeting.HostParticipantID]
+	if host == nil || host.LeftAt != nil || host.UserID != userID {
+		return nil
+	}
+
+	return host
+}
+
+func (s *Service) markParticipantLeftLocked(ctx context.Context, meeting *Meeting, participant *Participant, leftAt time.Time, deviceType string, ipAddress string, minute string) error {
+	participant.LeftAt = &leftAt
+	addMinuteLocked(meeting, leftAt, minute)
+
+	if err := s.insertAudit(ctx, sqlite.AuditEvent{
+		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
+		ParticipantID:   participant.ID,
+		UserID:          participant.UserID,
+		ParticipantRole: string(participant.Role),
+		EventType:       "participant_left",
+		IPAddress:       ipAddress,
+		DeviceType:      deviceType,
+		CreatedAt:       leftAt,
+	}); err != nil {
+		return err
+	}
+
+	if err := s.recordParticipantLeft(ctx, meeting.ID, participant.ID, leftAt); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func formatCapabilityLabel(capability Capability) string {

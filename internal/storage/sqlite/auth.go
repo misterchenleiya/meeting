@@ -484,9 +484,9 @@ WHERE id = ?`
 
 func (s *Store) CreateSession(ctx context.Context, session SessionRecord) error {
 	const statement = `
-INSERT INTO auth_sessions (
-    token_hash, user_id, created_at, expires_at, revoked_at, user_agent, ip_address
-) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	INSERT INTO auth_sessions (
+	    token_hash, user_id, created_at, expires_at, revoked_at, user_agent, ip_address
+	) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	var revokedAt any
 	if session.RevokedAt != nil {
@@ -510,10 +510,24 @@ INSERT INTO auth_sessions (
 	return nil
 }
 
+func (s *Store) RevokeActiveSessionsByUserExcept(ctx context.Context, userID string, keepTokenHash string, revokedAt time.Time) error {
+	const statement = `
+UPDATE auth_sessions
+SET revoked_at = ?
+WHERE user_id = ? AND token_hash <> ? AND revoked_at IS NULL AND expires_at > ?`
+
+	revokedAtValue := revokedAt.UTC().Format(time.RFC3339Nano)
+	if _, err := s.db.ExecContext(ctx, statement, revokedAtValue, userID, keepTokenHash, revokedAtValue); err != nil {
+		return fmt.Errorf("revoke active sessions by user except current: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash string) (SessionRecord, bool, error) {
 	const query = `
-SELECT token_hash, user_id, created_at, expires_at, revoked_at, user_agent, ip_address
-FROM auth_sessions
+	SELECT token_hash, user_id, created_at, expires_at, revoked_at, user_agent, ip_address
+	FROM auth_sessions
 WHERE token_hash = ?`
 
 	var (

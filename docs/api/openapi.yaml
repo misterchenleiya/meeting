@@ -294,6 +294,7 @@ paths:
     post:
       tags: [Meetings]
       summary: Join a meeting
+      description: If the request is authenticated, the backend binds the participant to the current session user and ignores the request body userId. A registered account can only keep one active participant identity in the same meeting; a newer join removes the older non-host participant.
       parameters:
         - $ref: "#/components/parameters/MeetingNumber"
       requestBody:
@@ -838,7 +839,7 @@ components:
           description: Optional meeting password.
         userId:
           type: string
-          description: Registered user id. Empty string means anonymous mode.
+          description: Ignored when the request is authenticated; the backend uses the current session user. Empty string means anonymous mode for unauthenticated requests.
         nickname:
           type: string
         deviceType:

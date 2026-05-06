@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/mail"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
@@ -66,6 +67,7 @@ type Service struct {
 	ipRateLimit     int
 	sessionTTL      time.Duration
 	now             func() time.Time
+	sessionMu       sync.Mutex
 }
 
 type VerificationRequestMeta struct {
@@ -534,6 +536,9 @@ func (s *Service) createWechatMiniProgramUser(ctx context.Context, openID string
 }
 
 func (s *Service) createSession(ctx context.Context, userID string, userAgent string, ipAddress string) (Session, error) {
+	s.sessionMu.Lock()
+	defer s.sessionMu.Unlock()
+
 	token, tokenHash, err := generateSessionToken()
 	if err != nil {
 		return Session{}, err
@@ -550,6 +555,13 @@ func (s *Service) createSession(ctx context.Context, userID string, userAgent st
 	}
 
 	if err := s.store.CreateSession(ctx, session); err != nil {
+		return Session{}, err
+	}
+
+	if err := s.store.RevokeActiveSessionsByUserExcept(ctx, userID, tokenHash, now); err != nil {
+		if revokeErr := s.store.RevokeSession(ctx, tokenHash, now); revokeErr != nil {
+			return Session{}, fmt.Errorf("revoke previous sessions: %w; revoke current session: %v", err, revokeErr)
+		}
 		return Session{}, err
 	}
 

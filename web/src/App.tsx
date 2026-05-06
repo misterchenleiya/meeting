@@ -183,6 +183,7 @@ type PersistedAppState = {
 
 const appStateStorageKey = "meeting:app-state:v3";
 const defaultEntryStatusMessage = "准备开始会议";
+const authSessionCheckIntervalMs = 30_000;
 const defaultLoginForm: LoginFormState = {
   mode: "code",
   email: "",
@@ -1101,6 +1102,48 @@ function App() {
     scrollViewportToTop();
   });
 
+  const handleAuthSessionRevoked = useEffectEvent(() => {
+    syncAuthenticatedUser(null);
+    if (sessionRef.current) {
+      exitMeetingShell("账号已在其他设备登录，当前设备已自动退出登录", "login");
+      return;
+    }
+
+    setEntryView("login");
+    setStatusMessage("账号已在其他设备登录，当前设备已自动退出登录");
+    setErrorMessage("");
+  });
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    let cancelled = false;
+    const verifySession = () => {
+      void fetchCurrentUser()
+        .then((response) => {
+          if (!cancelled) {
+            syncAuthenticatedUser(response.user);
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled) {
+            return;
+          }
+          if (error instanceof ApiError && error.status === 401) {
+            handleAuthSessionRevoked();
+          }
+        });
+    };
+
+    const timer = window.setInterval(verifySession, authSessionCheckIntervalMs);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isAuthenticated]);
+
   const preparePostEndSummary = useEffectEvent(() => {
     if (meetingEndSummaryPreparedRef.current) {
       logger.debug("meeting.end_summary_skipped", {
@@ -1174,6 +1217,16 @@ function App() {
       }
       case "participant.left": {
         const payload = event.payload as { participantId: string };
+        if (payload.participantId === sessionRef.current?.participant.id) {
+          logger.info("meeting.local_participant_removed", {
+            ...meetingLogFields(sessionRef.current?.meeting),
+            participantId: payload.participantId
+          });
+          syncAuthenticatedUser(null);
+          exitMeetingShell("该账号已在其他设备加入会议，当前设备已自动退出会议", "login");
+          return;
+        }
+
         const participantLabel = findParticipantLabel(
           Object.values(sessionRef.current?.meeting.participants ?? {}),
           payload.participantId
@@ -1604,6 +1657,15 @@ function App() {
           reason: "meeting_status_ended"
         });
         exitMeetingShell("会议已结束");
+        return;
+      }
+      if (!response.meeting.participants[session.participant.id]) {
+        logger.info("signal.close_resolved_as_participant_removed", {
+          ...meetingLogFields(session.meeting),
+          participantId: session.participant.id
+        });
+        syncAuthenticatedUser(null);
+        exitMeetingShell("该账号已在其他设备加入会议，当前设备已自动退出会议", "login");
         return;
       }
     } catch (error) {

@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 账号登录策略改为单账号单有效会话：同一账号新登录会撤销旧登录态；同一注册账号重新加入同一会议时，旧参会设备会自动退出，避免多设备同时登录或重复参会。
 - 对外展示、统计邮件和 CSV 报表统一使用 9 位“会议号”；后端与前端日志在记录内部 `meetingId` 时同步携带 `meetingNumber`，便于双向反查。
 - REST/WSS 会议级路径参数、前端运行态调用和接口文档统一切换为公开 `meetingNumber`；服务端仍兼容旧内部 ID 路径值，并在信令房间注册前归一到内部 ID。
 - 登录页版本角标、后端构建信息和发布包名中的 `commit` 统一改为 `git rev-parse --short HEAD` 默认短 hash，避免展示过长的 12 位提交号。

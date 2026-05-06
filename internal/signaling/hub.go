@@ -236,6 +236,33 @@ func (h *Hub) NotifyParticipantLeft(meetingID string, participantID string) {
 	}, "")
 }
 
+func (h *Hub) DisconnectParticipant(meetingID string, participantID string, reason string) {
+	meetingID = h.canonicalMeetingID(meetingID)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.cancelDisconnectCleanupLocked(meetingID, participantID)
+
+	room, ok := h.rooms[meetingID]
+	if !ok {
+		return
+	}
+
+	clientValue, ok := room[participantID]
+	if !ok {
+		return
+	}
+
+	close(clientValue.send)
+	_ = clientValue.conn.Close()
+	delete(room, participantID)
+	if len(room) == 0 {
+		delete(h.rooms, meetingID)
+	}
+
+	h.logger.Info("websocket disconnected by server", "meetingId", meetingID, "meetingNumber", h.meetingNumber(meetingID), "participantId", participantID, "reason", reason)
+}
+
 func (h *Hub) NotifyCapabilityGranted(meetingID string, grantedBy string, participantID string, capability meeting.Capability) {
 	h.broadcast(meetingID, serverEnvelope{
 		Type: "capability.granted",
@@ -348,6 +375,12 @@ func (h *Hub) register(clientValue *client) []string {
 	if !ok {
 		room = make(map[string]*client)
 		h.rooms[clientValue.meetingID] = room
+	}
+
+	if existingClient := room[clientValue.participantID]; existingClient != nil {
+		close(existingClient.send)
+		_ = existingClient.conn.Close()
+		h.logger.Info("websocket replaced existing participant connection", "meetingId", clientValue.meetingID, "meetingNumber", clientValue.meetingNumber, "participantId", clientValue.participantID)
 	}
 
 	room[clientValue.participantID] = clientValue

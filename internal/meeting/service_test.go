@@ -379,6 +379,109 @@ func TestJoinMeetingAcceptsPublicMeetingNumber(t *testing.T) {
 	}
 }
 
+func TestJoinMeetingReplacesExistingRegisteredParticipant(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newStubStore()
+	service := NewService(testLogger(t), store)
+
+	meetingValue, _, err := service.CreateMeeting(ctx, CreateMeetingInput{
+		Title:        "single account room",
+		Password:     "",
+		HostUserID:   "host-user",
+		HostNickname: "主持人",
+		DeviceType:   "desktop",
+		IPAddress:    "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CreateMeeting() error = %v", err)
+	}
+
+	_, firstParticipant, err := service.JoinMeeting(ctx, JoinMeetingInput{
+		MeetingID:   meetingValue.ID,
+		UserID:      "usr_same_account",
+		Nickname:    "成员A",
+		DeviceType:  "desktop",
+		IPAddress:   "203.0.113.51",
+		IsAnonymous: false,
+	})
+	if err != nil {
+		t.Fatalf("first JoinMeeting() error = %v", err)
+	}
+
+	nextMeeting, secondParticipant, err := service.JoinMeeting(ctx, JoinMeetingInput{
+		MeetingID:   meetingValue.ID,
+		UserID:      "usr_same_account",
+		Nickname:    "成员A-新设备",
+		DeviceType:  "mobile",
+		IPAddress:   "203.0.113.52",
+		IsAnonymous: false,
+	})
+	if err != nil {
+		t.Fatalf("second JoinMeeting() error = %v", err)
+	}
+
+	if firstParticipant.ID == secondParticipant.ID {
+		t.Fatalf("participant id should rotate on same-account rejoin")
+	}
+	if _, exists := nextMeeting.Participants[firstParticipant.ID]; exists {
+		t.Fatalf("first participant should be removed after same-account rejoin")
+	}
+	if _, exists := nextMeeting.Participants[secondParticipant.ID]; !exists {
+		t.Fatalf("second participant should exist after same-account rejoin")
+	}
+
+	usage := store.participants[meetingValue.ID+"/"+firstParticipant.ID]
+	if usage.LeftAt == nil {
+		t.Fatalf("first participant usage LeftAt is nil")
+	}
+}
+
+func TestJoinMeetingReusesExistingRegisteredHost(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	service := NewService(testLogger(t), newStubStore())
+
+	meetingValue, host, err := service.CreateMeeting(ctx, CreateMeetingInput{
+		Title:        "host takeover",
+		Password:     "",
+		HostUserID:   "host-user",
+		HostNickname: "主持人",
+		DeviceType:   "desktop",
+		IPAddress:    "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CreateMeeting() error = %v", err)
+	}
+
+	nextMeeting, participant, err := service.JoinMeeting(ctx, JoinMeetingInput{
+		MeetingID:   meetingValue.MeetingNumber,
+		UserID:      "host-user",
+		Nickname:    "主持人-新设备",
+		DeviceType:  "mobile",
+		IPAddress:   "203.0.113.60",
+		IsAnonymous: false,
+	})
+	if err != nil {
+		t.Fatalf("JoinMeeting() error = %v", err)
+	}
+
+	if participant.ID != host.ID {
+		t.Fatalf("participant ID = %q, want existing host ID %q", participant.ID, host.ID)
+	}
+	if participant.Role != RoleHost {
+		t.Fatalf("participant role = %s, want %s", participant.Role, RoleHost)
+	}
+	if len(nextMeeting.Participants) != 1 {
+		t.Fatalf("participant count = %d, want 1", len(nextMeeting.Participants))
+	}
+	if nextMeeting.Participants[host.ID].LeftAt != nil {
+		t.Fatalf("host should remain active after same-account rejoin")
+	}
+}
+
 func TestEndMeetingRemovesRuntimeState(t *testing.T) {
 	t.Parallel()
 
