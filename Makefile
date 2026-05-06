@@ -1,7 +1,7 @@
 SHELL := /bin/zsh
 
 PROJECT_NAME := meeting
-GIT_COMMIT := $(shell git rev-parse --short=12 HEAD)
+GIT_COMMIT := $(shell git rev-parse --short HEAD)
 GIT_TAG := $(shell git describe --tags --exact-match HEAD 2>/dev/null || echo untagged)
 BUILD_TIME := $(shell date '+%Y-%m-%d %H:%M:%S %z')
 BACKEND_LDFLAGS := -s -w -X 'github.com/misterchenleiya/meeting/internal/buildinfo.Tag=$(GIT_TAG)' -X 'github.com/misterchenleiya/meeting/internal/buildinfo.Commit=$(GIT_COMMIT)' -X 'github.com/misterchenleiya/meeting/internal/buildinfo.BuildTime=$(BUILD_TIME)'

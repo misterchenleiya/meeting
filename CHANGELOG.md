@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 登录页版本角标、后端构建信息和发布包名中的 `commit` 统一改为 `git rev-parse --short HEAD` 默认短 hash，避免展示过长的 12 位提交号。
 - 会中权限策略已按“已注册参会者 / 匿名参会者”拆分默认能力矩阵：已注册参会者默认可直接使用麦克风、摄像头和共享屏幕，匿名参会者仍默认仅聊天。
 - 麦克风、摄像头、共享屏幕和录制的权限申请流已改为“前端二次确认 -> 全员可见系统聊天消息 -> 主持人点击消息快速授权”的闭环交互；系统聊天消息现在带有结构化 `kind / action` 元数据。
 - `coturn` 发布模板和后端运行配置已切换为 `use-auth-secret + static-auth-secret` 动态凭据模式；生产前端发布包不再注入固定 TURN 用户名和密码，浏览器产物中默认只保留 STUN fallback。

@@ -39,7 +39,7 @@ function readGitTag(): string {
 
 function readGitCommit(): string {
   try {
-    const commit = execSync("git rev-parse --short=12 HEAD", {
+    const commit = execSync("git rev-parse --short HEAD", {
       cwd: workspaceRoot,
       stdio: ["ignore", "pipe", "ignore"]
     })
