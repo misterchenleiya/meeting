@@ -150,9 +150,9 @@ go run ./cmd/server
 - `MEETING_HTTP_ADDR`，默认 `:5180`
 - `MEETING_SQLITE_PATH`，默认 `./data/meeting.db`
 - `MEETING_LOG_DIR`，默认 `./logs`
-- `MEETING_MAILER_MODE`，默认 `debug`，生产环境推荐使用 `sendcloud_api`
+- `MEETING_MAILER_MODE`，默认 `debug`，生产环境可使用 `sendcloud_api` 或 `smtp`
 - `MEETING_SMTP_HOST`、`MEETING_SMTP_PORT`、`MEETING_SMTP_USERNAME`、`MEETING_SMTP_PASSWORD`
-- `MEETING_SMTP_FROM_ADDRESS`、`MEETING_SMTP_FROM_NAME`、`MEETING_SMTP_REQUIRE_TLS`
+- `MEETING_SMTP_FROM_ADDRESS`、`MEETING_SMTP_FROM_NAME`、`MEETING_SMTP_REQUIRE_TLS`、`MEETING_SMTP_TLS_MODE`
 - `MEETING_SENDCLOUD_API_BASE_URL`、`MEETING_SENDCLOUD_API_USER`、`MEETING_SENDCLOUD_API_KEY`
 - `MEETING_SENDCLOUD_FROM_ADDRESS`、`MEETING_SENDCLOUD_FROM_NAME`
 - `MEETING_STATS_REPORT_TO`，每日流量统计邮件收件人，多个地址用英文逗号分隔；为空表示不发送
@@ -167,13 +167,13 @@ go run ./cmd/server
 
 ### 生产环境邮件发送
 
-Docker 生产部署建议把 SendCloud API 凭据放在仓库外、发布包外的独立环境文件中，由运维手工创建和维护。
+Docker 生产部署建议把邮件服务凭据放在仓库外、发布包外的独立环境文件中，由运维手工创建和维护。当前支持 SendCloud API 和通用 SMTP 两类生产模式，SendCloud 可继续保留为 `sendcloud_api` 适配器；阿里云 DirectMail、腾讯 SES 等 SMTP 服务可使用 `smtp` 模式。
 
 - `docker-compose.yml` 现在会为 `meeting-backend` 读取一个可选的外部 env 文件
 - 默认路径：`/data/07c2.com.cn/meeting/meeting-backend.env`
 - 如需自定义路径，可在执行 `./start.sh`、`./update.sh` 或 `./crontab.sh add` 前设置 `MEETING_BACKEND_ENV_FILE=/你的路径/backend.env`
 
-示例 `/data/07c2.com.cn/meeting/meeting-backend.env`：
+SendCloud API 示例 `/data/07c2.com.cn/meeting/meeting-backend.env`：
 
 ```env
 MEETING_MAILER_MODE=sendcloud_api
@@ -190,7 +190,26 @@ MEETING_WECHAT_MINIPROGRAM_APP_SECRET=your_wechat_miniprogram_app_secret
 MEETING_WECHAT_MINIPROGRAM_API_BASE_URL=https://api.weixin.qq.com
 ```
 
-仓库内同时提供了生产配置模版 [scripts/env.example](scripts/env.example)。每次发布打包时，这个文件也会一并进入压缩包根目录，文件名保持为 `env.example`，便于运维复制到 `/data/07c2.com.cn/meeting/meeting-backend.env` 后再手工填写真实凭据。SMTP 仍然保留为备选模式，但生产环境优先推荐 SendCloud API。
+阿里云 DirectMail SMTP 示例：
+
+```env
+MEETING_MAILER_MODE=smtp
+MEETING_SMTP_HOST=smtpdm.aliyun.com
+MEETING_SMTP_PORT=465
+MEETING_SMTP_USERNAME=no-reply@mail.07c2.com.cn
+MEETING_SMTP_PASSWORD=your_aliyun_directmail_smtp_password
+MEETING_SMTP_FROM_ADDRESS=no-reply@mail.07c2.com.cn
+MEETING_SMTP_FROM_NAME=meeting
+MEETING_SMTP_REQUIRE_TLS=true
+MEETING_SMTP_TLS_MODE=implicit
+MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+MEETING_STATS_REPORT_TO=ops@example.com
+MEETING_STATS_REPORT_SEND_AT_UTC=12:00
+```
+
+`MEETING_SMTP_TLS_MODE` 支持 `starttls`、`implicit` 和 `auto`。默认值是 `starttls`，适合 `25/80/587` 这类连接后再升级 TLS 的 SMTP 服务；`implicit` 适合阿里云 DirectMail `465 SSL`；`auto` 会在端口为 `465` 时自动使用 `implicit`，其他端口使用 `starttls`。
+
+仓库内同时提供了生产配置模版 [scripts/env.example](scripts/env.example)。每次发布打包时，这个文件也会一并进入压缩包根目录，文件名保持为 `env.example`，便于运维复制到 `/data/07c2.com.cn/meeting/meeting-backend.env` 后再手工填写真实凭据。
 
 ### 流量统计邮件
 

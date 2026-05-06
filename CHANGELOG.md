@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- SMTP 邮件适配器新增 `MEETING_SMTP_TLS_MODE=starttls|implicit|auto`，可在保留 SendCloud API 模式的同时接入阿里云 DirectMail、腾讯 SES 等 `465 SSL` 邮件服务。
 - 新增每日用户流量统计邮件：配置 `MEETING_STATS_REPORT_TO` 后，后端会按 UTC 指定时间发送过去 24 小时的统计结果，在邮件正文展示摘要表格，并在有数据时附带 `users.csv` 和 `meetings.csv`。
 - 新增会议与参会者统计持久化表，记录会议类型、主持人、注册用户邮箱、匿名昵称、IP、参会时间和离会时间，默认不自动清理，便于后续审计。
 - 后端构建产物新增 `tag / commit / build time` 版本信息注入，统计邮件会在末尾展示当前后端版本。

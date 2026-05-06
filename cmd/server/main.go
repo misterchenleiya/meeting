@@ -59,6 +59,7 @@ func main() {
 		SMTPFromAddress:      cfg.SMTPFromAddress,
 		SMTPFromName:         cfg.SMTPFromName,
 		SMTPRequireTLS:       cfg.SMTPRequireTLS,
+		SMTPTLSMode:          cfg.SMTPTLSMode,
 		SendCloudAPIBaseURL:  cfg.SendCloudAPIBaseURL,
 		SendCloudAPIUser:     cfg.SendCloudAPIUser,
 		SendCloudAPIKey:      cfg.SendCloudAPIKey,

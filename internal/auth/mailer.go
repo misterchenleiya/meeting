@@ -12,6 +12,10 @@ const (
 	MailerModeDebug        = "debug"
 	MailerModeSMTP         = "smtp"
 	MailerModeSendCloudAPI = "sendcloud_api"
+
+	SMTPTLSModeStartTLS = "starttls"
+	SMTPTLSModeImplicit = "implicit"
+	SMTPTLSModeAuto     = "auto"
 )
 
 type Mailer interface {
@@ -57,6 +61,7 @@ type MailerConfig struct {
 	SMTPFromAddress      string
 	SMTPFromName         string
 	SMTPRequireTLS       bool
+	SMTPTLSMode          string
 	SendCloudAPIBaseURL  string
 	SendCloudAPIUser     string
 	SendCloudAPIKey      string

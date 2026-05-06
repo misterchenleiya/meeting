@@ -153,9 +153,9 @@ Optional environment variables:
 - `MEETING_HTTP_ADDR`, default `:5180`
 - `MEETING_SQLITE_PATH`, default `./data/meeting.db`
 - `MEETING_LOG_DIR`, default `./logs`
-- `MEETING_MAILER_MODE`, default `debug`, recommended production value `sendcloud_api`
+- `MEETING_MAILER_MODE`, default `debug`; production can use `sendcloud_api` or `smtp`
 - `MEETING_SMTP_HOST`, `MEETING_SMTP_PORT`, `MEETING_SMTP_USERNAME`, `MEETING_SMTP_PASSWORD`
-- `MEETING_SMTP_FROM_ADDRESS`, `MEETING_SMTP_FROM_NAME`, `MEETING_SMTP_REQUIRE_TLS`
+- `MEETING_SMTP_FROM_ADDRESS`, `MEETING_SMTP_FROM_NAME`, `MEETING_SMTP_REQUIRE_TLS`, `MEETING_SMTP_TLS_MODE`
 - `MEETING_SENDCLOUD_API_BASE_URL`, `MEETING_SENDCLOUD_API_USER`, `MEETING_SENDCLOUD_API_KEY`
 - `MEETING_SENDCLOUD_FROM_ADDRESS`, `MEETING_SENDCLOUD_FROM_NAME`
 - `MEETING_STATS_REPORT_TO`, comma-separated recipients for the daily traffic statistics report. Empty means disabled.
@@ -170,13 +170,13 @@ Optional environment variables:
 
 ### Production Mail Delivery
 
-For Docker deployments, the recommended production setup is to keep SendCloud API credentials outside the repo and outside the release archive.
+For Docker deployments, keep mail service credentials outside the repo and outside the release archive. The backend supports SendCloud API and generic SMTP production modes. SendCloud remains available as the `sendcloud_api` adapter; Aliyun DirectMail, Tencent SES, and other SMTP providers can use `smtp`.
 
 - `docker-compose.yml` now reads an optional external env file for `meeting-backend`
 - default path: `/data/07c2.com.cn/meeting/meeting-backend.env`
 - override path: set `MEETING_BACKEND_ENV_FILE=/your/path/backend.env` before running `./start.sh`, `./update.sh`, or `./crontab.sh add`
 
-Example `/data/07c2.com.cn/meeting/meeting-backend.env`:
+SendCloud API example `/data/07c2.com.cn/meeting/meeting-backend.env`:
 
 ```env
 MEETING_MAILER_MODE=sendcloud_api
@@ -193,7 +193,26 @@ MEETING_WECHAT_MINIPROGRAM_APP_SECRET=your_wechat_miniprogram_app_secret
 MEETING_WECHAT_MINIPROGRAM_API_BASE_URL=https://api.weixin.qq.com
 ```
 
-The repository also ships a production template at [scripts/env.example](scripts/env.example). Every release package now includes this file as root-level `env.example` so operators can copy it to `/data/07c2.com.cn/meeting/meeting-backend.env` and fill in real credentials manually. SMTP is still supported as a fallback mode, but SendCloud API is the recommended production path.
+Aliyun DirectMail SMTP example:
+
+```env
+MEETING_MAILER_MODE=smtp
+MEETING_SMTP_HOST=smtpdm.aliyun.com
+MEETING_SMTP_PORT=465
+MEETING_SMTP_USERNAME=no-reply@mail.07c2.com.cn
+MEETING_SMTP_PASSWORD=your_aliyun_directmail_smtp_password
+MEETING_SMTP_FROM_ADDRESS=no-reply@mail.07c2.com.cn
+MEETING_SMTP_FROM_NAME=meeting
+MEETING_SMTP_REQUIRE_TLS=true
+MEETING_SMTP_TLS_MODE=implicit
+MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+MEETING_STATS_REPORT_TO=ops@example.com
+MEETING_STATS_REPORT_SEND_AT_UTC=12:00
+```
+
+`MEETING_SMTP_TLS_MODE` supports `starttls`, `implicit`, and `auto`. The default is `starttls`, which fits SMTP services that upgrade TLS after connection on ports such as `25`, `80`, and `587`. Use `implicit` for `465 SSL`, such as Aliyun DirectMail. `auto` uses `implicit` on port `465` and `starttls` on other ports.
+
+The repository also ships a production template at [scripts/env.example](scripts/env.example). Every release package now includes this file as root-level `env.example` so operators can copy it to `/data/07c2.com.cn/meeting/meeting-backend.env` and fill in real credentials manually.
 
 ### Traffic Statistics Report
 

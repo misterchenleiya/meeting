@@ -28,6 +28,7 @@ type SMTPMailer struct {
 	fromAddress   string
 	fromName      string
 	requireTLS    bool
+	tlsMode       string
 	subjectPrefix string
 	timeout       time.Duration
 }
@@ -49,6 +50,11 @@ func NewSMTPMailer(logger *slog.Logger, config MailerConfig) (*SMTPMailer, error
 		return nil, fmt.Errorf("invalid smtp from address: %w", err)
 	}
 
+	tlsMode, err := normalizeSMTPTLSMode(config.SMTPTLSMode)
+	if err != nil {
+		return nil, err
+	}
+
 	timeout := config.Timeout
 	if timeout <= 0 {
 		timeout = defaultSMTPTimeout
@@ -63,6 +69,7 @@ func NewSMTPMailer(logger *slog.Logger, config MailerConfig) (*SMTPMailer, error
 		fromAddress:   fromAddress,
 		fromName:      strings.TrimSpace(config.SMTPFromName),
 		requireTLS:    config.SMTPRequireTLS,
+		tlsMode:       tlsMode,
 		subjectPrefix: strings.TrimSpace(config.SubjectPrefix),
 		timeout:       timeout,
 	}, nil
@@ -146,15 +153,9 @@ func (m *SMTPMailer) SendEmail(ctx context.Context, message EmailMessage) (MailD
 func (m *SMTPMailer) send(ctx context.Context, recipients []string, payload []byte) error {
 	address := net.JoinHostPort(m.host, fmt.Sprintf("%d", m.port))
 	dialer := &net.Dialer{Timeout: m.timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", address)
+	client, err := m.connect(ctx, dialer, address)
 	if err != nil {
-		return fmt.Errorf("dial smtp server: %w", err)
-	}
-
-	client, err := smtp.NewClient(conn, m.host)
-	if err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("create smtp client: %w", err)
+		return err
 	}
 
 	quit := false
@@ -164,19 +165,8 @@ func (m *SMTPMailer) send(ctx context.Context, recipients []string, payload []by
 		}
 	}()
 
-	if ok, _ := client.Extension("STARTTLS"); ok {
-		if err := client.StartTLS(&tls.Config{
-			ServerName: m.host,
-			MinVersion: tls.VersionTLS12,
-		}); err != nil {
-			return fmt.Errorf("start tls: %w", err)
-		}
-	} else if m.requireTLS {
-		return fmt.Errorf("smtp server does not support STARTTLS")
-	}
-
 	if m.username != "" {
-		auth := smtp.PlainAuth("", m.username, m.password, m.host)
+		auth := m.smtpAuth()
 		if err := client.Auth(auth); err != nil {
 			return fmt.Errorf("smtp auth: %w", err)
 		}
@@ -208,6 +198,113 @@ func (m *SMTPMailer) send(ctx context.Context, recipients []string, payload []by
 	}
 	quit = true
 	return nil
+}
+
+func (m *SMTPMailer) smtpAuth() smtp.Auth {
+	if m.effectiveTLSMode() == SMTPTLSModeImplicit {
+		return &implicitTLSPlainAuth{
+			username: m.username,
+			password: m.password,
+		}
+	}
+	return smtp.PlainAuth("", m.username, m.password, m.host)
+}
+
+type implicitTLSPlainAuth struct {
+	username string
+	password string
+}
+
+func (a *implicitTLSPlainAuth) Start(_ *smtp.ServerInfo) (string, []byte, error) {
+	response := []byte("\x00" + a.username + "\x00" + a.password)
+	return "PLAIN", response, nil
+}
+
+func (a *implicitTLSPlainAuth) Next(_ []byte, more bool) ([]byte, error) {
+	if more {
+		return nil, fmt.Errorf("unexpected smtp plain auth challenge")
+	}
+	return nil, nil
+}
+
+func (m *SMTPMailer) connect(ctx context.Context, dialer *net.Dialer, address string) (*smtp.Client, error) {
+	switch m.effectiveTLSMode() {
+	case SMTPTLSModeImplicit:
+		conn, err := dialImplicitTLS(ctx, dialer, address, smtpTLSConfig(m.host))
+		if err != nil {
+			return nil, fmt.Errorf("dial smtp server with implicit tls: %w", err)
+		}
+		client, err := smtp.NewClient(conn, m.host)
+		if err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("create smtp client: %w", err)
+		}
+		return client, nil
+	default:
+		conn, err := dialer.DialContext(ctx, "tcp", address)
+		if err != nil {
+			return nil, fmt.Errorf("dial smtp server: %w", err)
+		}
+		client, err := smtp.NewClient(conn, m.host)
+		if err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("create smtp client: %w", err)
+		}
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			if err := client.StartTLS(smtpTLSConfig(m.host)); err != nil {
+				_ = client.Close()
+				return nil, fmt.Errorf("start tls: %w", err)
+			}
+		} else if m.requireTLS {
+			_ = client.Close()
+			return nil, fmt.Errorf("smtp server does not support STARTTLS")
+		}
+		return client, nil
+	}
+}
+
+func dialImplicitTLS(ctx context.Context, dialer *net.Dialer, address string, config *tls.Config) (*tls.Conn, error) {
+	conn, err := dialer.DialContext(ctx, "tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	tlsConn := tls.Client(conn, config)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = tlsConn.Close()
+		return nil, err
+	}
+	return tlsConn, nil
+}
+
+func (m *SMTPMailer) effectiveTLSMode() string {
+	if m.tlsMode != SMTPTLSModeAuto {
+		return m.tlsMode
+	}
+	if m.port == 465 {
+		return SMTPTLSModeImplicit
+	}
+	return SMTPTLSModeStartTLS
+}
+
+func normalizeSMTPTLSMode(mode string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(mode))
+	if normalized == "" {
+		return SMTPTLSModeStartTLS, nil
+	}
+
+	switch normalized {
+	case SMTPTLSModeStartTLS, SMTPTLSModeImplicit, SMTPTLSModeAuto:
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("unsupported smtp tls mode %q", mode)
+	}
+}
+
+func smtpTLSConfig(host string) *tls.Config {
+	return &tls.Config{
+		ServerName: host,
+		MinVersion: tls.VersionTLS12,
+	}
 }
 
 func (m *SMTPMailer) buildSubject(purpose string) string {
