@@ -3189,8 +3189,7 @@ html.room-fullscreen-lock .room-page .room-shell {
   .room-page .stage-shell {
     inset: 78px 0 122px;
     padding: 0 12px 12px;
-    display: grid;
-    grid-template-rows: minmax(0, 1fr);
+    display: block;
     overflow: hidden;
     background: transparent;
   }
@@ -3200,14 +3199,18 @@ html.room-fullscreen-lock .room-page .room-shell {
   }
 
   .room-page .active-stage-layout {
+    position: absolute;
+    inset: 0 12px 12px;
     display: block;
     min-height: 0;
-    height: 100%;
+    height: auto;
   }
 
   .room-page .featured-panel {
-    position: relative;
-    height: 100%;
+    position: absolute;
+    inset: 0;
+    display: block;
+    height: auto;
     min-height: 0;
     border-radius: 28px;
     background: rgba(255, 255, 255, 0.04);
@@ -3245,10 +3248,25 @@ html.room-fullscreen-lock .room-page .room-shell {
   }
 
   .room-page .featured-canvas {
-    height: 100%;
-    min-height: inherit;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: auto;
+    min-height: 0;
     margin: 0;
     border-radius: inherit;
+  }
+
+  .room-page .featured-stream {
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+  }
+
+  .room-page .featured-stream video {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
   }
 
   .room-page .featured-overlay,
@@ -3470,14 +3488,16 @@ html.room-fullscreen-lock .room-page .room-shell {
   }
 
   .room-page .room-shell.is-room-fullscreen .active-stage-layout {
-    height: 100dvh;
-    max-height: 100dvh;
+    inset: 0;
+    height: auto;
+    max-height: none;
   }
 
   .room-page .room-shell.is-room-fullscreen .featured-panel {
-    height: 100dvh;
-    max-height: 100dvh;
-    min-height: 100%;
+    inset: 0;
+    height: auto;
+    max-height: none;
+    min-height: 0;
     border: 0;
     border-radius: 0;
     background: #050506;
@@ -3490,8 +3510,9 @@ html.room-fullscreen-lock .room-page .room-shell {
   }
 
   .room-page .room-shell.is-room-fullscreen .featured-canvas {
-    height: 100dvh;
-    max-height: 100dvh;
+    inset: 0;
+    height: auto;
+    max-height: none;
     min-height: 0;
     margin: 0;
     border-radius: 0;
@@ -3539,6 +3560,10 @@ html.room-fullscreen-lock .room-page .room-shell {
 
   .room-page .stage-shell.has-side-drawer {
     padding-right: 24px;
+  }
+
+  .room-page .active-stage-layout {
+    inset: 0 24px 18px;
   }
 
   .room-page .side-drawer {
@@ -3593,8 +3618,12 @@ html.room-fullscreen-lock .room-page .room-shell {
     padding: 0 8px 12px;
   }
 
+  .room-page .active-stage-layout {
+    inset: 0 8px 12px;
+  }
+
   .room-page .featured-panel {
-    height: 100%;
+    height: auto;
     min-height: 0;
   }
 

@@ -730,6 +730,10 @@ svg {
   color: #ffd8d5;
 }
 
+.h5-room-preview[data-debug="off"] [data-debug-only="true"] {
+  display: none;
+}
+
 .share-copy {
   display: grid;
   gap: 8px;

@@ -66,6 +66,7 @@ const logger = createClientLogger("frontend.app");
 const liveQRCodeScanIntervalMs = 80;
 const liveQRCodeScanCanvasMaxSide = 900;
 const liveQRCodeCenterCropRatio = 0.86;
+const diagnosticsQueryParam = "debug";
 
 type DetectedBarcodeLike = {
   rawValue?: string;
@@ -94,6 +95,14 @@ type QRScanRegion = {
 type ExtendedMediaTrackCapabilities = MediaTrackCapabilities & {
   focusMode?: string[];
 };
+
+function isDiagnosticsEnabled() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return new URLSearchParams(window.location.search).get(diagnosticsQueryParam) === "1";
+}
 
 type SessionState = {
   meeting: Meeting;
@@ -1083,25 +1092,29 @@ function App() {
       },
       {
         onRemoteTrack: (participantId, track, eventStreams, stream) => {
-          logger.info("rtc.remote_track_received", {
-            ...meetingLogFields(session.meeting),
-            participantId,
-            track: summarizeMediaTrack(track),
-            eventStreamIds: eventStreams.map((eventStream) => eventStream.id),
-            eventStreamTrackCounts: eventStreams.map((eventStream) => ({
-              streamId: eventStream.id,
-              audio: eventStream.getAudioTracks().length,
-              video: eventStream.getVideoTracks().length
-            })),
-            remoteStream: summarizeMediaStream(stream)
-          });
+          if (isDiagnosticsEnabled()) {
+            logger.info("rtc.remote_track_received", {
+              ...meetingLogFields(session.meeting),
+              participantId,
+              track: summarizeMediaTrack(track),
+              eventStreamIds: eventStreams.map((eventStream) => eventStream.id),
+              eventStreamTrackCounts: eventStreams.map((eventStream) => ({
+                streamId: eventStream.id,
+                audio: eventStream.getAudioTracks().length,
+                video: eventStream.getVideoTracks().length
+              })),
+              remoteStream: summarizeMediaStream(stream)
+            });
+          }
         },
         onRemoteStream: (participantId, stream) => {
-          logger.info("rtc.remote_stream_received", {
-            ...meetingLogFields(session.meeting),
-            participantId,
-            stream: summarizeMediaStream(stream)
-          });
+          if (isDiagnosticsEnabled()) {
+            logger.info("rtc.remote_stream_received", {
+              ...meetingLogFields(session.meeting),
+              participantId,
+              stream: summarizeMediaStream(stream)
+            });
+          }
           setRemoteTiles((current) => {
             const existing = current.find((tile) => tile.participantId === participantId);
             const next = current.filter((tile) => tile.participantId !== participantId);
@@ -3610,6 +3623,7 @@ function App() {
   const localReadyCheckStatus = activeReadyCheck && meetingSession
     ? activeReadyCheck.results[meetingSession.participant.id]?.status
     : undefined;
+  const diagnosticsEnabled = isDiagnosticsEnabled();
 
   const basePreference = captureSelection;
   const localMicEnabled = Boolean(
@@ -3640,10 +3654,12 @@ function App() {
   const thumbnailItems = featuredStageItem
     ? stageItems.filter((item) => item.id !== featuredStageItem.id)
     : stageItems;
-  const stageDiagnosticKey = buildStageDiagnosticKey(remoteTiles, stageItems, featuredStageItem);
+  const stageDiagnosticKey = diagnosticsEnabled
+    ? buildStageDiagnosticKey(remoteTiles, stageItems, featuredStageItem)
+    : "";
 
   useEffect(() => {
-    if (!meetingSession) {
+    if (!diagnosticsEnabled || !meetingSession) {
       return;
     }
 
@@ -3661,7 +3677,7 @@ function App() {
       })),
       stageItems: stageItems.map(summarizeStageItem)
     });
-  }, [stageDiagnosticKey, meetingSession?.meeting.id, meetingSession?.participant.id]);
+  }, [diagnosticsEnabled, stageDiagnosticKey, meetingSession?.meeting.id, meetingSession?.participant.id]);
 
   const roomClockLabel = meetingSession ? formatElapsedClock(meetingSession.meeting.createdAt) : "00:00";
   const connectionLabel = wsConnected ? "WSS 已连接" : "WSS 已断开";
@@ -4149,6 +4165,7 @@ function App() {
                       <StreamFrame
                         className="prejoin-stage-media"
                         diagnosticLabel="prejoin:local"
+                        diagnosticsEnabled={diagnosticsEnabled}
                         placeholder={<div className="prejoin-stage-placeholder" aria-hidden="true" />}
                         stream={localStream}
                       />
@@ -4496,9 +4513,11 @@ function App() {
                     <button className="ghost-button" onClick={handleDisconnectSignal} type="button">
                       断开信令
                     </button>
-                    <button className="ghost-button" onClick={() => void handleCopyClientLogs()} type="button">
-                      复制前端日志
-                    </button>
+                    {diagnosticsEnabled ? (
+                      <button className="ghost-button" onClick={() => void handleCopyClientLogs()} type="button">
+                        复制前端日志
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -4536,6 +4555,7 @@ function App() {
                   <StreamFrame
                     className="featured-stream"
                     diagnosticLabel={`featured:${featuredStageItem.id}`}
+                    diagnosticsEnabled={diagnosticsEnabled}
                     placeholder={renderStreamFallback(featuredStageItem.label, featuredStageItem.variant)}
                     stream={featuredStageItem.stream}
                   />
@@ -4561,6 +4581,7 @@ function App() {
                         <StreamFrame
                           className="thumbnail-stream"
                           diagnosticLabel={`thumbnail:${item.id}`}
+                          diagnosticsEnabled={diagnosticsEnabled}
                           placeholder={renderStreamFallback(item.label, item.variant)}
                           stream={item.stream}
                         />
@@ -5478,12 +5499,14 @@ function App() {
                       onClick={handleConnectSignal}
                       title="重连信令"
                     />
-                    <AttachedActionButton
-                      description="复制当前设备的前端调试日志。"
-                      icon="settings"
-                      onClick={() => void handleCopyClientLogs()}
-                      title="复制日志"
-                    />
+                    {diagnosticsEnabled ? (
+                      <AttachedActionButton
+                        description="复制当前设备的前端调试日志。"
+                        icon="settings"
+                        onClick={() => void handleCopyClientLogs()}
+                        title="复制日志"
+                      />
+                    ) : null}
                     <AttachedActionButton
                       danger
                       description={isHost ? "打开结束会议确认操作。" : "离开当前会议。"}
@@ -5685,6 +5708,7 @@ function StreamFrame(props: {
   stream: MediaStream | null;
   className?: string;
   diagnosticLabel?: string;
+  diagnosticsEnabled?: boolean;
   placeholder?: ReactNode;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -5708,6 +5732,10 @@ function StreamFrame(props: {
     }
 
     const logVideoEvent = (eventName: string, extra?: Record<string, unknown>) => {
+      if (!props.diagnosticsEnabled) {
+        return;
+      }
+
       logger.info("rtc.stream_video_event", {
         event: eventName,
         label: props.diagnosticLabel ?? "",
@@ -5722,15 +5750,17 @@ function StreamFrame(props: {
       if (playPromise) {
         playPromise
           .then(() => {
-            logger.info("rtc.stream_video_play_succeeded", {
-              reason,
-              label: props.diagnosticLabel ?? "",
-              video: summarizeVideoElement(video),
-              stream: props.stream ? summarizeMediaStream(props.stream) : null
-            });
+            if (props.diagnosticsEnabled) {
+              logger.info("rtc.stream_video_play_succeeded", {
+                reason,
+                label: props.diagnosticLabel ?? "",
+                video: summarizeVideoElement(video),
+                stream: props.stream ? summarizeMediaStream(props.stream) : null
+              });
+            }
           })
           .catch((error) => {
-            if (playFailureLoggedRef.current) {
+            if (!props.diagnosticsEnabled || playFailureLoggedRef.current) {
               return;
             }
 
@@ -5765,30 +5795,36 @@ function StreamFrame(props: {
       logVideoEvent("resize");
     };
     const handleVideoError = () => {
-      logger.warn("rtc.stream_video_error", {
-        label: props.diagnosticLabel ?? "",
-        video: summarizeVideoElement(video),
-        stream: props.stream ? summarizeMediaStream(props.stream) : null,
-        errorCode: video.error?.code ?? null,
-        errorMessage: video.error?.message ?? ""
-      });
+      if (props.diagnosticsEnabled) {
+        logger.warn("rtc.stream_video_error", {
+          label: props.diagnosticLabel ?? "",
+          video: summarizeVideoElement(video),
+          stream: props.stream ? summarizeMediaStream(props.stream) : null,
+          errorCode: video.error?.code ?? null,
+          errorMessage: video.error?.message ?? ""
+        });
+      }
     };
     const handleTrackUnmute = (event: Event) => {
       const track = event.currentTarget instanceof MediaStreamTrack ? event.currentTarget : null;
-      logger.info("rtc.stream_track_unmuted", {
-        label: props.diagnosticLabel ?? "",
-        track: track ? summarizeMediaTrack(track) : null,
-        video: summarizeVideoElement(video),
-        stream: props.stream ? summarizeMediaStream(props.stream) : null
-      });
+      if (props.diagnosticsEnabled) {
+        logger.info("rtc.stream_track_unmuted", {
+          label: props.diagnosticLabel ?? "",
+          track: track ? summarizeMediaTrack(track) : null,
+          video: summarizeVideoElement(video),
+          stream: props.stream ? summarizeMediaStream(props.stream) : null
+        });
+      }
       tryPlay("track_unmute");
     };
 
-    logger.info("rtc.stream_video_attached", {
-      label: props.diagnosticLabel ?? "",
-      video: summarizeVideoElement(video),
-      stream: summarizeMediaStream(props.stream)
-    });
+    if (props.diagnosticsEnabled) {
+      logger.info("rtc.stream_video_attached", {
+        label: props.diagnosticLabel ?? "",
+        video: summarizeVideoElement(video),
+        stream: summarizeMediaStream(props.stream)
+      });
+    }
 
     const videoTracks = props.stream.getVideoTracks();
     for (const track of videoTracks) {
@@ -5800,7 +5836,7 @@ function StreamFrame(props: {
     video.addEventListener("resize", handleResize);
     video.addEventListener("error", handleVideoError);
 
-    const layoutProbe = typeof window === "undefined"
+    const layoutProbe = !props.diagnosticsEnabled || typeof window === "undefined"
       ? null
       : window.requestAnimationFrame(() => {
           logVideoEvent("layout_probe");
@@ -5823,7 +5859,7 @@ function StreamFrame(props: {
       video.pause();
       video.srcObject = null;
     };
-  }, [props.stream, videoTrackKey, props.diagnosticLabel]);
+  }, [props.stream, videoTrackKey, props.diagnosticLabel, props.diagnosticsEnabled]);
 
   if (!props.stream) {
     return <div className={props.className}>{props.placeholder ?? <div className="media-fallback">暂无媒体流</div>}</div>;
