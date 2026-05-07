@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { startTransition, useEffect, useEffectEvent, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import jsQR from "jsqr";
 import QRCode from "qrcode";
 import { createClientLogger, formatClientLogs } from "./logger";
@@ -113,7 +113,7 @@ type EntryView = "login" | "register" | "home" | "schedule" | "join" | "preview"
 type PrejoinOriginView = "home" | "schedule" | "join";
 type SidebarView = "none" | "members" | "chat";
 type MenuView = "none" | "host" | "participant";
-type AttachedPanelView = "none" | "settings" | "apps" | "end";
+type AttachedPanelView = "none" | "settings" | "apps" | "more" | "end";
 type ModalView =
   | "none"
   | "invite"
@@ -345,9 +345,13 @@ function App() {
   const [shareQrDataUrl, setShareQrDataUrl] = useState("");
   const [endingMeetingPending, setEndingMeetingPending] = useState(false);
   const [fullscreenActive, setFullscreenActive] = useState(false);
+  const [fullscreenFallbackActive, setFullscreenFallbackActive] = useState(false);
+  const [fullscreenControlsVisible, setFullscreenControlsVisible] = useState(false);
   const endingMeetingRef = useRef(false);
   const meetingEndSummaryPreparedRef = useRef(false);
   const runtimeIceStateRef = useRef<RuntimeIceState | null>(null);
+  const fullscreenTapAtRef = useRef(0);
+  const fullscreenTapTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     sessionRef.current = meetingSession;
@@ -467,13 +471,49 @@ function App() {
     }
 
     const syncFullscreenState = () => {
-      setFullscreenActive(Boolean(document.fullscreenElement));
+      const nextFullscreenActive = Boolean(document.fullscreenElement);
+      setFullscreenActive(nextFullscreenActive);
+      if (!nextFullscreenActive) {
+        setFullscreenControlsVisible(false);
+      }
     };
 
     syncFullscreenState();
     document.addEventListener("fullscreenchange", syncFullscreenState);
     return () => {
       document.removeEventListener("fullscreenchange", syncFullscreenState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const fullscreenLocked = fullscreenActive || fullscreenFallbackActive;
+    document.documentElement.classList.toggle("room-fullscreen-lock", fullscreenLocked);
+    document.body.classList.toggle("room-fullscreen-lock", fullscreenLocked);
+
+    if (!fullscreenActive && !fullscreenFallbackActive) {
+      setFullscreenControlsVisible(false);
+    } else {
+      setCurrentSidebar("none");
+      setCurrentMenu("none");
+      setCurrentAttachedPanel("none");
+      setFullscreenControlsVisible(false);
+    }
+
+    return () => {
+      document.documentElement.classList.remove("room-fullscreen-lock");
+      document.body.classList.remove("room-fullscreen-lock");
+    };
+  }, [fullscreenActive, fullscreenFallbackActive]);
+
+  useEffect(() => {
+    return () => {
+      if (fullscreenTapTimerRef.current !== null) {
+        window.clearTimeout(fullscreenTapTimerRef.current);
+      }
     };
   }, []);
 
@@ -3264,6 +3304,24 @@ function App() {
     setCurrentSidebar((current) => (current === nextSidebar ? "none" : nextSidebar));
   }
 
+  function clearFullscreenTapTimer() {
+    if (fullscreenTapTimerRef.current === null || typeof window === "undefined") {
+      return;
+    }
+
+    window.clearTimeout(fullscreenTapTimerRef.current);
+    fullscreenTapTimerRef.current = null;
+  }
+
+  function isMobileRoomViewport() {
+    return typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches;
+  }
+
+  function toggleMobileAttachedWindow(nextPanel: AttachedPanelView) {
+    setCurrentSidebar("none");
+    toggleAttachedWindow(nextPanel);
+  }
+
   async function handleToggleFullscreenMode() {
     if (typeof document === "undefined") {
       return;
@@ -3272,12 +3330,73 @@ function App() {
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
-      } else {
-        await document.documentElement.requestFullscreen();
+        setFullscreenFallbackActive(false);
+        setFullscreenControlsVisible(false);
+        return;
       }
+
+      if (fullscreenFallbackActive) {
+        setFullscreenFallbackActive(false);
+        setFullscreenControlsVisible(false);
+        return;
+      }
+
+      closeAttachedWindows();
+      setCurrentSidebar("none");
+      setFullscreenControlsVisible(false);
+
+      if (typeof document.documentElement.requestFullscreen !== "function") {
+        setFullscreenFallbackActive(true);
+        setStatusMessage("当前浏览器不支持系统全屏，已切换为页面内全屏");
+        return;
+      }
+
+      await document.documentElement.requestFullscreen();
     } catch (error) {
-      setErrorMessage(asMessage(error));
+      logger.warn("fullscreen.request_failed", {
+        ...meetingLogFields(meetingSession?.meeting ?? null),
+        error
+      });
+      setFullscreenFallbackActive(true);
+      setFullscreenControlsVisible(false);
+      setStatusMessage("当前浏览器不支持系统全屏，已切换为页面内全屏");
     }
+  }
+
+  function handleStageShellPointerUp(event: PointerEvent<HTMLElement>) {
+    if (!isMobileRoomViewport()) {
+      return;
+    }
+
+    const target = event.target;
+    if (target instanceof Element && target.closest("button, input, textarea, select, a")) {
+      return;
+    }
+
+    const now = Date.now();
+    const isDoubleTap = now - fullscreenTapAtRef.current < 280;
+    clearFullscreenTapTimer();
+
+    if (isDoubleTap) {
+      fullscreenTapAtRef.current = 0;
+      void handleToggleFullscreenMode();
+      return;
+    }
+
+    fullscreenTapAtRef.current = now;
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    fullscreenTapTimerRef.current = window.setTimeout(() => {
+      fullscreenTapAtRef.current = 0;
+      fullscreenTapTimerRef.current = null;
+      if (fullscreenActive || fullscreenFallbackActive) {
+        setFullscreenControlsVisible((current) => !current);
+      } else {
+        setFullscreenControlsVisible(false);
+      }
+    }, 320);
   }
 
   const isHost = meetingSession?.participant.role === "host";
@@ -3347,34 +3466,6 @@ function App() {
   const thumbnailItems = featuredStageItem
     ? stageItems.filter((item) => item.id !== featuredStageItem.id)
     : stageItems;
-  const stageItemByParticipantId = new Map(stageItems.map((item) => [item.participantId, item]));
-  const participantStripItems = stageParticipants.map((participant) => {
-    const stageItem = stageItemByParticipantId.get(participant.id);
-    const micEnabled = resolveParticipantMicEnabled(
-      participant,
-      meetingSession?.participant.id ?? "",
-      localMicEnabled
-    );
-    const isFeatured = featuredStageItem?.participantId === participant.id;
-    let statusLabel = micEnabled ? "发言中" : "已静音";
-
-    if (stageItem?.variant === "screen") {
-      statusLabel = isFeatured ? "主画面" : "共享屏幕";
-    } else if (stageItem?.variant === "camera") {
-      statusLabel = isFeatured ? "主画面" : micEnabled ? "发言中" : "摄像头开启";
-    } else if (!micEnabled) {
-      statusLabel = "摄像头关闭";
-    }
-
-    return {
-      id: participant.id,
-      isFeatured,
-      initials: initialsFromName(participant.nickname),
-      nickname: participant.nickname,
-      statusLabel,
-      stageId: stageItem?.id ?? null
-    };
-  });
   const roomClockLabel = meetingSession ? formatElapsedClock(meetingSession.meeting.createdAt) : "00:00";
   const connectionLabel = wsConnected ? "WSS 已连接" : "WSS 已断开";
   const networkStatusLabel = errorMessage ? "异常" : wsConnected ? "正常" : "断开";
@@ -3391,6 +3482,14 @@ function App() {
     : "";
   const inviteJoinURL = meetingSession ? buildMeetingJoinURL(meetingSession.meeting).toString() : "";
   const inviteMeetingTimeLabel = meetingSession ? formatInviteMeetingTime(meetingSession.meeting.createdAt) : "";
+  const roomFullscreenActive = fullscreenActive || fullscreenFallbackActive;
+  const roomShellClassName = [
+    "room-shell room-shell--immersive",
+    roomFullscreenActive ? "is-room-fullscreen" : "",
+    roomFullscreenActive && fullscreenControlsVisible ? "is-fullscreen-controls-visible" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
   const isLoginEntry = entryView === "login";
   const isRegisterEntry = entryView === "register";
   const showLoginFeedback = isLoginEntry && (errorMessage || statusMessage !== defaultEntryStatusMessage);
@@ -3965,13 +4064,13 @@ function App() {
         />
       ) : null}
 
-      <section className="room-shell room-shell--immersive">
+      <section className={roomShellClassName}>
         <header className="room-topbar">
           <div className="topbar-left">
             <div className="room-brand">
               <div className="room-meta">
                 <strong>{meetingSession.meeting.title}</strong>
-                <span>{inviteMeetingNumberLabel} · {roomClockLabel}</span>
+                <span>{inviteMeetingNumberLabel} · {roomClockLabel} · {networkStatusLabel}</span>
               </div>
             </div>
 
@@ -4016,6 +4115,22 @@ function App() {
               </button>
             </div>
           </div>
+
+          <button
+            className="mobile-room-end-button"
+            disabled={isHost && endingMeetingPending}
+            onClick={() => {
+              if (isHost) {
+                toggleMobileAttachedWindow("end");
+                return;
+              }
+
+              void handleLeaveMeeting();
+            }}
+            type="button"
+          >
+            {isHost ? "结束" : "离开"}
+          </button>
 
           <div className="topbar-right">
             {canAccessHostTools ? (
@@ -4197,7 +4312,10 @@ function App() {
           </div>
         </header>
 
-        <section className={`stage-shell ${currentSidebar !== "none" ? "has-side-drawer" : ""}`}>
+        <section
+          className={`stage-shell ${currentSidebar !== "none" ? "has-side-drawer" : ""}`}
+          onPointerUp={handleStageShellPointerUp}
+        >
           {featuredStageItem ? (
             <div className="active-stage-layout">
               <section className="featured-panel">
@@ -4295,28 +4413,6 @@ function App() {
               </div>
             </div>
           )}
-
-          <section className="participant-strip" aria-label="参会者缩略条">
-            {participantStripItems.map((item) => (
-              <button
-                className={`participant-chip ${item.isFeatured ? "active" : ""}`}
-                disabled={!item.stageId}
-                key={item.id}
-                onClick={() => {
-                  if (item.stageId) {
-                    setFeaturedStageId(item.stageId);
-                  }
-                }}
-                type="button"
-              >
-                <span className="chip-avatar">{item.initials}</span>
-                <span className="chip-copy">
-                  <strong>{item.nickname}</strong>
-                  <span>{item.statusLabel}</span>
-                </span>
-              </button>
-            ))}
-          </section>
 
           {currentSidebar === "members" ? (
             <aside className="side-drawer">
@@ -4909,7 +5005,8 @@ function App() {
         </section>
 
         <footer className="room-toolbar">
-          <div className="toolbar-center">
+          <div className="desktop-toolbar-content">
+            <div className="toolbar-center">
             <div className="tool-rack">
               <button
                 className={`meeting-tool ${basePreference.microphone ? "is-active" : "is-muted"}`}
@@ -5026,9 +5123,9 @@ function App() {
                 ) : null}
               </div>
             </div>
-          </div>
+            </div>
 
-          <div className="toolbar-end">
+            <div className="toolbar-end">
             {isHost ? (
               <div className="attached-anchor attached-anchor--bottom attached-anchor--danger">
                 <button
@@ -5068,6 +5165,154 @@ function App() {
                 <span className="tool-label">离开会议</span>
               </button>
             )}
+            </div>
+          </div>
+
+          <div className="mobile-toolbar-content">
+            <button
+              className={`meeting-tool ${basePreference.microphone ? "is-active" : "is-muted"}`}
+              disabled={mediaCaptureBusy}
+              onClick={handleToggleMicrophone}
+              type="button"
+            >
+              <span className="tool-icon">
+                <MeetingIcon name={basePreference.microphone ? "mic-on" : "mic-off"} />
+              </span>
+              <span className="tool-label">{basePreference.microphone ? "静音" : "解除静音"}</span>
+            </button>
+            <button
+              className={`meeting-tool ${basePreference.camera ? "is-active" : "is-camera-off"}`}
+              disabled={mediaCaptureBusy}
+              onClick={handleToggleCamera}
+              type="button"
+            >
+              <span className="tool-icon">
+                <MeetingIcon name={basePreference.camera ? "camera-on" : "camera-off"} />
+              </span>
+              <span className="tool-label">{basePreference.camera ? "关闭视频" : "开启视频"}</span>
+            </button>
+            <button
+              className={`meeting-tool ${currentSidebar === "chat" ? "is-active" : ""}`}
+              onClick={() => toggleSidebarDrawer("chat")}
+              type="button"
+            >
+              {unreadChatCount > 0 && currentSidebar !== "chat" ? (
+                <span className="tool-badge">{formatUnreadCount(unreadChatCount)}</span>
+              ) : null}
+              <span className="tool-icon">
+                <MeetingIcon name="chat" />
+              </span>
+              <span className="tool-label">聊天</span>
+            </button>
+            <button
+              className={`meeting-tool ${currentSidebar === "members" ? "is-active" : ""}`}
+              onClick={() => toggleSidebarDrawer("members")}
+              type="button"
+            >
+              <span className="tool-icon">
+                <MeetingIcon name="members" />
+              </span>
+              <span className="tool-label">成员</span>
+            </button>
+            <div className="attached-anchor attached-anchor--bottom mobile-more-anchor">
+              <button
+                className={`meeting-tool ${currentAttachedPanel === "more" ? "is-active" : ""}`}
+                onClick={() => toggleMobileAttachedWindow("more")}
+                type="button"
+              >
+                <span className="tool-icon">
+                  <MeetingIcon name="apps" />
+                </span>
+                <span className="tool-label">更多</span>
+              </button>
+              {currentAttachedPanel === "more" ? (
+                <div className="attached-panel attached-panel--bottom attached-panel--more">
+                  <div className="attached-panel-header">
+                    <strong>更多</strong>
+                    <span>会议工具与低频操作</span>
+                  </div>
+                  <div className="attached-action-list mobile-more-grid">
+                    <AttachedActionButton
+                      description="复制会议号、二维码和邀请信息。"
+                      icon="invite"
+                      onClick={() => openMeetingModal("invite")}
+                      title="邀请"
+                    />
+                    <AttachedActionButton
+                      description={screenSharing ? "停止当前屏幕共享。" : "把当前屏幕共享给参会者。"}
+                      disabled={!screenSharing && !canScreenShare}
+                      icon="share"
+                      onClick={() => void (screenSharing ? handleStopScreenShare() : handleStartScreenShare())}
+                      title={screenSharing ? "停止共享" : "共享屏幕"}
+                    />
+                    <AttachedActionButton
+                      description="打开本地录制和临时纪要面板。"
+                      icon="record"
+                      onClick={() => openMeetingModal("recording_panel")}
+                      title="录制与纪要"
+                    />
+                    <AttachedActionButton
+                      description="打开共享白板。"
+                      icon="apps"
+                      onClick={() => openMeetingModal("whiteboard_panel")}
+                      title="白板"
+                    />
+                    <AttachedActionButton
+                      description={canAccessHostTools ? "管理成员权限和助理角色。" : "向主持人申请摄像头、麦克风等权限。"}
+                      icon="person"
+                      onClick={() => openMeetingModal("permissions")}
+                      title="权限与角色"
+                    />
+                    <AttachedActionButton
+                      description={roomFullscreenActive ? "退出当前全屏状态。" : "进入只显示会议画面的全屏状态。"}
+                      icon={roomFullscreenActive ? "fullscreen-exit" : "fullscreen"}
+                      onClick={() => void handleToggleFullscreenMode()}
+                      title={roomFullscreenActive ? "退出全屏" : "进入全屏"}
+                    />
+                    <AttachedActionButton
+                      description="重新连接当前会议的 WSS 信令。"
+                      icon="signal"
+                      onClick={handleConnectSignal}
+                      title="重连信令"
+                    />
+                    <AttachedActionButton
+                      danger
+                      description={isHost ? "打开结束会议确认操作。" : "离开当前会议。"}
+                      disabled={isHost && endingMeetingPending}
+                      icon="end"
+                      onClick={() => {
+                        if (isHost) {
+                          toggleMobileAttachedWindow("end");
+                          return;
+                        }
+
+                        void handleLeaveMeeting();
+                      }}
+                      title={isHost ? "结束会议" : "离开会议"}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {currentAttachedPanel === "end" ? (
+              <div className="attached-panel attached-panel--bottom attached-panel--end mobile-end-panel">
+                <AttachedActionButton
+                  danger
+                  description="结束后所有参会者都会退出当前会议。"
+                  disabled={endingMeetingPending}
+                  icon="end"
+                  onClick={() => void handleConfirmEndMeeting()}
+                  title={endingMeetingPending ? "正在结束会议..." : "全员结束会议"}
+                />
+                <AttachedActionButton
+                  description="保留会议继续进行，仅当前账号退出。"
+                  icon="end"
+                  onClick={() => void handleLeaveMeeting()}
+                  title="离开会议"
+                />
+              </div>
+            ) : null}
           </div>
         </footer>
 

@@ -1987,6 +1987,34 @@ p {
   padding: 0;
 }
 
+html.room-fullscreen-lock,
+html.room-fullscreen-lock body {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.room-fullscreen-lock {
+  position: fixed;
+  inset: 0;
+}
+
+html.room-fullscreen-lock #root,
+html.room-fullscreen-lock .room-page {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+html.room-fullscreen-lock .room-page .room-shell {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
 .room-page .room-shell {
   position: relative;
   width: 100vw;
@@ -2180,6 +2208,10 @@ p {
   padding: 0;
 }
 
+.room-page .mobile-room-end-button {
+  display: none;
+}
+
 .room-page .topbar-action small {
   font-size: 11px;
   color: var(--muted);
@@ -2267,10 +2299,6 @@ p {
   overflow: auto;
 }
 
-.room-page .participant-strip {
-  display: none;
-}
-
 .room-page .idle-stage {
   min-height: 100%;
   display: grid;
@@ -2333,14 +2361,6 @@ p {
   width: 16px;
   height: 16px;
   stroke-width: 2;
-}
-
-.room-page .participant-chip {
-  appearance: none;
-  border: 0;
-  padding: 0;
-  color: inherit;
-  background: transparent;
 }
 
 .room-page .nickname-edit-inline {
@@ -2597,6 +2617,14 @@ p {
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   background: linear-gradient(180deg, rgba(14, 14, 16, 0.2), rgba(14, 14, 16, 0.98) 24%, rgba(14, 14, 16, 0.98));
   backdrop-filter: blur(14px);
+}
+
+.room-page .desktop-toolbar-content {
+  display: contents;
+}
+
+.room-page .mobile-toolbar-content {
+  display: none;
 }
 
 .room-page .toolbar-center {
@@ -2950,17 +2978,22 @@ p {
 
   .room-page .room-topbar {
     top: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     height: auto;
     min-height: 56px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    backdrop-filter: none;
+    padding: 9px 10px 9px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 22px;
+    background: rgba(18, 18, 20, 0.82);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.26);
+    backdrop-filter: blur(18px);
   }
 
   .room-page .topbar-left {
     flex: 1;
-    justify-content: space-between;
+    min-width: 0;
+    justify-content: flex-start;
     gap: 10px;
   }
 
@@ -2969,20 +3002,32 @@ p {
     min-width: 0;
   }
 
+  .room-page .topbar-status,
+  .room-page .topbar-right,
   .room-page .host-tools,
-  .room-page .meeting-tools,
-  .room-page .topbar-right > .topbar-action.icon-only.utility-tools {
+  .room-page .meeting-tools {
     display: none;
   }
 
-  .room-page .topbar-right .utility-tools span:not(.topbar-icon) {
-    display: none;
+  .room-page .mobile-room-end-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 13px;
+    border: 1px solid rgba(255, 69, 58, 0.26);
+    border-radius: 999px;
+    background: rgba(255, 69, 58, 0.14);
+    color: #ffd8d5;
+    font-weight: 700;
   }
 
   .room-page .stage-shell {
     inset: 78px 0 122px;
     padding: 0 12px 12px;
-    overflow: visible;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
     background: transparent;
   }
 
@@ -2993,12 +3038,13 @@ p {
   .room-page .active-stage-layout {
     display: block;
     min-height: 0;
-    height: auto;
+    height: 100%;
   }
 
   .room-page .featured-panel {
     position: relative;
-    min-height: clamp(260px, 48vh, 420px);
+    height: 100%;
+    min-height: 0;
     border-radius: 28px;
     background: rgba(255, 255, 255, 0.04);
     box-shadow: 0 24px 40px rgba(0, 0, 0, 0.34);
@@ -3035,6 +3081,7 @@ p {
   }
 
   .room-page .featured-canvas {
+    height: 100%;
     min-height: inherit;
     margin: 0;
     border-radius: inherit;
@@ -3046,15 +3093,18 @@ p {
   }
 
   .room-page .idle-stage {
-    min-height: clamp(260px, 48vh, 420px);
-    padding: 0 0 8px;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
     place-items: stretch;
   }
 
   .room-page .room-avatar-wall {
+    height: 100%;
     width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+    align-content: center;
   }
 
   .room-page .room-avatar-card {
@@ -3074,81 +3124,20 @@ p {
     gap: 8px;
   }
 
-  .room-page .participant-strip {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(160px, 1fr);
-    gap: 12px;
-    overflow-x: auto;
-    padding: 16px 0 4px;
-  }
-
-  .room-page .participant-chip {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 10px;
-    min-height: 66px;
-    padding: 12px;
-    border-radius: 22px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.04);
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .room-page .participant-chip:disabled {
-    opacity: 0.72;
-    cursor: default;
-  }
-
-  .room-page .participant-chip.active {
-    border-color: rgba(10, 132, 255, 0.34);
-    background: rgba(10, 132, 255, 0.12);
-  }
-
-  .room-page .chip-avatar {
-    width: 42px;
-    height: 42px;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
-    font-size: 14px;
-    font-weight: 700;
-  }
-
-  .room-page .chip-copy {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-  }
-
-  .room-page .chip-copy strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 14px;
-  }
-
-  .room-page .chip-copy span {
-    color: var(--muted);
-    font-size: 12px;
-  }
-
   .room-page .side-drawer {
+    position: fixed;
     top: auto;
     left: 12px;
     right: 12px;
     bottom: calc(114px + env(safe-area-inset-bottom));
     width: auto;
-    max-height: min(56vh, 460px);
+    max-height: min(52vh, 460px);
     grid-template-rows: auto minmax(0, 1fr) auto;
     gap: 14px;
     padding: 18px;
     border-radius: 26px;
     box-shadow: 0 28px 70px rgba(0, 0, 0, 0.34);
+    z-index: 8;
   }
 
   .room-page .member-list,
@@ -3170,14 +3159,27 @@ p {
   }
 
   .room-page .room-toolbar {
-    bottom: calc(14px + env(safe-area-inset-bottom));
-    align-items: stretch;
-    gap: 8px;
-    padding: 10px;
+    left: clamp(8px, 3vw, 14px);
+    right: clamp(8px, 3vw, 14px);
+    bottom: calc(clamp(10px, 3vw, 14px) + env(safe-area-inset-bottom));
+    display: block;
+    padding: clamp(6px, 2.4vw, 10px);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 24px;
+    border-radius: clamp(18px, 6vw, 24px);
     background: rgba(16, 16, 18, 0.92);
     box-shadow: 0 24px 40px rgba(0, 0, 0, 0.34);
+  }
+
+  .room-page .desktop-toolbar-content {
+    display: none;
+  }
+
+  .room-page .mobile-toolbar-content {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: stretch;
+    gap: clamp(3px, 1.8vw, 8px);
+    min-width: 0;
   }
 
   .room-page .toolbar-center {
@@ -3205,14 +3207,49 @@ p {
     overflow-x: auto;
   }
 
-  .room-page .meeting-tool,
-  .room-page .end-call-button {
-    min-width: 84px;
-    min-height: 78px;
-    padding: 12px 10px 10px;
+  .room-page .mobile-toolbar-content > .meeting-tool,
+  .room-page .mobile-more-anchor > .meeting-tool {
+    width: 100%;
+    min-width: 0;
+    min-height: clamp(54px, 14vw, 68px);
+    padding: clamp(7px, 2.4vw, 10px) clamp(4px, 1.8vw, 8px);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 20px;
+    border-radius: clamp(14px, 4.6vw, 18px);
     background: rgba(255, 255, 255, 0.04);
+    gap: clamp(3px, 1.4vw, 7px);
+  }
+
+  .room-page .mobile-more-anchor {
+    display: flex;
+    min-width: 0;
+  }
+
+  .room-page .mobile-toolbar-content .tool-icon {
+    width: clamp(18px, 5.4vw, 23px);
+    height: clamp(18px, 5.4vw, 23px);
+  }
+
+  .room-page .mobile-toolbar-content .tool-icon svg {
+    width: clamp(17px, 5vw, 21px);
+    height: clamp(17px, 5vw, 21px);
+  }
+
+  .room-page .mobile-toolbar-content .tool-label {
+    max-width: 100%;
+    overflow: hidden;
+    color: #e5e5ea;
+    font-size: clamp(10px, 2.8vw, 12px);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .room-page .mobile-toolbar-content .tool-badge {
+    top: clamp(3px, 1.3vw, 6px);
+    right: clamp(4px, 1.6vw, 8px);
+    min-width: clamp(16px, 4.8vw, 20px);
+    height: clamp(16px, 4.8vw, 20px);
+    padding: 0 clamp(4px, 1.2vw, 6px);
+    font-size: clamp(9px, 2.5vw, 11px);
   }
 
   .room-page .attached-anchor--bottom {
@@ -3226,6 +3263,101 @@ p {
     bottom: calc(114px + env(safe-area-inset-bottom));
     width: auto;
     border-radius: 26px;
+  }
+
+  .room-page .attached-panel--more,
+  .room-page .mobile-end-panel {
+    gap: 14px;
+    max-height: min(76vh, 620px);
+    overflow: auto;
+  }
+
+  .room-page .mobile-more-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .room-page .mobile-more-grid .attached-action-item {
+    grid-template-columns: 1fr;
+    align-content: start;
+    gap: 9px;
+    min-height: 112px;
+  }
+
+  .room-page .mobile-more-grid .attached-action-glyph {
+    width: 32px;
+    height: 32px;
+  }
+
+  .room-page .room-shell.is-room-fullscreen .room-topbar,
+  .room-page .room-shell.is-room-fullscreen .side-drawer,
+  .room-page .room-shell.is-room-fullscreen .attached-panel {
+    display: none;
+  }
+
+  .room-page .room-shell.is-room-fullscreen .stage-shell {
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    padding: 0;
+    overflow: hidden;
+    touch-action: manipulation;
+    background: #050506;
+  }
+
+  .room-page .room-shell.is-room-fullscreen .active-stage-layout {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .room-page .room-shell.is-room-fullscreen .featured-panel {
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100%;
+    border: 0;
+    border-radius: 0;
+    background: #050506;
+    box-shadow: none;
+  }
+
+  .room-page .room-shell.is-room-fullscreen .featured-header,
+  .room-page .room-shell.is-room-fullscreen .featured-overlay {
+    display: none;
+  }
+
+  .room-page .room-shell.is-room-fullscreen .featured-canvas {
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .room-page .room-shell.is-room-fullscreen .idle-stage {
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+    padding: 18px;
+    place-items: center;
+  }
+
+  .room-page .room-shell.is-room-fullscreen .room-avatar-wall {
+    align-content: center;
+  }
+
+  .room-page .room-shell.is-room-fullscreen .room-toolbar {
+    display: none;
+    left: clamp(10px, 3.6vw, 14px);
+    right: clamp(10px, 3.6vw, 14px);
+    bottom: calc(clamp(12px, 4vw, 18px) + env(safe-area-inset-bottom));
+    border-radius: 28px;
+    background: rgba(10, 10, 12, 0.7);
+    box-shadow: 0 26px 70px rgba(0, 0, 0, 0.52);
+    backdrop-filter: blur(22px);
+  }
+
+  .room-page .room-shell.is-room-fullscreen.is-fullscreen-controls-visible .room-toolbar {
+    display: block;
   }
 }
 
@@ -3242,20 +3374,16 @@ p {
   }
 
   .room-page .stage-shell.has-side-drawer {
-    padding-right: 360px;
+    padding-right: 24px;
   }
 
   .room-page .side-drawer {
     left: auto;
     right: 24px;
-    top: 92px;
+    top: auto;
     bottom: 148px;
     width: 320px;
-    max-height: none;
-  }
-
-  .room-page .participant-strip {
-    grid-auto-columns: minmax(180px, 220px);
+    max-height: min(50vh, 460px);
   }
 
   .room-page .attached-panel--bottom {
@@ -3302,7 +3430,8 @@ p {
   }
 
   .room-page .featured-panel {
-    min-height: min(44vh, 340px);
+    height: 100%;
+    min-height: 0;
   }
 
   .room-page .featured-header {
@@ -3331,12 +3460,6 @@ p {
     font-size: 22px;
   }
 
-  .room-page .participant-strip {
-    grid-auto-columns: minmax(148px, 1fr);
-    gap: 8px;
-    padding-top: 12px;
-  }
-
   .room-page .side-drawer,
   .room-page .attached-panel--bottom {
     left: 8px;
@@ -3345,8 +3468,7 @@ p {
   }
 
   .room-page .room-toolbar {
-    padding: 8px;
-    gap: 6px;
+    padding: clamp(6px, 2.4vw, 8px);
   }
 
   .room-page .tool-rack {
@@ -3354,14 +3476,21 @@ p {
     gap: 6px;
   }
 
-  .room-page .meeting-tool,
+  .room-page .tool-rack .meeting-tool,
   .room-page .end-call-button {
     min-width: 76px;
     min-height: 72px;
     padding: 10px 8px;
   }
 
-  .room-page .tool-label {
+  .room-page .mobile-toolbar-content > .meeting-tool,
+  .room-page .mobile-more-anchor > .meeting-tool {
+    min-width: 0;
+    min-height: clamp(52px, 14vw, 64px);
+    padding: clamp(7px, 2.2vw, 9px) clamp(3px, 1.5vw, 7px);
+  }
+
+  .room-page .tool-rack .tool-label {
     font-size: 10px;
   }
 }
