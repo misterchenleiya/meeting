@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>聊天未读与权限处理预览</title>
+    <link rel="stylesheet" href="./20260506-chat-permission-preview.css" />
+  </head>
+  <body>
+    <main class="room-preview">
+      <section class="stage">
+        <header class="topbar">
+          <div>
+            <strong>匿名参会权限申请联调</strong>
+            <span>会议号 138 402 921 · WSS 正常</span>
+          </div>
+        </header>
+
+        <aside class="chat-drawer">
+          <div class="drawer-header">
+            <div>
+              <h1>聊天</h1>
+              <p>会议内聊天记录</p>
+            </div>
+            <span class="pill">3 条</span>
+          </div>
+
+          <ul class="chat-list" id="chatList">
+            <li class="chat-row">
+              <div class="chat-row-header">
+                <strong>mister.chenlei</strong>
+              </div>
+              <div class="chat-meta">
+                <span class="chat-message-copy">123</span>
+                <span class="chat-row-time">02:06:42</span>
+              </div>
+            </li>
+            <li class="chat-row">
+              <div class="chat-row-header">
+                <strong>Mr老陈</strong>
+              </div>
+              <div class="chat-meta">
+                <span class="chat-message-copy">Haha</span>
+                <span class="chat-row-time">02:06:51</span>
+              </div>
+            </li>
+            <li class="chat-row is-system is-actionable">
+              <div class="chat-row-header">
+                <strong>系统消息</strong>
+                <span class="chat-kind-badge">权限申请</span>
+              </div>
+              <div class="chat-meta">
+                <button class="chat-message-action" id="quickAction" type="button">
+                  <span class="chat-message-copy">@主持人，匿名用户 申请开启麦克风权限。</span>
+                  <span class="chat-message-link">点此快速处理</span>
+                </button>
+                <span class="chat-row-time">02:07:18</span>
+              </div>
+            </li>
+            <li class="chat-row is-system is-actionable is-reviewed">
+              <div class="chat-row-header">
+                <strong>系统消息</strong>
+                <span class="chat-kind-badge">已查看</span>
+              </div>
+              <div class="chat-meta">
+                <button class="chat-message-action" id="reviewedAction" type="button">
+                  <span class="chat-message-copy">@主持人，匿名用户 申请开启摄像头权限。</span>
+                  <span class="chat-message-link">再次处理 / 禁止权限</span>
+                </button>
+                <span class="chat-row-time">02:08:06</span>
+              </div>
+            </li>
+          </ul>
+
+          <form class="chat-composer">
+            <textarea placeholder="输入一条聊天消息"></textarea>
+            <button type="button">发送消息</button>
+          </form>
+        </aside>
+
+        <footer class="toolbar">
+          <button class="tool" type="button">麦克风</button>
+          <button class="tool" type="button">成员</button>
+          <button class="tool" id="chatTool" type="button">
+            <span class="tool-badge">1</span>
+            聊天
+          </button>
+          <button class="tool" type="button">录制</button>
+        </footer>
+      </section>
+
+      <section class="modal" id="permissionModal" aria-label="权限与角色">
+        <div class="modal-card">
+          <h2>权限与角色</h2>
+          <p>处理参会者的能力授权和助理角色。</p>
+          <label>
+            授权目标
+            <select>
+              <option>匿名用户 · 参会者 · p-1039ab2</option>
+            </select>
+          </label>
+          <label>
+            授权能力
+            <select>
+              <option>麦克风</option>
+            </select>
+          </label>
+          <button class="primary" id="grantButton" type="button">主持人授权</button>
+          <button class="danger" id="revokeButton" type="button">禁止该权限</button>
+          <label>
+            助理目标
+            <select>
+              <option>mister.chenlei · 参会者 · p-7a62c09</option>
+            </select>
+          </label>
+          <button class="ghost" id="assistantButton" type="button">设为助理</button>
+          <p class="permission-feedback" id="permissionFeedback">已选择麦克风权限申请，确认目标后点击“主持人授权”。</p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const modal = document.querySelector("#permissionModal");
+      const feedback = document.querySelector("#permissionFeedback");
+      document.querySelector("#quickAction").addEventListener("click", () => {
+        modal.classList.add("is-open");
+        feedback.textContent = "已选择麦克风权限申请，确认目标后点击“主持人授权”。";
+      });
+      document.querySelector("#reviewedAction").addEventListener("click", () => {
+        modal.classList.add("is-open");
+        feedback.textContent = "该申请已查看，可继续授权或禁止该参会者的摄像头权限。";
+      });
+      document.querySelector("#grantButton").addEventListener("click", () => {
+        feedback.textContent = "已发送授权操作：匿名用户 / 麦克风。";
+      });
+      document.querySelector("#revokeButton").addEventListener("click", () => {
+        feedback.textContent = "已发送禁止权限操作：匿名用户 / 摄像头。";
+      });
+      document.querySelector("#assistantButton").addEventListener("click", () => {
+        feedback.textContent = "已发送设为助理操作：mister.chenlei。";
+      });
+    </script>
+  </body>
+</html>

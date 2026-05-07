@@ -39,7 +39,14 @@ export type ChatMessage = {
   id: string;
   participantId: string;
   nickname: string;
+  kind: "user" | "system" | "capability_request";
   message: string;
+  action?: {
+    type: "open_permissions";
+    targetParticipantId: string;
+    capability: Capability;
+    requestedBy: string;
+  };
   sentAt: string;
 };
 
@@ -77,11 +84,12 @@ export type ReadyCheckRound = {
 };
 
 export type Meeting = {
-  id: string;
+  id?: string;
   meetingNumber: string;
   joinCode: string;
   passwordRequired: boolean;
   title: string;
+  meetingType: "quick" | "scheduled";
   hostParticipantId: string;
   status: "active" | "ended";
   createdAt: string;

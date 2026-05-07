@@ -20,8 +20,8 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 
 ## Core Constraints
 
-- `participant` starts with chat-only permissions
-- `participant` needs host approval to use microphone, camera, whiteboard, screen sharing, recording, and ready check
+- Registered participants start with chat, microphone, camera, and screen-sharing permissions; recording still needs host approval
+- Anonymous participants start with chat-only permissions; microphone, camera, screen sharing, and recording still require host approval
 - The host can promote a participant to assistant, and assistants receive the granted host-side capabilities
 - Recording stays local by default and is not uploaded to the server
 - Temporary chat history, whiteboard state, ready check results, and temporary minutes live only until the meeting ends
@@ -55,7 +55,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 
 - [x] Create, join, leave, and host-end meeting flows
 - [x] Host / assistant / participant role model
-- [x] Chat-only default permissions for participants
+- [x] Split default capability matrix for registered and anonymous participants
 - [x] 1v1 `WebRTC` P2P connection flow
 - [x] Local media capture and local/remote video preview
 - [x] Screen sharing
@@ -80,13 +80,14 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - [~] Meeting minutes
   Temporary minutes, chat history, whiteboard counts, and ready check summaries can be exported, but there is no host-side save reminder at meeting end yet.
 - [~] Audit logging
-  The frontend already reports latency, packet loss, frame rate, bitrate, and connection summary, but device fingerprinting and richer network context are still missing.
+  The frontend reports latency, packet loss, frame rate, bitrate, connection summary, and coarse client profile buckets for statistics. It intentionally avoids stable device fingerprinting.
+- [~] TURN / coturn runtime relay access
+  The backend now issues runtime ICE / TURN credentials and the release template now uses `coturn use-auth-secret`, but production still needs the shared secret, certificate readability, and firewall validation to be wired correctly in each environment.
 - [~] WeChat mini program client
   Phase 1 is now implemented: the mini program supports WeChat quick login, token-based auth persistence, meeting lookup, password-gated join, and a minimal room shell. Audio/video and richer in-room collaboration are still pending.
 
 ### Not Yet Implemented
 
-- [ ] TURN / coturn deployment and production validation for peers that fail NAT traversal
 - [ ] Dynamic multi-peer mesh management and performance optimization
 - [ ] WeChat QR-code login and richer account binding flows
 - [ ] Auto-fill the join form when opening an invite link directly
@@ -95,12 +96,13 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 ## Current UI Flow
 
 - Before joining a meeting, the login view now uses a full-screen single-card layout with a large `meeting` wordmark, a focused spotlight below it, and a centered auth card in the same macOS-dark visual system as the room UI.
-- Auth flow: login and registration remain separate entry points. Registration verifies the email code and returns to the login card; verification-code login now supports both existing users and first-time users, auto-registering the user on successful verification. Password login is exposed as a minimal companion path and shows a clear prompt when the account has not set a password. Development builds may still auto-fill the verification code for convenience.
+- Auth flow: login and registration remain separate entry points. Registration verifies the email code and returns to the login card; verification-code login now supports both existing users and first-time users, auto-registering the user on successful verification. Password login is exposed as a minimal companion path and shows a clear prompt when the account has not set a password. Each account now keeps only one active login session; a new login revokes older sessions. Development builds may still auto-fill the verification code for convenience.
 - Verification-code requests now enforce a server-side `60s` cooldown per email and per anonymous client. Refreshing the page does not bypass the cooldown, and a relaxed IP fallback limit is used to reduce abuse without immediately locking an entire shared network.
-- Host flow: after sign-in, the app returns to the dark entry shell for quick meeting or scheduled meeting entry. The scheduled form currently reuses the existing create-meeting API and enters the room immediately.
-- Join flow: enter the public 9-digit meeting number, run a preflight lookup, and then enter the password in a modal only if the meeting requires one. Grouped `3-3-3` meeting numbers with spaces are normalized automatically.
+- Host flow: after sign-in, the app returns to the dark entry shell for quick meeting or scheduled meeting entry. Quick meeting now enters the room directly, while the scheduled flow still goes through the H5-style prejoin preview before entering the room.
+- Join flow: enter the public 9-digit meeting number, run a preflight lookup, and then enter the password in a modal only if the meeting requires one. Grouped `3-3-3` meeting numbers with spaces are normalized automatically. If the same registered account joins the same meeting again from a newer device, the older participant session is removed.
 - In-room flow: the room now uses a single-screen full-stage layout with a top title bar, a bottom dock toolbar, attached host / meeting / settings / apps / end panels, and right-side drawers for members and chat. Idle meetings show an avatar wall; active media switches to a featured stage with a thumbnail rail.
 - The share window now shows the public 9-digit meeting number, a QR code, and copy actions; the internal room id is no longer shown directly in user-facing UI.
+- When a participant tries to use microphone, camera, screen sharing, or recording without permission, the frontend now shows a confirmation dialog first. Confirming sends a host-facing permission request and appends an `@host` system message to the room chat. The host can click that message to open the permission panel with the participant and capability prefilled.
 - Whiteboard, ready check, temporary minutes, audit summary, and capability management remain available through menus, drawers, and floating panels around the main stage.
 
 ## API Surface
@@ -116,24 +118,27 @@ Key endpoints that are already available:
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
 - `POST /api/meetings`
-- `GET /api/meetings/{meetingID}`
-- `GET /api/meetings/{meetingID}/minutes`
-- `POST /api/meetings/{meetingID}/join`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/leave`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/nickname`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/audit`
-- `POST /api/meetings/{meetingID}/end`
+- `GET /api/meetings/{meetingNumber}`
+- `GET /api/meetings/{meetingNumber}/minutes`
+- `POST /api/meetings/{meetingNumber}/join`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/leave`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/nickname`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/capabilities/{capability}/grant`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/audit`
+- `POST /api/meetings/{meetingNumber}/end`
 - `PUT /api/users/{userID}/preferences`
-- `GET /ws/meetings/{meetingID}`
+- `GET /ws/meetings/{meetingNumber}`
 
 Detailed contract docs live in [docs/api/README.md](docs/api/README.md).
 
 Notes:
 
 - `POST /api/meetings` now returns both the internal `id` and the public `meetingNumber`.
-- Meeting-scoped REST endpoints such as `GET /api/meetings/{meetingID}` and `POST /api/meetings/{meetingID}/join` accept either the internal runtime id or the public 9-digit meeting number.
-- `GET /ws/meetings/{meetingID}` still uses the internal runtime id to keep the signaling path stable.
+- `POST /api/meetings`, `POST /api/meetings/{meetingNumber}/join`, and `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers` now return runtime `iceServers`; TURN credentials are short-lived and signed by the backend instead of being baked into the frontend bundle.
+- `chatMessages` in meeting snapshots and realtime `chat.message` events may now carry structured system-message metadata. Capability-request messages use `kind = capability_request` and an `action` object so the host UI can open the permission panel directly instead of parsing localized text.
+- Meeting-scoped REST and WebSocket paths now use the public 9-digit `meetingNumber`; legacy internal runtime ids are still accepted during the compatibility window and normalized server-side.
+- API responses still include the internal `id` for compatibility and diagnostics, but new frontend code must use `meetingNumber` for user-facing display, REST paths, WebSocket paths, QR codes, and invite links.
 
 ## Local Development
 
@@ -148,24 +153,30 @@ Optional environment variables:
 - `MEETING_HTTP_ADDR`, default `:5180`
 - `MEETING_SQLITE_PATH`, default `./data/meeting.db`
 - `MEETING_LOG_DIR`, default `./logs`
-- `MEETING_MAILER_MODE`, default `debug`, recommended production value `sendcloud_api`
+- `MEETING_MAILER_MODE`, default `debug`; production can use `sendcloud_api` or `smtp`
 - `MEETING_SMTP_HOST`, `MEETING_SMTP_PORT`, `MEETING_SMTP_USERNAME`, `MEETING_SMTP_PASSWORD`
-- `MEETING_SMTP_FROM_ADDRESS`, `MEETING_SMTP_FROM_NAME`, `MEETING_SMTP_REQUIRE_TLS`
+- `MEETING_SMTP_FROM_ADDRESS`, `MEETING_SMTP_FROM_NAME`, `MEETING_SMTP_REQUIRE_TLS`, `MEETING_SMTP_TLS_MODE`
 - `MEETING_SENDCLOUD_API_BASE_URL`, `MEETING_SENDCLOUD_API_USER`, `MEETING_SENDCLOUD_API_KEY`
 - `MEETING_SENDCLOUD_FROM_ADDRESS`, `MEETING_SENDCLOUD_FROM_NAME`
+- `MEETING_STATS_REPORT_TO`, comma-separated recipients for the daily traffic statistics report. Empty means disabled.
+- `MEETING_STATS_REPORT_SEND_AT_UTC`, daily statistics report send time in `HH:MM` UTC, default `12:00`.
 - `MEETING_WECHAT_MINIPROGRAM_APP_ID`, `MEETING_WECHAT_MINIPROGRAM_APP_SECRET`
 - `MEETING_WECHAT_MINIPROGRAM_API_BASE_URL`
 - `MEETING_AUTH_CODE_SUBJECT_PREFIX`
+- `MEETING_STUN_URLS`, default `stun:stun.l.google.com:19302`
+- `MEETING_TURN_URLS`, for example `turn:turn.meeting.07c2.com.cn:3478?transport=udp,...`
+- `MEETING_TURN_SHARED_SECRET`, required when you want runtime TURN relay credentials
+- `MEETING_TURN_TTL_SECONDS`, default `43200`
 
 ### Production Mail Delivery
 
-For Docker deployments, the recommended production setup is to keep SendCloud API credentials outside the repo and outside the release archive.
+For Docker deployments, keep mail service credentials outside the repo and outside the release archive. The backend supports SendCloud API and generic SMTP production modes. SendCloud remains available as the `sendcloud_api` adapter; Aliyun DirectMail, Tencent SES, and other SMTP providers can use `smtp`.
 
 - `docker-compose.yml` now reads an optional external env file for `meeting-backend`
 - default path: `/data/07c2.com.cn/meeting/meeting-backend.env`
 - override path: set `MEETING_BACKEND_ENV_FILE=/your/path/backend.env` before running `./start.sh`, `./update.sh`, or `./crontab.sh add`
 
-Example `/data/07c2.com.cn/meeting/meeting-backend.env`:
+SendCloud API example `/data/07c2.com.cn/meeting/meeting-backend.env`:
 
 ```env
 MEETING_MAILER_MODE=sendcloud_api
@@ -175,12 +186,39 @@ MEETING_SENDCLOUD_API_KEY=your_sendcloud_api_key
 MEETING_SENDCLOUD_FROM_ADDRESS=no-reply@mail.07c2.com.cn
 MEETING_SENDCLOUD_FROM_NAME=meeting
 MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+MEETING_STATS_REPORT_TO=ops@example.com
+MEETING_STATS_REPORT_SEND_AT_UTC=12:00
 MEETING_WECHAT_MINIPROGRAM_APP_ID=your_wechat_miniprogram_app_id
 MEETING_WECHAT_MINIPROGRAM_APP_SECRET=your_wechat_miniprogram_app_secret
 MEETING_WECHAT_MINIPROGRAM_API_BASE_URL=https://api.weixin.qq.com
 ```
 
-The repository also ships a production template at [scripts/env.example](scripts/env.example). Every release package now includes this file as root-level `env.example` so operators can copy it to `/data/07c2.com.cn/meeting/meeting-backend.env` and fill in real credentials manually. SMTP is still supported as a fallback mode, but SendCloud API is the recommended production path.
+Aliyun DirectMail SMTP example:
+
+```env
+MEETING_MAILER_MODE=smtp
+MEETING_SMTP_HOST=smtpdm.aliyun.com
+MEETING_SMTP_PORT=465
+MEETING_SMTP_USERNAME=no-reply@mail.07c2.com.cn
+MEETING_SMTP_PASSWORD=your_aliyun_directmail_smtp_password
+MEETING_SMTP_FROM_ADDRESS=no-reply@mail.07c2.com.cn
+MEETING_SMTP_FROM_NAME=meeting
+MEETING_SMTP_REQUIRE_TLS=true
+MEETING_SMTP_TLS_MODE=implicit
+MEETING_AUTH_CODE_SUBJECT_PREFIX=[meeting]
+MEETING_STATS_REPORT_TO=ops@example.com
+MEETING_STATS_REPORT_SEND_AT_UTC=12:00
+```
+
+`MEETING_SMTP_TLS_MODE` supports `starttls`, `implicit`, and `auto`. The default is `starttls`, which fits SMTP services that upgrade TLS after connection on ports such as `25`, `80`, and `587`. Use `implicit` for `465 SSL`, such as Aliyun DirectMail. `auto` uses `implicit` on port `465` and `starttls` on other ports.
+
+The repository also ships a production template at [scripts/env.example](scripts/env.example). Every release package now includes this file as root-level `env.example` so operators can copy it to `/data/07c2.com.cn/meeting/meeting-backend.env` and fill in real credentials manually.
+
+### Traffic Statistics Report
+
+When `MEETING_STATS_REPORT_TO` is configured, the backend sends one traffic statistics email every day at `MEETING_STATS_REPORT_SEND_AT_UTC` and reports the previous 24 hours. The default send time is `12:00` UTC. Usage details are persisted in SQLite and are not automatically deleted.
+
+Reports with usage data show the summary directly in the email body as an HTML table, including visits, new users, email code logins, meeting duration, meeting quality, and client profile distributions. The email includes five detail CSV attachments: `users.csv`, `meetings.csv`, `new_users.csv`, `email_code_logins.csv`, and `meeting_quality.csv`. If the previous 24 hours had no meeting, participant, new user, email code login, or meeting quality data, the backend still sends a short email without attachments. Every report footer includes backend `tag`, `commit`, and `build time`.
 
 ### WeChat Mini Program
 
@@ -219,6 +257,7 @@ make clean
 - Backend build output: `build/backend/meeting`
 - Frontend build output: `build/frontend/`
 - `make linux`: builds the Linux/amd64 release artifacts used by the Docker-based runtime; the frontend release bundle now defaults to same-origin `/api` and `/ws`, assuming your outer Nginx reverse-proxies those paths to the backend. Only set `FRONTEND_API_BASE_URL` / `FRONTEND_SIGNAL_BASE_URL` when you intentionally need a cross-origin deployment
+- Release packaging now requires `TURN_SHARED_SECRET` in the local environment so the staged coturn config can render `static-auth-secret` without committing any real secret into the repo
 - `make pack`: stages `scripts/`, `docker-compose.yml`, backend, frontend, and coturn assets into `meeting_${commit}.tar.gz` and `latest.txt`
 - `make upload`: uploads `meeting_${commit}.tar.gz` first, then `latest.txt`
 - `make publish`: runs the standard `clean -> linux -> pack -> upload` flow

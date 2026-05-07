@@ -29,17 +29,47 @@ const (
 	StatusEnded  Status = "ended"
 )
 
+type MeetingType string
+
+const (
+	MeetingTypeQuick     MeetingType = "quick"
+	MeetingTypeScheduled MeetingType = "scheduled"
+)
+
 type MediaPreference struct {
 	CameraEnabled     bool `json:"cameraEnabled"`
 	MicrophoneEnabled bool `json:"microphoneEnabled"`
 }
 
+type ChatMessageKind string
+
+const (
+	ChatMessageKindUser              ChatMessageKind = "user"
+	ChatMessageKindSystem            ChatMessageKind = "system"
+	ChatMessageKindCapabilityRequest ChatMessageKind = "capability_request"
+)
+
+type ChatMessageActionType string
+
+const (
+	ChatMessageActionTypeOpenPermissions ChatMessageActionType = "open_permissions"
+)
+
+type ChatMessageAction struct {
+	Type                ChatMessageActionType `json:"type"`
+	TargetParticipantID string                `json:"targetParticipantId"`
+	Capability          Capability            `json:"capability"`
+	RequestedBy         string                `json:"requestedBy"`
+}
+
 type ChatMessage struct {
-	ID            string    `json:"id"`
-	ParticipantID string    `json:"participantId"`
-	Nickname      string    `json:"nickname"`
-	Message       string    `json:"message"`
-	SentAt        time.Time `json:"sentAt"`
+	ID            string             `json:"id"`
+	ParticipantID string             `json:"participantId"`
+	Nickname      string             `json:"nickname"`
+	Kind          ChatMessageKind    `json:"kind"`
+	Message       string             `json:"message"`
+	Action        *ChatMessageAction `json:"action,omitempty"`
+	SentAt        time.Time          `json:"sentAt"`
 }
 
 type WhiteboardPoint struct {
@@ -101,6 +131,7 @@ type Meeting struct {
 	JoinCode          string                  `json:"joinCode"`
 	PasswordRequired  bool                    `json:"passwordRequired"`
 	Title             string                  `json:"title"`
+	MeetingType       MeetingType             `json:"meetingType"`
 	HostParticipantID string                  `json:"hostParticipantId"`
 	Status            Status                  `json:"status"`
 	CreatedAt         time.Time               `json:"createdAt"`
@@ -123,5 +154,25 @@ func allCapabilities() []Capability {
 		CapabilityScreenShare,
 		CapabilityRecord,
 		CapabilityReadyCheck,
+	}
+}
+
+func hostGrantableCapabilities() []Capability {
+	return []Capability{
+		CapabilityMicrophone,
+		CapabilityCamera,
+		CapabilityWhiteboard,
+		CapabilityScreenShare,
+		CapabilityRecord,
+		CapabilityReadyCheck,
+	}
+}
+
+func requestableParticipantCapabilities() []Capability {
+	return []Capability{
+		CapabilityMicrophone,
+		CapabilityCamera,
+		CapabilityScreenShare,
+		CapabilityRecord,
 	}
 }

@@ -9,19 +9,24 @@
   font-weight: 700;
 }
 
-.hero-subtitle {
-  margin-top: 18rpx;
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 26rpx;
-  line-height: 1.6;
-}
-
 .card {
   margin-top: 56rpx;
   padding: 42rpx 36rpx;
   border-radius: 32rpx;
   background: rgba(18, 22, 28, 0.86);
   border: 1rpx solid rgba(255, 255, 255, 0.08);
+}
+
+.card-title {
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.recent-meta {
+  margin-top: 14rpx;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 24rpx;
+  line-height: 1.6;
 }
 
 .profile-name {
@@ -35,12 +40,23 @@
   font-size: 24rpx;
 }
 
+.recent-number {
+  margin-top: 18rpx;
+  font-size: 42rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+}
+
+.recent-title {
+  margin-top: 14rpx;
+  font-size: 28rpx;
+}
+
 .primary-button,
 .secondary-button {
   margin-top: 28rpx;
   border-radius: 24rpx;
   height: 88rpx;
-  line-height: 88rpx;
   font-size: 28rpx;
 }
 
@@ -63,4 +79,8 @@
   color: rgba(255, 255, 255, 0.62);
   text-align: center;
   font-size: 26rpx;
+}
+
+.logout-button {
+  width: 100%;
 }

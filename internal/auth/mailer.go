@@ -12,10 +12,15 @@ const (
 	MailerModeDebug        = "debug"
 	MailerModeSMTP         = "smtp"
 	MailerModeSendCloudAPI = "sendcloud_api"
+
+	SMTPTLSModeStartTLS = "starttls"
+	SMTPTLSModeImplicit = "implicit"
+	SMTPTLSModeAuto     = "auto"
 )
 
 type Mailer interface {
 	SendVerificationCode(ctx context.Context, message VerificationMessage) (MailDelivery, error)
+	SendEmail(ctx context.Context, message EmailMessage) (MailDelivery, error)
 }
 
 type VerificationMessage struct {
@@ -32,6 +37,21 @@ type MailDelivery struct {
 	DebugCode string
 }
 
+type EmailMessage struct {
+	To             []string
+	Subject        string
+	TextBody       string
+	HTMLBody       string
+	ContentSummary string
+	Attachments    []MailAttachment
+}
+
+type MailAttachment struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+}
+
 type MailerConfig struct {
 	Mode                 string
 	SMTPHost             string
@@ -41,6 +61,7 @@ type MailerConfig struct {
 	SMTPFromAddress      string
 	SMTPFromName         string
 	SMTPRequireTLS       bool
+	SMTPTLSMode          string
 	SendCloudAPIBaseURL  string
 	SendCloudAPIUser     string
 	SendCloudAPIKey      string

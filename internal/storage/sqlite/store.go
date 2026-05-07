@@ -29,6 +29,7 @@ type UserPreference struct {
 
 type AuditEvent struct {
 	MeetingID        string
+	MeetingNumber    string
 	ParticipantID    string
 	UserID           string
 	ParticipantRole  string
@@ -110,6 +111,9 @@ WHERE client_id <> ''`); err != nil {
 CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_ip_address_created_at
 ON auth_verification_codes(ip_address, created_at DESC)
 WHERE ip_address <> ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "meeting_usage_participants", "client_profile_json", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
 		return err
 	}
 

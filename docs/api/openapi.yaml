@@ -245,12 +245,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}:
+  /api/meetings/{meetingNumber}:
     get:
       tags: [Meetings]
       summary: Get a meeting snapshot
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
       responses:
         "200":
           description: Meeting snapshot
@@ -264,12 +264,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/minutes:
+  /api/meetings/{meetingNumber}/minutes:
     get:
       tags: [Meetings]
       summary: Get the temporary minutes snapshot
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantIDQuery"
       responses:
         "200":
@@ -290,12 +290,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/join:
+  /api/meetings/{meetingNumber}/join:
     post:
       tags: [Meetings]
       summary: Join a meeting
+      description: If the request is authenticated, the backend binds the participant to the current session user and ignores the request body userId. A registered account can only keep one active participant identity in the same meeting; a newer join removes the older non-host participant.
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
       requestBody:
         required: true
         content:
@@ -327,12 +328,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/participants/{participantID}/leave:
+  /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers:
+    post:
+      tags: [Meetings]
+      summary: Get runtime ICE servers for a participant
+      parameters:
+        - $ref: "#/components/parameters/MeetingNumber"
+        - $ref: "#/components/parameters/ParticipantID"
+      responses:
+        "200":
+          description: Runtime ICE configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IceServersResponse"
+        "401":
+          description: The current session does not match the authenticated participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The current session cannot request ICE servers for this participant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Meeting or participant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingNumber}/participants/{participantID}/leave:
     post:
       tags: [Meetings]
       summary: Leave a meeting
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantID"
       requestBody:
         required: false
@@ -359,12 +392,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/participants/{participantID}/nickname:
+  /api/meetings/{meetingNumber}/participants/{participantID}/nickname:
     post:
       tags: [Meetings]
       summary: Update participant nickname
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantID"
       requestBody:
         required: true
@@ -391,12 +424,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/participants/{participantID}/capabilities/{capability}/grant:
+  /api/meetings/{meetingNumber}/participants/{participantID}/capabilities/{capability}/grant:
     post:
       tags: [Meetings]
       summary: Grant a capability to a participant
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantID"
         - $ref: "#/components/parameters/Capability"
       requestBody:
@@ -430,12 +463,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/participants/{participantID}/audit:
+  /api/meetings/{meetingNumber}/participants/{participantID}/audit:
     post:
       tags: [Meetings]
       summary: Upload a media audit report
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
         - $ref: "#/components/parameters/ParticipantID"
       requestBody:
         required: true
@@ -462,12 +495,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/meetings/{meetingID}/end:
+  /api/meetings/{meetingNumber}/end:
     post:
       tags: [Meetings]
       summary: End a meeting as the host
       parameters:
-        - $ref: "#/components/parameters/MeetingID"
+        - $ref: "#/components/parameters/MeetingNumber"
       requestBody:
         required: true
         content:
@@ -545,11 +578,11 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
   parameters:
-    MeetingID:
-      name: meetingID
+    MeetingNumber:
+      name: meetingNumber
       in: path
       required: true
-      description: Internal runtime meeting id or public 9-digit meeting number. REST handlers accept either.
+      description: Public 9-digit meeting number. During the compatibility window, legacy internal meeting ids are still accepted.
       schema:
         type: string
     ParticipantID:
@@ -738,6 +771,11 @@ components:
         password:
           type: string
           description: Optional meeting password. Empty string means no password.
+        meetingType:
+          type: string
+          enum: [quick, scheduled]
+          default: quick
+          description: Source flow for usage statistics. Existing clients may omit it and are treated as quick meetings.
         hostUserId:
           type: string
           description: Ignored by the backend; the current authenticated session is used instead.
@@ -747,14 +785,23 @@ components:
         deviceType:
           type: string
           description: Browser or client label. The backend stores it as-is.
+        clientProfile:
+          $ref: "#/components/schemas/ClientProfile"
     CreateMeetingResponse:
       type: object
-      required: [meeting, host]
+      required: [meeting, host, iceServers]
       properties:
         meeting:
           $ref: "#/components/schemas/Meeting"
         host:
           $ref: "#/components/schemas/Participant"
+        iceServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/IceServer"
+        iceCredentialExpiresAt:
+          type: string
+          format: date-time
     GetMeetingResponse:
       type: object
       required: [meeting]
@@ -763,9 +810,9 @@ components:
           $ref: "#/components/schemas/Meeting"
     MeetingMinutesResponse:
       type: object
-      required: [meetingId, title, chatMessages, whiteboardActions, temporaryMinutes]
+      required: [meetingNumber, title, chatMessages, whiteboardActions, temporaryMinutes]
       properties:
-        meetingId:
+        meetingNumber:
           type: string
         title:
           type: string
@@ -792,11 +839,13 @@ components:
           description: Optional meeting password.
         userId:
           type: string
-          description: Registered user id. Empty string means anonymous mode.
+          description: Ignored when the request is authenticated; the backend uses the current session user. Empty string means anonymous mode for unauthenticated requests.
         nickname:
           type: string
         deviceType:
           type: string
+        clientProfile:
+          $ref: "#/components/schemas/ClientProfile"
         isAnonymous:
           type: boolean
           description: Whether the joiner is anonymous. When false and userId is provided, saved preferences may be used.
@@ -808,12 +857,55 @@ components:
           description: Optional initial microphone preference override.
     JoinMeetingResponse:
       type: object
-      required: [meeting, participant]
+      required: [meeting, participant, iceServers]
       properties:
         meeting:
           $ref: "#/components/schemas/Meeting"
         participant:
           $ref: "#/components/schemas/Participant"
+        iceServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/IceServer"
+        iceCredentialExpiresAt:
+          type: string
+          format: date-time
+    IceServersResponse:
+      type: object
+      required: [iceServers]
+      properties:
+        iceServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/IceServer"
+        expiresAt:
+          type: string
+          format: date-time
+    IceServer:
+      type: object
+      required: [urls]
+      properties:
+        urls:
+          type: array
+          items:
+            type: string
+        username:
+          type: string
+        credential:
+          type: string
+    ClientProfile:
+      type: object
+      description: Optional low-sensitivity client profile for statistics. Values should be coarse buckets rather than stable device fingerprints.
+      additionalProperties:
+        type: string
+      example:
+        browser: Chrome
+        os: macOS
+        deviceCategory: desktop
+        language: zh-CN
+        timeZone: Asia/Shanghai
+        viewportWidthBucket: 1024-1439
+        networkEffectiveType: 4g
     LeaveMeetingRequest:
       type: object
       properties:
@@ -889,6 +981,62 @@ components:
           type: boolean
         defaultMicrophoneEnabled:
           type: boolean
+    Meeting:
+      type: object
+      required:
+        - meetingNumber
+        - joinCode
+        - passwordRequired
+        - title
+        - meetingType
+        - hostParticipantId
+        - status
+        - createdAt
+        - participants
+      properties:
+        id:
+          type: string
+          description: Internal runtime id retained for compatibility and diagnostics. Clients should use meetingNumber for user-facing display, invite links, REST paths, and WebSocket paths.
+        meetingNumber:
+          type: string
+        joinCode:
+          type: string
+        passwordRequired:
+          type: boolean
+        title:
+          type: string
+        meetingType:
+          type: string
+          enum: [quick, scheduled]
+        hostParticipantId:
+          type: string
+        status:
+          type: string
+          enum: [active, ended]
+        createdAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        participants:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/Participant"
+        chatMessages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        whiteboardActions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhiteboardAction"
+        activeReadyCheck:
+          $ref: "#/components/schemas/ReadyCheckRound"
+        temporaryMinutes:
+          type: array
+          items:
+            type: string
     Participant:
       type: object
       required:
@@ -937,7 +1085,7 @@ components:
           type: boolean
     ChatMessage:
       type: object
-      required: [id, participantId, nickname, message, sentAt]
+      required: [id, participantId, nickname, kind, message, sentAt]
       properties:
         id:
           type: string
@@ -945,11 +1093,30 @@ components:
           type: string
         nickname:
           type: string
+        kind:
+          type: string
+          enum: [user, system, capability_request]
         message:
           type: string
+        action:
+          $ref: "#/components/schemas/ChatMessageAction"
         sentAt:
           type: string
           format: date-time
+    ChatMessageAction:
+      type: object
+      required: [type, targetParticipantId, capability, requestedBy]
+      properties:
+        type:
+          type: string
+          enum: [open_permissions]
+        targetParticipantId:
+          type: string
+        capability:
+          type: string
+          enum: [chat, microphone, camera, whiteboard, screen_share, record, ready_check]
+        requestedBy:
+          type: string
     WhiteboardPoint:
       type: object
       required: [x, y]

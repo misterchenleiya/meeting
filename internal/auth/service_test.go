@@ -189,6 +189,56 @@ func TestCompleteWechatMiniProgramLoginUsesExistingUser(t *testing.T) {
 	}
 }
 
+func TestNewLoginRevokesPreviousSession(t *testing.T) {
+	t.Parallel()
+
+	store := openTestAuthStore(t)
+	now := time.Now().UTC()
+	if err := store.CreateUser(context.Background(), sqlite.UserRecord{
+		ID:           "usr_single_session",
+		WechatOpenID: "wechat-openid-single-session",
+		Nickname:     "单设备用户",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}); err != nil {
+		t.Fatalf("CreateUser() error = %v", err)
+	}
+
+	service := NewService(store, nil, WithWechatMiniProgramCodeExchanger(fakeWechatMiniProgramCodeExchanger{
+		openID: "wechat-openid-single-session",
+	}))
+
+	_, firstSession, _, err := service.CompleteWechatMiniProgramLogin(
+		context.Background(),
+		"wx-code-1",
+		"first-agent",
+		"203.0.113.41",
+	)
+	if err != nil {
+		t.Fatalf("first CompleteWechatMiniProgramLogin() error = %v", err)
+	}
+
+	_, secondSession, _, err := service.CompleteWechatMiniProgramLogin(
+		context.Background(),
+		"wx-code-2",
+		"second-agent",
+		"203.0.113.42",
+	)
+	if err != nil {
+		t.Fatalf("second CompleteWechatMiniProgramLogin() error = %v", err)
+	}
+	if firstSession.Token == secondSession.Token {
+		t.Fatalf("session token should rotate on new login")
+	}
+
+	if _, _, err := service.GetCurrentUser(context.Background(), firstSession.Token); err != ErrSessionNotFound {
+		t.Fatalf("GetCurrentUser(first session) error = %v, want %v", err, ErrSessionNotFound)
+	}
+	if _, _, err := service.GetCurrentUser(context.Background(), secondSession.Token); err != nil {
+		t.Fatalf("GetCurrentUser(second session) error = %v", err)
+	}
+}
+
 func TestVerificationCodeClientCooldownAppliesAcrossEmails(t *testing.T) {
 	t.Parallel()
 

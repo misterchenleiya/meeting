@@ -11,6 +11,9 @@ page {
 .brand {
   margin-top: 80rpx;
   text-align: center;
+  display: grid;
+  gap: 12rpx;
+  justify-items: center;
 }
 
 .brand-wordmark {
@@ -23,14 +26,13 @@ page {
 .brand-light {
   width: 420rpx;
   height: 44rpx;
-  margin: 56rpx auto 0;
   border-radius: 999rpx;
   background: radial-gradient(circle at center, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.86) 46%, rgba(255, 255, 255, 0.12) 78%, rgba(255, 255, 255, 0) 100%);
   filter: blur(12rpx);
 }
 
 .card {
-  margin-top: 180rpx;
+  margin-top: 156rpx;
   padding: 48rpx 40rpx;
   border-radius: 36rpx;
   background: rgba(18, 22, 28, 0.86);
@@ -41,13 +43,6 @@ page {
 .card-title {
   font-size: 42rpx;
   font-weight: 600;
-}
-
-.card-subtitle {
-  margin-top: 16rpx;
-  color: rgba(255, 255, 255, 0.64);
-  font-size: 26rpx;
-  line-height: 1.6;
 }
 
 .wechat-login-button {
@@ -131,11 +126,19 @@ page {
   color: rgba(255, 255, 255, 0.9);
 }
 
+.status-card {
+  margin-top: 32rpx;
+  padding: 28rpx;
+  border-radius: 28rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .status-text,
 .error-text {
-  margin-top: 28rpx;
-  text-align: center;
+  text-align: left;
   font-size: 24rpx;
+  line-height: 1.6;
 }
 
 .status-text {

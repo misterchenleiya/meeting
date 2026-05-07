@@ -2,8 +2,10 @@ package signaling_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -18,6 +20,10 @@ import (
 
 type stubStore struct{}
 
+func (stubStore) GetUserByID(_ context.Context, _ string) (sqlite.UserRecord, bool, error) {
+	return sqlite.UserRecord{}, false, nil
+}
+
 func (stubStore) GetUserPreference(_ context.Context, _ string) (sqlite.UserPreference, bool, error) {
 	return sqlite.UserPreference{}, false, nil
 }
@@ -30,6 +36,30 @@ func (stubStore) InsertAuditEvent(_ context.Context, _ sqlite.AuditEvent) error 
 	return nil
 }
 
+func (stubStore) UpsertMeetingUsage(_ context.Context, _ sqlite.MeetingUsageRecord) error {
+	return nil
+}
+
+func (stubStore) UpdateMeetingUsageEndedAt(_ context.Context, _ string, _ time.Time, _ time.Time) error {
+	return nil
+}
+
+func (stubStore) UpsertMeetingParticipantUsage(_ context.Context, _ sqlite.MeetingParticipantUsageRecord) error {
+	return nil
+}
+
+func (stubStore) UpdateMeetingParticipantUsageLeftAt(_ context.Context, _ string, _ string, _ time.Time, _ time.Time) error {
+	return nil
+}
+
+func (stubStore) UpdateMeetingParticipantUsageNickname(_ context.Context, _ string, _ string, _ string, _ time.Time) error {
+	return nil
+}
+
+func (stubStore) UpdateMeetingParticipantUsageRole(_ context.Context, _ string, _ string, _ string, _ time.Time) error {
+	return nil
+}
+
 func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 	t.Parallel()
 
@@ -37,7 +67,7 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 	meetingService := meeting.NewService(logger, stubStore{})
 	hub := signaling.NewHub(logger, meetingService)
 
-	server := httptest.NewServer(httpapi.NewServer(logger, nil, meetingService, nil, hub).Routes())
+	server := httptest.NewServer(httpapi.NewServer(logger, nil, meetingService, nil, hub, nil).Routes())
 	defer server.Close()
 
 	ctx := context.Background()
@@ -65,7 +95,7 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 		t.Fatalf("JoinMeeting() error = %v", err)
 	}
 
-	hostConn := dialWebSocket(t, server.URL, meetingValue.ID, host.ID)
+	hostConn := dialWebSocket(t, server.URL, meetingValue.MeetingNumber, host.ID)
 	defer func() { _ = hostConn.Close() }()
 	participantConn := dialWebSocket(t, server.URL, meetingValue.ID, participant.ID)
 	defer func() { _ = participantConn.Close() }()
@@ -86,6 +116,11 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 		t.Fatalf("fromParticipantId = %v, want %s", payload["fromParticipantId"], participant.ID)
 	}
 
+	requestChatOnHost := readEvent(t, hostConn, "chat.message")
+	requestChatOnParticipant := readEvent(t, participantConn, "chat.message")
+	assertCapabilityRequestChatMessage(t, requestChatOnHost, participant.ID)
+	assertCapabilityRequestChatMessage(t, requestChatOnParticipant, participant.ID)
+
 	writeEvent(t, hostConn, map[string]any{
 		"type": "capability.grant",
 		"payload": map[string]any{
@@ -103,6 +138,35 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 	grantedPayload := grantedOnParticipant["payload"].(map[string]any)
 	if grantedPayload["targetParticipantId"] != participant.ID {
 		t.Fatalf("targetParticipantId = %v, want %s", grantedPayload["targetParticipantId"], participant.ID)
+	}
+
+	writeEvent(t, hostConn, map[string]any{
+		"type": "capability.revoke",
+		"payload": map[string]any{
+			"targetParticipantId": participant.ID,
+			"capability":          "camera",
+		},
+	})
+
+	revokedOnHost := readEvent(t, hostConn, "capability.revoked")
+	if revokedOnHost["type"] != "capability.revoked" {
+		t.Fatalf("host event type = %v, want capability.revoked", revokedOnHost["type"])
+	}
+
+	revokedOnParticipant := readEvent(t, participantConn, "capability.revoked")
+	revokedPayload := revokedOnParticipant["payload"].(map[string]any)
+	if revokedPayload["targetParticipantId"] != participant.ID {
+		t.Fatalf("revoked targetParticipantId = %v, want %s", revokedPayload["targetParticipantId"], participant.ID)
+	}
+	if revokedPayload["revokedBy"] != host.ID {
+		t.Fatalf("revokedBy = %v, want %s", revokedPayload["revokedBy"], host.ID)
+	}
+	if meetingSnapshot, ok := meetingService.GetMeeting(meetingValue.ID); ok {
+		if _, exists := meetingSnapshot.Participants[participant.ID].GrantedCapabilities[meeting.CapabilityCamera]; exists {
+			t.Fatalf("camera capability still granted after revoke")
+		}
+	} else {
+		t.Fatalf("meeting not found after revoke")
 	}
 
 	writeEvent(t, participantConn, map[string]any{
@@ -123,10 +187,63 @@ func TestSignalForwardingAndCapabilityGrant(t *testing.T) {
 	}
 }
 
-func dialWebSocket(t *testing.T, serverURL string, meetingID string, participantID string) *websocket.Conn {
+func TestNotifyMeetingEndedBroadcastsBeforeClosingRoom(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	meetingService := meeting.NewService(logger, stubStore{})
+	hub := signaling.NewHub(logger, meetingService)
+
+	server := httptest.NewServer(httpapi.NewServer(logger, nil, meetingService, nil, hub, nil).Routes())
+	defer server.Close()
+
+	ctx := context.Background()
+	meetingValue, host, err := meetingService.CreateMeeting(ctx, meeting.CreateMeetingInput{
+		Title:        "demo",
+		Password:     "",
+		HostUserID:   "host-user",
+		HostNickname: "主持人",
+		DeviceType:   "desktop",
+		IPAddress:    "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("CreateMeeting() error = %v", err)
+	}
+
+	_, participant, err := meetingService.JoinMeeting(ctx, meeting.JoinMeetingInput{
+		MeetingID:   meetingValue.ID,
+		Password:    "",
+		Nickname:    "参与者",
+		IsAnonymous: true,
+		DeviceType:  "desktop",
+		IPAddress:   "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("JoinMeeting() error = %v", err)
+	}
+
+	hostConn := dialWebSocket(t, server.URL, meetingValue.MeetingNumber, host.ID)
+	defer func() { _ = hostConn.Close() }()
+	participantConn := dialWebSocket(t, server.URL, meetingValue.MeetingNumber, participant.ID)
+	defer func() { _ = participantConn.Close() }()
+
+	readEvent(t, hostConn, "session.welcome")
+	readEvent(t, participantConn, "session.welcome")
+
+	hub.NotifyMeetingEnded(meetingValue.ID, host.ID)
+
+	event := readEvent(t, participantConn, "meeting.ended")
+	payload := event["payload"].(map[string]any)
+	if payload["endedByParticipantId"] != host.ID {
+		t.Fatalf("endedByParticipantId = %v, want %s", payload["endedByParticipantId"], host.ID)
+	}
+	assertWebSocketCloses(t, participantConn)
+}
+
+func dialWebSocket(t *testing.T, serverURL string, meetingIdentifier string, participantID string) *websocket.Conn {
 	t.Helper()
 
-	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws/meetings/" + meetingID + "?participantId=" + participantID
+	wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws/meetings/" + meetingIdentifier + "?participantId=" + participantID
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		t.Fatalf("Dial(%s) error = %v", wsURL, err)
@@ -158,5 +275,46 @@ func readEvent(t *testing.T, conn *websocket.Conn, expectedType string) map[stri
 		if response["type"] == expectedType {
 			return response
 		}
+	}
+}
+
+func assertWebSocketCloses(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("SetReadDeadline() error = %v", err)
+	}
+
+	var response map[string]any
+	err := conn.ReadJSON(&response)
+	if err == nil {
+		t.Fatalf("ReadJSON() succeeded after meeting ended, response = %v", response)
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		t.Fatalf("timed out waiting for websocket close after meeting ended")
+	}
+}
+
+func assertCapabilityRequestChatMessage(t *testing.T, event map[string]any, participantID string) {
+	t.Helper()
+
+	payload := event["payload"].(map[string]any)
+	message := payload["message"].(map[string]any)
+	if message["kind"] != "capability_request" {
+		t.Fatalf("chat message kind = %v, want capability_request", message["kind"])
+	}
+
+	action, ok := message["action"].(map[string]any)
+	if !ok {
+		t.Fatalf("chat message action missing")
+	}
+
+	if action["type"] != "open_permissions" {
+		t.Fatalf("chat action type = %v, want open_permissions", action["type"])
+	}
+
+	if action["targetParticipantId"] != participantID {
+		t.Fatalf("chat action targetParticipantId = %v, want %s", action["targetParticipantId"], participantID)
 	}
 }

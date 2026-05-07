@@ -1,6 +1,10 @@
 SHELL := /bin/zsh
 
 PROJECT_NAME := meeting
+GIT_COMMIT := $(shell git rev-parse --short HEAD)
+GIT_TAG := $(shell git describe --tags --exact-match HEAD 2>/dev/null || echo untagged)
+BUILD_TIME := $(shell date '+%Y-%m-%d %H:%M:%S %z')
+BACKEND_LDFLAGS := -s -w -X 'github.com/misterchenleiya/meeting/internal/buildinfo.Tag=$(GIT_TAG)' -X 'github.com/misterchenleiya/meeting/internal/buildinfo.Commit=$(GIT_COMMIT)' -X 'github.com/misterchenleiya/meeting/internal/buildinfo.BuildTime=$(BUILD_TIME)'
 BUILD_DIR := build
 BACKEND_BUILD_DIR := $(BUILD_DIR)/backend
 BACKEND_BINARY := $(BACKEND_BUILD_DIR)/meeting
@@ -11,7 +15,7 @@ RELEASE_ROOT := $(BUILD_DIR)/release/$(PROJECT_NAME)
 RELEASE_BACKEND_DIR := $(RELEASE_ROOT)/backend
 RELEASE_FRONTEND_DIR := $(RELEASE_ROOT)/frontend
 RELEASE_COTURN_DIR := $(RELEASE_ROOT)/coturn
-ARCHIVE_FILE := $(PROJECT_NAME)_$(shell git rev-parse --short=12 HEAD).tar.gz
+ARCHIVE_FILE := $(PROJECT_NAME)_$(GIT_COMMIT).tar.gz
 ARCHIVE_PATH := $(BUILD_DIR)/$(ARCHIVE_FILE)
 LATEST_FILE := $(BUILD_DIR)/latest.txt
 CURRENT_FILE := $(RELEASE_ROOT)/current.txt
@@ -22,15 +26,13 @@ UPLOAD_MAX_RETRIES ?= 5
 UPLOAD_RETRY_DELAY_SECONDS ?= 1
 FRONTEND_API_BASE_URL ?=
 FRONTEND_SIGNAL_BASE_URL ?=
-FRONTEND_STUN_URLS := stun:stun.l.google.com:19302
+FRONTEND_STUN_URLS ?= stun:stun.l.google.com:19302
 TURN_HOST := turn.meeting.07c2.com.cn
-TURN_USERNAME := meeting
-TURN_CREDENTIAL ?= CHANGE_ME_STRONG_PASSWORD
+TURN_SHARED_SECRET ?=
 COTURN_LISTEN_PORT ?= 3478
 COTURN_TLS_LISTEN_PORT ?= 5349
 COTURN_MIN_PORT ?= 52000
 COTURN_MAX_PORT ?= 52048
-FRONTEND_TURN_URLS := turn:$(TURN_HOST):$(COTURN_LISTEN_PORT)?transport=udp,turn:$(TURN_HOST):$(COTURN_LISTEN_PORT)?transport=tcp,turns:$(TURN_HOST):$(COTURN_TLS_LISTEN_PORT)?transport=tcp
 
 .PHONY: build build-backend build-frontend build-backend-linux build-frontend-release linux stage-release pack upload publish clean
 
@@ -40,7 +42,7 @@ build-backend:
 	@mkdir -p "$(BACKEND_BUILD_DIR)" "$(GO_CACHE_DIR)" "$(GO_TMP_DIR)"
 	GOCACHE="$(abspath $(GO_CACHE_DIR))" \
 	GOTMPDIR="$(abspath $(GO_TMP_DIR))" \
-	go build -o "$(abspath $(BACKEND_BINARY))" ./cmd/server
+	go build -ldflags "$(BACKEND_LDFLAGS)" -o "$(abspath $(BACKEND_BINARY))" ./cmd/server
 
 build-frontend:
 	@mkdir -p "$(WEB_BUILD_DIR)" "$(BUILD_DIR)/.cache/typescript" "$(BUILD_DIR)/.cache/vite"
@@ -59,7 +61,7 @@ build-backend-linux:
 		-e GOOS=linux \
 		-e GOARCH=amd64 \
 		golang:1.24-bookworm \
-		/usr/local/go/bin/go build -trimpath -o build/backend/meeting ./cmd/server
+		/usr/local/go/bin/go build -trimpath -ldflags "$(BACKEND_LDFLAGS)" -o build/backend/meeting ./cmd/server
 
 build-frontend-release:
 	@mkdir -p "$(WEB_BUILD_DIR)" "$(BUILD_DIR)/.cache/typescript" "$(BUILD_DIR)/.cache/vite"
@@ -67,9 +69,6 @@ build-frontend-release:
 		VITE_MEETING_API_BASE_URL="$(FRONTEND_API_BASE_URL)" \
 		VITE_MEETING_SIGNALING_BASE_URL="$(FRONTEND_SIGNAL_BASE_URL)" \
 		VITE_MEETING_STUN_URLS="$(FRONTEND_STUN_URLS)" \
-		VITE_MEETING_TURN_URLS="$(FRONTEND_TURN_URLS)" \
-		VITE_MEETING_TURN_USERNAME="$(TURN_USERNAME)" \
-		VITE_MEETING_TURN_CREDENTIAL="$(TURN_CREDENTIAL)" \
 		npm run build
 
 linux: build-backend-linux build-frontend-release
@@ -83,12 +82,13 @@ stage-release: linux
 	[ -f "docker-compose.yml" ] || { echo "docker-compose.yml missing" >&2; exit 1; }; \
 	[ -f "deploy/frontend/nginx.conf" ] || { echo "deploy/frontend/nginx.conf missing" >&2; exit 1; }; \
 	[ -f "deploy/coturn/turnserver.conf" ] || { echo "deploy/coturn/turnserver.conf missing" >&2; exit 1; }; \
+	[[ -n "$(TURN_SHARED_SECRET)" ]] || { echo "TURN_SHARED_SECRET is required for release packaging" >&2; exit 1; }; \
 	command -v python3 >/dev/null 2>&1 || { echo "python3 is required to render coturn config" >&2; exit 1; }; \
 	cp "$(BACKEND_BINARY)" "$(RELEASE_BACKEND_DIR)/meeting"; \
 	chmod 755 "$(RELEASE_BACKEND_DIR)/meeting"; \
 	cp -R "$(WEB_BUILD_DIR)/." "$(RELEASE_FRONTEND_DIR)/dist/"; \
 	cp "deploy/frontend/nginx.conf" "$(RELEASE_FRONTEND_DIR)/nginx.conf"; \
-	TURN_HOST="$(TURN_HOST)" TURN_USERNAME="$(TURN_USERNAME)" TURN_CREDENTIAL="$(TURN_CREDENTIAL)" COTURN_LISTEN_PORT="$(COTURN_LISTEN_PORT)" COTURN_TLS_LISTEN_PORT="$(COTURN_TLS_LISTEN_PORT)" COTURN_MIN_PORT="$(COTURN_MIN_PORT)" COTURN_MAX_PORT="$(COTURN_MAX_PORT)" python3 -c 'from pathlib import Path; import os; src = Path("deploy/coturn/turnserver.conf").read_text(); host = os.environ["TURN_HOST"]; user = os.environ["TURN_USERNAME"]; credential = os.environ["TURN_CREDENTIAL"]; listen_port = os.environ["COTURN_LISTEN_PORT"]; tls_port = os.environ["COTURN_TLS_LISTEN_PORT"]; min_port = os.environ["COTURN_MIN_PORT"]; max_port = os.environ["COTURN_MAX_PORT"]; src = src.replace("listening-port=3478", "listening-port=" + listen_port); src = src.replace("tls-listening-port=5349", "tls-listening-port=" + tls_port); src = src.replace("realm=turn.meeting.07c2.com.cn", "realm=" + host); src = src.replace("server-name=turn.meeting.07c2.com.cn", "server-name=" + host); src = src.replace("cert=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/fullchain.pem", "cert=/etc/letsencrypt/live/" + host + "/fullchain.pem"); src = src.replace("pkey=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/privkey.pem", "pkey=/etc/letsencrypt/live/" + host + "/privkey.pem"); src = src.replace("user=meeting:CHANGE_ME_STRONG_PASSWORD", "user=" + user + ":" + credential); src = src.replace("min-port=52000", "min-port=" + min_port); src = src.replace("max-port=52048", "max-port=" + max_port); Path("$(RELEASE_COTURN_DIR)/turnserver.conf").write_text(src)'; \
+	TURN_HOST="$(TURN_HOST)" TURN_SHARED_SECRET="$(TURN_SHARED_SECRET)" COTURN_LISTEN_PORT="$(COTURN_LISTEN_PORT)" COTURN_TLS_LISTEN_PORT="$(COTURN_TLS_LISTEN_PORT)" COTURN_MIN_PORT="$(COTURN_MIN_PORT)" COTURN_MAX_PORT="$(COTURN_MAX_PORT)" python3 -c 'from pathlib import Path; import os; src = Path("deploy/coturn/turnserver.conf").read_text(); host = os.environ["TURN_HOST"]; shared_secret = os.environ["TURN_SHARED_SECRET"]; listen_port = os.environ["COTURN_LISTEN_PORT"]; tls_port = os.environ["COTURN_TLS_LISTEN_PORT"]; min_port = os.environ["COTURN_MIN_PORT"]; max_port = os.environ["COTURN_MAX_PORT"]; src = src.replace("listening-port=3478", "listening-port=" + listen_port); src = src.replace("tls-listening-port=5349", "tls-listening-port=" + tls_port); src = src.replace("realm=turn.meeting.07c2.com.cn", "realm=" + host); src = src.replace("server-name=turn.meeting.07c2.com.cn", "server-name=" + host); src = src.replace("cert=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/fullchain.pem", "cert=/etc/letsencrypt/live/" + host + "/fullchain.pem"); src = src.replace("pkey=/etc/letsencrypt/live/turn.meeting.07c2.com.cn/privkey.pem", "pkey=/etc/letsencrypt/live/" + host + "/privkey.pem"); src = src.replace("static-auth-secret=CHANGE_ME_TURN_SHARED_SECRET", "static-auth-secret=" + shared_secret); src = src.replace("min-port=52000", "min-port=" + min_port); src = src.replace("max-port=52048", "max-port=" + max_port); Path("$(RELEASE_COTURN_DIR)/turnserver.conf").write_text(src)'; \
 	COTURN_LISTEN_PORT="$(COTURN_LISTEN_PORT)" COTURN_TLS_LISTEN_PORT="$(COTURN_TLS_LISTEN_PORT)" COTURN_MIN_PORT="$(COTURN_MIN_PORT)" COTURN_MAX_PORT="$(COTURN_MAX_PORT)" python3 -c 'from pathlib import Path; import os; src = Path("docker-compose.yml").read_text(); listen_port = os.environ["COTURN_LISTEN_PORT"]; tls_port = os.environ["COTURN_TLS_LISTEN_PORT"]; min_port = os.environ["COTURN_MIN_PORT"]; max_port = os.environ["COTURN_MAX_PORT"]; src = src.replace("$${COTURN_LISTEN_PORT:-3478}", listen_port); src = src.replace("$${COTURN_TLS_LISTEN_PORT:-5349}", tls_port); src = src.replace("$${COTURN_MIN_PORT:-52000}", min_port); src = src.replace("$${COTURN_MAX_PORT:-52048}", max_port); Path("$(RELEASE_ROOT)/docker-compose.yml").write_text(src)'; \
 	cp scripts/*.sh "$(RELEASE_ROOT)/"; \
 	cp scripts/env.example "$(RELEASE_ROOT)/env.example"; \

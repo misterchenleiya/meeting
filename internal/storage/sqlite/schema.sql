@@ -17,6 +17,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_wechat_openid_unique
 ON users(wechat_openid)
 WHERE wechat_openid IS NOT NULL AND wechat_openid <> '';
 
+CREATE INDEX IF NOT EXISTS idx_users_created_at
+ON users(created_at)
+WHERE email IS NOT NULL AND email <> '';
+
 CREATE TABLE IF NOT EXISTS auth_verification_codes (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL,
@@ -35,6 +39,10 @@ CREATE TABLE IF NOT EXISTS auth_verification_codes (
 
 CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_email_purpose
 ON auth_verification_codes(email, purpose, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_purpose_consumed_at
+ON auth_verification_codes(purpose, consumed_at)
+WHERE consumed_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
     token_hash TEXT PRIMARY KEY,
@@ -77,3 +85,43 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS idx_audit_events_meeting_id ON audit_events(meeting_id);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at);
+
+CREATE TABLE IF NOT EXISTS meeting_usage_meetings (
+    id TEXT PRIMARY KEY,
+    meeting_number TEXT NOT NULL DEFAULT '',
+    join_code TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL DEFAULT '',
+    meeting_type TEXT NOT NULL DEFAULT 'quick',
+    host_participant_id TEXT NOT NULL DEFAULT '',
+    host_user_id TEXT NOT NULL DEFAULT '',
+    host_email TEXT NOT NULL DEFAULT '',
+    host_nickname TEXT NOT NULL DEFAULT '',
+    host_ip_address TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    ended_at TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_usage_meetings_created_at ON meeting_usage_meetings(created_at);
+CREATE INDEX IF NOT EXISTS idx_meeting_usage_meetings_ended_at ON meeting_usage_meetings(ended_at);
+
+CREATE TABLE IF NOT EXISTS meeting_usage_participants (
+    meeting_id TEXT NOT NULL,
+    participant_id TEXT NOT NULL,
+    user_id TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    nickname TEXT NOT NULL DEFAULT '',
+    is_anonymous INTEGER NOT NULL DEFAULT 0,
+    ip_address TEXT NOT NULL DEFAULT '',
+    device_type TEXT NOT NULL DEFAULT '',
+    client_profile_json TEXT NOT NULL DEFAULT '{}',
+    participant_role TEXT NOT NULL DEFAULT '',
+    joined_at TEXT NOT NULL,
+    left_at TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (meeting_id, participant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_usage_participants_meeting_id ON meeting_usage_participants(meeting_id);
+CREATE INDEX IF NOT EXISTS idx_meeting_usage_participants_joined_at ON meeting_usage_participants(joined_at);
+CREATE INDEX IF NOT EXISTS idx_meeting_usage_participants_user_id ON meeting_usage_participants(user_id);

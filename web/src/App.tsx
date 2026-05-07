@@ -2,13 +2,16 @@ import { startTransition, useEffect, useEffectEvent, useRef, useState, type Reac
 import jsQR from "jsqr";
 import QRCode from "qrcode";
 import { createClientLogger, formatClientLogs } from "./logger";
+import { collectClientProfile } from "./clientProfile";
 import {
+  ApiError,
   completeLogin,
   completePasswordLogin,
   completeRegister,
   createMeeting,
   endMeeting,
   fetchCurrentUser,
+  fetchMeetingIceServers,
   getMeeting,
   joinMeeting,
   leaveMeeting,
@@ -27,6 +30,7 @@ import {
   startLocalRecording
 } from "./recording";
 import { PeerMesh, type MediaQualityPolicy, type MediaQualityProfile, type PeerStatsSnapshot } from "./rtc";
+import { resolveIceServers } from "./runtime-config";
 import { SignalClient, type SignalEnvelope } from "./signaling";
 import type {
   AuthUser,
@@ -42,7 +46,14 @@ import type {
 import { WhiteboardPanel } from "./whiteboard";
 
 const deviceType = "browser";
-const requestableCapabilities: Capability[] = [
+const participantRequestableCapabilities: Capability[] = [
+  "camera",
+  "microphone",
+  "screen_share",
+  "record"
+];
+
+const hostGrantableCapabilities: Capability[] = [
   "camera",
   "microphone",
   "whiteboard",
@@ -56,6 +67,22 @@ const logger = createClientLogger("frontend.app");
 type SessionState = {
   meeting: Meeting;
   participant: Participant;
+};
+
+type RuntimeIceState = {
+  meetingNumber: string;
+  participantId: string;
+  iceServers: RTCIceServer[];
+  expiresAt?: string;
+};
+
+type CapabilityRequestState = {
+  capability: Capability;
+};
+
+type CapturePreference = {
+  camera: boolean;
+  microphone: boolean;
 };
 
 type RemoteTile = {
@@ -82,14 +109,15 @@ type AuditSummary = {
   updatedAt: string;
 };
 
-type EntryView = "login" | "register" | "home" | "schedule" | "join";
+type EntryView = "login" | "register" | "home" | "schedule" | "join" | "preview";
+type PrejoinOriginView = "home" | "schedule" | "join";
 type SidebarView = "none" | "members" | "chat";
 type MenuView = "none" | "host" | "participant";
 type AttachedPanelView = "none" | "settings" | "apps" | "end";
 type ModalView =
   | "none"
   | "invite"
-  | "record_request"
+  | "capability_request_confirm"
   | "meeting_ended"
   | "nickname"
   | "permissions"
@@ -131,7 +159,7 @@ type ScheduleFormState = {
 };
 
 type JoinFormState = {
-  meetingId: string;
+  meetingNumber: string;
   password: string;
   nickname: string;
   requestCameraEnabled: boolean;
@@ -147,12 +175,16 @@ type PersistedAppState = {
   scheduleForm: ScheduleFormState;
   joinForm: JoinFormState;
   meetingAccessPassword: string;
+  prejoinSession: SessionState | null;
+  prejoinOriginView: PrejoinOriginView | null;
   meetingSession: SessionState | null;
   returnAfterMeetingView: EntryView;
 };
 
 const appStateStorageKey = "meeting:app-state:v3";
+const anonymousNicknameStorageKey = "meeting:anonymous-nickname:v1";
 const defaultEntryStatusMessage = "准备开始会议";
+const authSessionCheckIntervalMs = 30_000;
 const defaultLoginForm: LoginFormState = {
   mode: "code",
   email: "",
@@ -165,15 +197,39 @@ const defaultRegisterForm: RegisterFormState = {
   code: ""
 };
 const defaultJoinForm: JoinFormState = {
-  meetingId: "",
+  meetingNumber: "",
   password: "",
   nickname: "匿名用户",
   requestCameraEnabled: false,
   requestMicrophoneEnabled: false
 };
 
+const frontendBuildInfo = {
+  version: __MEETING_WEB_VERSION__,
+  commit: __MEETING_WEB_COMMIT__,
+  buildTime: __MEETING_WEB_BUILD_TIME__
+};
+
+function BuildMetadataBadge() {
+  return (
+    <aside className="build-metadata build-metadata--auth" aria-label="版本信息">
+      <span>version: {frontendBuildInfo.version}</span>
+      <span>commit: {frontendBuildInfo.commit}</span>
+      <span>build time: {frontendBuildInfo.buildTime}</span>
+    </aside>
+  );
+}
+
 function App() {
   const initialPersistedState = useRef(readPersistedAppState()).current;
+  const initialAnonymousNickname = useRef(readAnonymousNickname()).current;
+  const initialJoinForm = useRef(
+    resolveInitialJoinForm(
+      initialPersistedState?.joinForm,
+      initialPersistedState?.isAuthenticated ?? false,
+      initialAnonymousNickname
+    )
+  ).current;
   const initialMeetingSession = initialPersistedState?.meetingSession ?? null;
   const signalClientRef = useRef<SignalClient | null>(null);
   const meshRef = useRef<PeerMesh | null>(null);
@@ -188,6 +244,12 @@ function App() {
   const signalReconnectAttemptRef = useRef(0);
   const signalReconnectDisabledRef = useRef(false);
   const signalConnectionGenerationRef = useRef(0);
+  const mediaRequestGenerationRef = useRef(0);
+  const currentSidebarRef = useRef<SidebarView>("none");
+  const chatListRef = useRef<HTMLUListElement | null>(null);
+  const chatMessageIdsRef = useRef(
+    new Set((initialMeetingSession?.meeting.chatMessages ?? []).map((message) => message.id))
+  );
   const joinScannerVideoRef = useRef<HTMLVideoElement | null>(null);
   const joinScannerCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const joinScannerFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -206,12 +268,16 @@ function App() {
     initialMeetingSession ? "已恢复会议，正在重连信令" : defaultEntryStatusMessage
   );
   const [errorMessage, setErrorMessage] = useState("");
+  const [pendingCapabilityRequest, setPendingCapabilityRequest] = useState<CapabilityRequestState | null>(null);
   const [chatInput, setChatInput] = useState("");
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [reviewedCapabilityRequestIds, setReviewedCapabilityRequestIds] = useState<Set<string>>(() => new Set());
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [capabilityToRequest, setCapabilityToRequest] = useState<Capability>("camera");
   const [grantTargetId, setGrantTargetId] = useState("");
   const [grantCapability, setGrantCapability] = useState<Capability>("camera");
   const [assistantTargetId, setAssistantTargetId] = useState("");
+  const [permissionFeedback, setPermissionFeedback] = useState("");
   const [readyCheckTimeoutSeconds, setReadyCheckTimeoutSeconds] = useState(15);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteTiles, setRemoteTiles] = useState<RemoteTile[]>([]);
@@ -236,6 +302,7 @@ function App() {
     camera: false,
     microphone: false
   });
+  const [mediaCaptureBusy, setMediaCaptureBusy] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(
     initialPersistedState?.currentUser ?? null
   );
@@ -251,7 +318,7 @@ function App() {
     initialPersistedState?.scheduleForm ?? buildDefaultScheduleForm()
   );
   const [joinForm, setJoinForm] = useState<JoinFormState>(
-    initialPersistedState?.joinForm ?? defaultJoinForm
+    initialJoinForm
   );
   const [joinLookupMeeting, setJoinLookupMeeting] = useState<Meeting | null>(null);
   const [showJoinPasswordModal, setShowJoinPasswordModal] = useState(false);
@@ -262,6 +329,12 @@ function App() {
   const [featuredStageId, setFeaturedStageId] = useState<string | null>(null);
   const [meetingAccessPassword, setMeetingAccessPassword] = useState(
     initialPersistedState?.meetingAccessPassword ?? ""
+  );
+  const [prejoinSession, setPrejoinSession] = useState<SessionState | null>(
+    initialPersistedState?.prejoinSession ?? null
+  );
+  const [prejoinOriginView, setPrejoinOriginView] = useState<PrejoinOriginView | null>(
+    initialPersistedState?.prejoinOriginView ?? null
   );
   const [returnAfterMeetingView, setReturnAfterMeetingView] = useState<EntryView>(
     initialPersistedState?.returnAfterMeetingView ?? "home"
@@ -274,6 +347,7 @@ function App() {
   const [fullscreenActive, setFullscreenActive] = useState(false);
   const endingMeetingRef = useRef(false);
   const meetingEndSummaryPreparedRef = useRef(false);
+  const runtimeIceStateRef = useRef<RuntimeIceState | null>(null);
 
   useEffect(() => {
     sessionRef.current = meetingSession;
@@ -284,19 +358,46 @@ function App() {
   }, [localStream]);
 
   useEffect(() => {
-    if (!meetingSession) {
+    currentSidebarRef.current = currentSidebar;
+    if (currentSidebar === "chat") {
+      setUnreadChatCount(0);
+    }
+  }, [currentSidebar]);
+
+  useEffect(() => {
+    if (currentSidebar !== "chat" || typeof window === "undefined") {
       return;
     }
 
-    setCaptureSelection({
-      camera: meetingSession.participant.requestedMediaPreference.cameraEnabled,
-      microphone: meetingSession.participant.requestedMediaPreference.microphoneEnabled
+    const frame = window.requestAnimationFrame(() => {
+      const chatList = chatListRef.current;
+      if (!chatList) {
+        return;
+      }
+
+      chatList.scrollTop = chatList.scrollHeight;
     });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [chatMessages.length, currentSidebar]);
+
+  useEffect(() => {
+    setCaptureSelection(resolveBaseCapturePreference(baseMediaStreamRef.current));
   }, [meetingSession?.participant.id]);
 
   useEffect(() => {
     setNicknameDraft(meetingSession?.participant.nickname ?? "");
   }, [meetingSession?.participant.id, meetingSession?.participant.nickname]);
+
+  useEffect(() => {
+    if (meetingSession || entryView !== "preview" || prejoinSession) {
+      return;
+    }
+
+    setEntryView(isAuthenticated ? "home" : "login");
+  }, [entryView, isAuthenticated, meetingSession, prejoinSession]);
 
   useEffect(() => {
     recordingAssetRef.current = recordingAsset;
@@ -315,7 +416,7 @@ function App() {
 
     setJoinForm((current) => ({
       ...current,
-      nickname: defaultJoinForm.nickname
+      nickname: readAnonymousNickname()
     }));
   });
 
@@ -333,7 +434,7 @@ function App() {
 
         syncAuthenticatedUser(response.user);
         setEntryView((current) => {
-          if (current === "join") {
+          if (current === "join" || current === "schedule" || current === "preview") {
             return current;
           }
 
@@ -347,7 +448,7 @@ function App() {
 
         syncAuthenticatedUser(null);
         setEntryView((current) => {
-          if (current === "register" || current === "join") {
+          if (current === "register" || current === "join" || current === "preview") {
             return current;
           }
 
@@ -358,7 +459,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [meetingSession, syncAuthenticatedUser]);
+  }, [meetingSession]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -472,7 +573,7 @@ function App() {
       const currentSession = sessionRef.current;
       if (
         !currentSession ||
-        currentSession.meeting.id !== session.meeting.id ||
+        getMeetingPublicNumber(currentSession.meeting) !== getMeetingPublicNumber(session.meeting) ||
         currentSession.participant.id !== session.participant.id ||
         signalClientRef.current !== null
       ) {
@@ -480,7 +581,14 @@ function App() {
       }
 
       setStatusMessage("正在重连 WSS 信令...");
-      connectSignalForSession(currentSession);
+      connectSignalForSession(currentSession).catch((error) => {
+        logger.error("signal.reconnect_failed", {
+          ...meetingLogFields(currentSession.meeting),
+          participantId: currentSession.participant.id,
+          error
+        });
+        setErrorMessage(asMessage(error));
+      });
     }, delayMs);
   });
 
@@ -494,6 +602,8 @@ function App() {
       scheduleForm,
       joinForm,
       meetingAccessPassword,
+      prejoinSession,
+      prejoinOriginView,
       meetingSession: currentModal === "meeting_ended" ? null : meetingSession,
       returnAfterMeetingView
     });
@@ -505,6 +615,8 @@ function App() {
     joinForm,
     loginForm,
     meetingAccessPassword,
+    prejoinOriginView,
+    prejoinSession,
     meetingSession,
     registerForm,
     returnAfterMeetingView,
@@ -566,6 +678,54 @@ function App() {
     setTemporaryMinutes((current) => [...current, formatted].slice(-160));
   });
 
+  function replaceChatMessages(nextMessages: ChatMessage[]) {
+    chatMessageIdsRef.current = new Set(nextMessages.map((message) => message.id));
+    setChatMessages(nextMessages);
+    setReviewedCapabilityRequestIds(new Set());
+    setUnreadChatCount(0);
+  }
+
+  function appendChatMessage(message: ChatMessage): boolean {
+    if (chatMessageIdsRef.current.has(message.id)) {
+      return false;
+    }
+
+    chatMessageIdsRef.current.add(message.id);
+    setChatMessages((current) => [...current, message]);
+    if (currentSidebarRef.current !== "chat") {
+      setUnreadChatCount((current) => current + 1);
+    }
+    return true;
+  }
+
+  function markCapabilityRequestReviewed(messageId: string) {
+    setReviewedCapabilityRequestIds((current) => {
+      if (current.has(messageId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(messageId);
+      return next;
+    });
+  }
+
+  function sendMeetingSignal(type: string, payload?: unknown): boolean {
+    const signalClient = signalClientRef.current;
+    if (!signalClient) {
+      setErrorMessage("WSS 信令未连接，请先重连信令后再操作");
+      return false;
+    }
+
+    try {
+      signalClient.send(type, payload);
+      setErrorMessage("");
+      return true;
+    } catch (error) {
+      setErrorMessage(asMessage(error));
+      return false;
+    }
+  }
+
   const replaceMeetingSnapshot = useEffectEvent((meeting: Meeting) => {
     setMeetingSession((current) => {
       if (!current) {
@@ -577,7 +737,7 @@ function App() {
         participant: meeting.participants[current.participant.id] ?? current.participant
       };
     });
-    setChatMessages(meeting.chatMessages ?? []);
+    replaceChatMessages(meeting.chatMessages ?? []);
     setWhiteboardActions(meeting.whiteboardActions ?? []);
     setActiveReadyCheck(meeting.activeReadyCheck ?? null);
     setTemporaryMinutes(meeting.temporaryMinutes ?? []);
@@ -635,6 +795,41 @@ function App() {
     });
   });
 
+  const removeParticipantCapability = useEffectEvent((participantId: string, capability: string) => {
+    setMeetingSession((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const participant = current.meeting.participants[participantId];
+      if (!participant) {
+        return current;
+      }
+
+      const nextCapabilities = {
+        ...participant.grantedCapabilities
+      };
+      delete nextCapabilities[capability];
+
+      const nextParticipant = {
+        ...participant,
+        grantedCapabilities: nextCapabilities
+      };
+
+      return {
+        meeting: {
+          ...current.meeting,
+          participants: {
+            ...current.meeting.participants,
+            [participantId]: nextParticipant
+          }
+        },
+        participant:
+          current.participant.id === participantId ? nextParticipant : current.participant
+      };
+    });
+  });
+
   const applyNicknameUpdate = useEffectEvent((payload: {
     participant: Participant;
     previousNickname: string;
@@ -651,12 +846,9 @@ function App() {
 
     if (payload.systemMessage) {
       const systemMessage = payload.systemMessage;
-      setChatMessages((current) =>
-        current.some((message) => message.id === systemMessage.id)
-          ? current
-          : [...current, systemMessage]
-      );
-      appendTemporaryMinute(systemMessage.message, systemMessage.sentAt);
+      if (appendChatMessage(systemMessage)) {
+        appendTemporaryMinute(systemMessage.message, systemMessage.sentAt);
+      }
     }
 
     appendEvent(
@@ -665,7 +857,131 @@ function App() {
     );
   });
 
-  const ensurePeerMesh = useEffectEvent((session: SessionState) => {
+  const closeRevokedLocalCapability = useEffectEvent((capability: Capability) => {
+    const nextStatus = describeCapabilityRevokedFollowup(capability);
+    const setRevokedStatusAfter = (operation: Promise<void>) => {
+      void operation
+        .then(() => {
+          setStatusMessage(nextStatus);
+        })
+        .catch((error: unknown) => {
+          setErrorMessage(asMessage(error));
+        });
+    };
+
+    switch (capability) {
+      case "microphone": {
+        const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+        const operation = syncBaseMediaPreference(
+          {
+            camera: currentPreference.camera,
+            microphone: false
+          },
+          { skipCapabilityCheck: true }
+        );
+        setRevokedStatusAfter(operation);
+        return;
+      }
+      case "camera": {
+        const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+        const operation = syncBaseMediaPreference(
+          {
+            camera: false,
+            microphone: currentPreference.microphone
+          },
+          { skipCapabilityCheck: true }
+        );
+        setRevokedStatusAfter(operation);
+        return;
+      }
+      case "screen_share":
+        if (screenShareStreamRef.current) {
+          setRevokedStatusAfter(handleStopScreenShare());
+          return;
+        }
+        setStatusMessage(nextStatus);
+        return;
+      case "record":
+        if (recorderRef.current) {
+          setRevokedStatusAfter(handleStopRecording());
+          return;
+        }
+        setStatusMessage(nextStatus);
+        return;
+      default:
+        setStatusMessage(nextStatus);
+    }
+  });
+
+  const cacheRuntimeIceState = useEffectEvent(
+    (meeting: Meeting, participant: Participant, iceServers: RTCIceServer[], expiresAt?: string) => {
+      runtimeIceStateRef.current = {
+        meetingNumber: getMeetingPublicNumber(meeting),
+        participantId: participant.id,
+        iceServers,
+        expiresAt: expiresAt?.trim() ? expiresAt.trim() : undefined
+      };
+    }
+  );
+
+  const clearRuntimeIceState = useEffectEvent(() => {
+    runtimeIceStateRef.current = null;
+  });
+
+  const readCachedRuntimeIceServers = useEffectEvent((session: SessionState): RTCIceServer[] | null => {
+    const cached = runtimeIceStateRef.current;
+    if (!cached) {
+      return null;
+    }
+
+    if (
+      cached.meetingNumber !== getMeetingPublicNumber(session.meeting) ||
+      cached.participantId !== session.participant.id
+    ) {
+      return null;
+    }
+
+    if (!cached.expiresAt) {
+      return cached.iceServers;
+    }
+
+    const expiresAtMs = Date.parse(cached.expiresAt);
+    if (Number.isNaN(expiresAtMs)) {
+      return cached.iceServers;
+    }
+
+    if (expiresAtMs <= Date.now() + 30_000) {
+      runtimeIceStateRef.current = null;
+      return null;
+    }
+
+    return cached.iceServers;
+  });
+
+  const ensureRuntimeIceServers = useEffectEvent(async (session: SessionState): Promise<RTCIceServer[]> => {
+    const cached = readCachedRuntimeIceServers(session);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const response = await fetchMeetingIceServers({
+        meetingNumber: getMeetingPublicNumber(session.meeting),
+        participantId: session.participant.id
+      });
+      cacheRuntimeIceState(session.meeting, session.participant, response.iceServers, response.expiresAt);
+      return response.iceServers;
+    } catch (error) {
+      logger.warn("rtc.ice_servers_fetch_failed", {
+        ...meetingLogFields(session.meeting),
+        participantId: session.participant.id,
+        error
+      });
+      return resolveIceServers();
+    }
+  });
+
+  const ensurePeerMesh = useEffectEvent((session: SessionState, iceServers: RTCIceServer[]) => {
     const currentMesh = meshRef.current;
     if (currentMesh && sessionRef.current?.participant.id === session.participant.id) {
       return currentMesh;
@@ -711,6 +1027,9 @@ function App() {
           setErrorMessage(message);
           appendEvent("rtc.error", message);
         }
+      },
+      {
+        iceServers
       }
     );
 
@@ -763,7 +1082,7 @@ function App() {
     terminateSignalSession();
     disposeRtc(true);
     setMeetingSession(null);
-    setChatMessages([]);
+    replaceChatMessages([]);
     setWhiteboardActions([]);
     setActiveReadyCheck(null);
     setTemporaryMinutes([]);
@@ -772,9 +1091,13 @@ function App() {
     setOnlineParticipantIds([]);
     setCurrentSidebar("none");
     setCurrentModal("none");
+    setPendingCapabilityRequest(null);
+    setPermissionFeedback("");
     setFeaturedStageId(null);
     setJoinLookupMeeting(null);
     setShowJoinPasswordModal(false);
+    setPrejoinSession(null);
+    setPrejoinOriginView(null);
     setWsConnected(false);
     setMeetingAccessPassword("");
     setJoinForm((current) => ({
@@ -784,8 +1107,51 @@ function App() {
     setStatusMessage(nextStatus);
     setErrorMessage("");
     setEntryView(nextEntryView ?? (currentUser ? "home" : "login"));
+    clearRuntimeIceState();
     scrollViewportToTop();
   });
+
+  const handleAuthSessionRevoked = useEffectEvent(() => {
+    syncAuthenticatedUser(null);
+    if (sessionRef.current) {
+      exitMeetingShell("账号已在其他设备登录，当前设备已自动退出登录", "login");
+      return;
+    }
+
+    setEntryView("login");
+    setStatusMessage("账号已在其他设备登录，当前设备已自动退出登录");
+    setErrorMessage("");
+  });
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    let cancelled = false;
+    const verifySession = () => {
+      void fetchCurrentUser()
+        .then((response) => {
+          if (!cancelled) {
+            syncAuthenticatedUser(response.user);
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled) {
+            return;
+          }
+          if (error instanceof ApiError && error.status === 401) {
+            handleAuthSessionRevoked();
+          }
+        });
+    };
+
+    const timer = window.setInterval(verifySession, authSessionCheckIntervalMs);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isAuthenticated]);
 
   const preparePostEndSummary = useEffectEvent(() => {
     if (meetingEndSummaryPreparedRef.current) {
@@ -797,9 +1163,10 @@ function App() {
 
     meetingEndSummaryPreparedRef.current = true;
     endingMeetingRef.current = false;
+    const summarySession = sessionRef.current ?? meetingSession;
     logger.info("meeting.end_summary_preparing", {
-      meetingId: sessionRef.current?.meeting.id ?? meetingSession?.meeting.id ?? "",
-      participantId: sessionRef.current?.participant.id ?? meetingSession?.participant.id ?? ""
+      ...meetingLogFields(summarySession?.meeting),
+      participantId: summarySession?.participant.id ?? ""
     });
     setEndingMeetingPending(false);
     sessionRef.current = null;
@@ -836,7 +1203,9 @@ function App() {
         replaceMeetingSnapshot(payload.meeting);
         const currentSession = sessionRef.current;
         if (currentSession) {
-          const mesh = ensurePeerMesh(currentSession);
+          const mesh =
+            meshRef.current ??
+            ensurePeerMesh(currentSession, readCachedRuntimeIceServers(currentSession) ?? resolveIceServers());
           mesh
             .syncParticipants(
               payload.onlineParticipantIds.filter((id) => id !== currentSession.participant.id)
@@ -857,6 +1226,16 @@ function App() {
       }
       case "participant.left": {
         const payload = event.payload as { participantId: string };
+        if (payload.participantId === sessionRef.current?.participant.id) {
+          logger.info("meeting.local_participant_removed", {
+            ...meetingLogFields(sessionRef.current?.meeting),
+            participantId: payload.participantId
+          });
+          syncAuthenticatedUser(null);
+          exitMeetingShell("该账号已在其他设备加入会议，当前设备已自动退出会议", "login");
+          return;
+        }
+
         const participantLabel = findParticipantLabel(
           Object.values(sessionRef.current?.meeting.participants ?? {}),
           payload.participantId
@@ -906,7 +1285,16 @@ function App() {
       }
       case "capability.requested": {
         const payload = event.payload as { fromParticipantId: string; capability: string };
-        appendEvent("capability.requested", `${payload.fromParticipantId} 请求 ${payload.capability} 权限`);
+        const currentParticipants = Object.values(sessionRef.current?.meeting.participants ?? {});
+        appendEvent(
+          "capability.requested",
+          `${findParticipantLabel(currentParticipants, payload.fromParticipantId)} 申请开启${formatCapabilityLabel(payload.capability as Capability)}权限`
+        );
+        if (sessionRef.current?.participant.role === "host") {
+          setStatusMessage(
+            `收到 ${findParticipantLabel(currentParticipants, payload.fromParticipantId)} 的${formatCapabilityLabel(payload.capability as Capability)}权限申请，可在聊天区快速处理。`
+          );
+        }
         return;
       }
       case "capability.granted": {
@@ -915,15 +1303,64 @@ function App() {
           grantedBy: string;
           capability: string;
         };
+        const grantedCapability = payload.capability as Capability;
         const currentParticipants = Object.values(sessionRef.current?.meeting.participants ?? {});
         syncParticipantCapability(payload.targetParticipantId, payload.capability);
         appendEvent(
           "capability.granted",
-          `${payload.grantedBy} 已向 ${payload.targetParticipantId} 授权 ${payload.capability}`
+          `${findParticipantLabel(currentParticipants, payload.grantedBy)} 已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(grantedCapability)}权限`
         );
         appendTemporaryMinute(
-          `${findParticipantLabel(currentParticipants, payload.grantedBy)} 已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权 ${payload.capability}。`
+          `${findParticipantLabel(currentParticipants, payload.grantedBy)} 已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(grantedCapability)}权限。`
         );
+        if (payload.targetParticipantId === sessionRef.current?.participant.id) {
+          setStatusMessage(describeCapabilityGrantFollowup(grantedCapability));
+          setErrorMessage("");
+          if (grantedCapability === "microphone" || grantedCapability === "camera") {
+            const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+            void syncBaseMediaPreference(
+              {
+                camera: currentPreference.camera || grantedCapability === "camera",
+                microphone: currentPreference.microphone || grantedCapability === "microphone"
+              },
+              { skipCapabilityCheck: true }
+            );
+          }
+        }
+        if (payload.grantedBy === sessionRef.current?.participant.id) {
+          setPermissionFeedback(
+            `已向 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 授权${formatCapabilityLabel(grantedCapability)}权限。`
+          );
+          setErrorMessage("");
+        }
+        return;
+      }
+      case "capability.revoked": {
+        const payload = event.payload as {
+          targetParticipantId: string;
+          revokedBy: string;
+          capability: string;
+        };
+        const revokedCapability = payload.capability as Capability;
+        const currentParticipants = Object.values(sessionRef.current?.meeting.participants ?? {});
+        removeParticipantCapability(payload.targetParticipantId, payload.capability);
+        appendEvent(
+          "capability.revoked",
+          `${findParticipantLabel(currentParticipants, payload.revokedBy)} 已禁止 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 使用${formatCapabilityLabel(revokedCapability)}权限`
+        );
+        appendTemporaryMinute(
+          `${findParticipantLabel(currentParticipants, payload.revokedBy)} 已禁止 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 使用${formatCapabilityLabel(revokedCapability)}权限。`
+        );
+        if (payload.targetParticipantId === sessionRef.current?.participant.id) {
+          closeRevokedLocalCapability(revokedCapability);
+          setErrorMessage("");
+        }
+        if (payload.revokedBy === sessionRef.current?.participant.id) {
+          setPermissionFeedback(
+            `已禁止 ${findParticipantLabel(currentParticipants, payload.targetParticipantId)} 使用${formatCapabilityLabel(revokedCapability)}权限。`
+          );
+          setErrorMessage("");
+        }
         return;
       }
       case "role.assistant_assigned": {
@@ -937,6 +1374,10 @@ function App() {
         appendTemporaryMinute(
           `${findParticipantLabel(currentParticipants, payload.assignedBy)} 已将 ${payload.participant.nickname} 设为助理。`
         );
+        if (payload.assignedBy === sessionRef.current?.participant.id) {
+          setPermissionFeedback(`已将 ${payload.participant.nickname} 设为助理。`);
+          setErrorMessage("");
+        }
         return;
       }
       case "participant.nickname_updated": {
@@ -984,19 +1425,16 @@ function App() {
       }
       case "chat.message": {
         const payload = event.payload as { message: ChatMessage };
-        setChatMessages((current) =>
-          current.some((message) => message.id === payload.message.id)
-            ? current
-            : [...current, payload.message]
-        );
-        appendEvent("chat.message", `${payload.message.nickname}: ${payload.message.message}`);
-        appendTemporaryMinute(`${payload.message.nickname}：${payload.message.message}`, payload.message.sentAt);
+        if (appendChatMessage(payload.message)) {
+          appendEvent("chat.message", `${payload.message.nickname}: ${payload.message.message}`);
+          appendTemporaryMinute(`${payload.message.nickname}：${payload.message.message}`, payload.message.sentAt);
+        }
         return;
       }
       case "meeting.ended": {
         appendEvent("meeting.ended", "会议已结束，运行态将被清理");
         logger.info("signal.meeting_ended_received", {
-          meetingId: sessionRef.current?.meeting.id ?? "",
+          ...meetingLogFields(sessionRef.current?.meeting),
           participantId: sessionRef.current?.participant.id ?? "",
           participantRole: sessionRef.current?.participant.role ?? "",
           endingMeetingFlow: endingMeetingRef.current
@@ -1027,6 +1465,9 @@ function App() {
       case "error": {
         const payload = event.payload as { message: string };
         setErrorMessage(payload.message);
+        if (currentModal === "permissions") {
+          setPermissionFeedback("");
+        }
         appendEvent("error", payload.message);
         return;
       }
@@ -1078,7 +1519,7 @@ function App() {
     });
 
     await reportAudit({
-      meetingId: currentSession.meeting.id,
+      meetingNumber: getMeetingPublicNumber(currentSession.meeting),
       participantId: currentSession.participant.id,
       userId: currentSession.participant.userId,
       participantRole: currentSession.participant.role,
@@ -1087,6 +1528,7 @@ function App() {
       packetLossRate: aggregated.packetLossRate,
       averageFps: aggregated.averageFps,
       averageBitrateKbps: aggregated.averageBitrateKbps,
+      clientProfile: collectClientProfile(),
       details: {
         peerCount: aggregated.peerCount,
         screenSharing,
@@ -1132,7 +1574,7 @@ function App() {
       auditBaselineRef.current.clear();
     };
   }, [
-    meetingSession?.meeting.id,
+    meetingSession ? getMeetingPublicNumber(meetingSession.meeting) : "",
     meetingSession?.participant.id,
     meetingSession?.participant.role,
     meetingSession?.participant.userId,
@@ -1169,7 +1611,114 @@ function App() {
     await applyOutboundStream(baseMediaStreamRef.current);
   });
 
-  const connectSignalForSession = useEffectEvent((session: SessionState) => {
+  const handleBaseMediaTrackEnded = useEffectEvent((track: MediaStreamTrack) => {
+    const baseStream = baseMediaStreamRef.current;
+    if (!baseStream) {
+      return;
+    }
+
+    baseStream.removeTrack(track);
+    if (baseStream.getTracks().length === 0) {
+      baseMediaStreamRef.current = null;
+    }
+
+    const nextPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+    setCaptureSelection(nextPreference);
+    rebuildOutboundStream().catch((error) => {
+      setErrorMessage(asMessage(error));
+    });
+    appendEvent(
+      "rtc.local_media_track_ended",
+      `${track.kind === "audio" ? "麦克风" : "摄像头"} 已被浏览器或系统停止`
+    );
+  });
+
+  function registerBaseMediaTrack(track: MediaStreamTrack) {
+    track.addEventListener("ended", () => handleBaseMediaTrackEnded(track), { once: true });
+  }
+
+  function isCurrentSignalGeneration(session: SessionState, connectionGeneration: number) {
+    const currentSession = sessionRef.current;
+    return (
+      signalConnectionGenerationRef.current === connectionGeneration &&
+      !!currentSession &&
+      getMeetingPublicNumber(currentSession.meeting) === getMeetingPublicNumber(session.meeting) &&
+      currentSession.participant.id === session.participant.id
+    );
+  }
+
+  const recoverClosedSignalSession = useEffectEvent(async (session: SessionState, connectionGeneration: number) => {
+    if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+      return;
+    }
+
+    try {
+      const response = await getMeeting({
+        meetingNumber: getMeetingPublicNumber(session.meeting)
+      });
+      if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+        return;
+      }
+      if (response.meeting.status === "ended") {
+        logger.info("signal.close_resolved_as_meeting_ended", {
+          ...meetingLogFields(session.meeting),
+          participantId: session.participant.id,
+          reason: "meeting_status_ended"
+        });
+        exitMeetingShell("会议已结束");
+        return;
+      }
+      if (!response.meeting.participants[session.participant.id]) {
+        logger.info("signal.close_resolved_as_participant_removed", {
+          ...meetingLogFields(session.meeting),
+          participantId: session.participant.id
+        });
+        syncAuthenticatedUser(null);
+        exitMeetingShell("该账号已在其他设备加入会议，当前设备已自动退出会议", "login");
+        return;
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+          return;
+        }
+        logger.info("signal.close_resolved_as_meeting_ended", {
+          ...meetingLogFields(session.meeting),
+          participantId: session.participant.id,
+          reason: "meeting_not_found"
+        });
+        exitMeetingShell("会议已结束");
+        return;
+      }
+
+      if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+        return;
+      }
+      logger.warn("signal.meeting_status_check_failed", {
+        ...meetingLogFields(session.meeting),
+        participantId: session.participant.id,
+        error
+      });
+      setErrorMessage(asMessage(error));
+    }
+
+    if (!isCurrentSignalGeneration(session, connectionGeneration)) {
+      return;
+    }
+    setStatusMessage("WSS 信令已断开，正在准备自动重连");
+    scheduleSignalReconnect(session);
+  });
+
+  const connectSignalForSession = useEffectEvent(async (session: SessionState) => {
+    const iceServers = await ensureRuntimeIceServers(session);
+    if (
+      !sessionRef.current ||
+      getMeetingPublicNumber(sessionRef.current.meeting) !== getMeetingPublicNumber(session.meeting) ||
+      sessionRef.current?.participant.id !== session.participant.id
+    ) {
+      return;
+    }
+
     clearSignalReconnectTimer();
     const connectionGeneration = signalConnectionGenerationRef.current + 1;
     signalConnectionGenerationRef.current = connectionGeneration;
@@ -1178,10 +1727,10 @@ function App() {
 
     const client = new SignalClient();
     signalClientRef.current = client;
-    ensurePeerMesh(session);
+    ensurePeerMesh(session, iceServers);
     const isCurrentConnection = () =>
       signalConnectionGenerationRef.current === connectionGeneration && signalClientRef.current === client;
-    client.connect(session.meeting.id, session.participant.id, {
+    client.connect(getMeetingPublicNumber(session.meeting), session.participant.id, {
       onOpen: () => {
         if (!isCurrentConnection()) {
           return;
@@ -1189,22 +1738,25 @@ function App() {
         clearSignalReconnectTimer();
         signalReconnectAttemptRef.current = 0;
         logger.info("signal.connected", {
-          meetingId: session.meeting.id,
+          ...meetingLogFields(session.meeting),
           participantId: session.participant.id
         });
         setErrorMessage("");
         setWsConnected(true);
         setStatusMessage("WSS 信令已连接");
       },
-      onClose: () => {
+      onClose: (event) => {
         if (!isCurrentConnection()) {
           return;
         }
         logger.warn("signal.closed", {
-          meetingId: session.meeting.id,
+          ...meetingLogFields(session.meeting),
           participantId: session.participant.id,
           endingMeetingFlow: endingMeetingRef.current,
-          summaryPrepared: meetingEndSummaryPreparedRef.current
+          summaryPrepared: meetingEndSummaryPreparedRef.current,
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
         });
         signalClientRef.current = null;
         setWsConnected(false);
@@ -1221,18 +1773,16 @@ function App() {
           preparePostEndSummary();
           return;
         }
-        if (sessionRef.current) {
-          setStatusMessage("WSS 信令已断开，正在准备自动重连");
-        }
         disposeRtc(false);
-        scheduleSignalReconnect(session);
+        setStatusMessage("WSS 信令已断开，正在确认会议状态");
+        void recoverClosedSignalSession(session, connectionGeneration);
       },
       onError: (message) => {
         if (!isCurrentConnection()) {
           return;
         }
         logger.error("signal.error", {
-          meetingId: session.meeting.id,
+          ...meetingLogFields(session.meeting),
           participantId: session.participant.id,
           error: message
         });
@@ -1253,14 +1803,44 @@ function App() {
     }
 
     if (
-      pendingSignalSession.meeting.id !== meetingSession.meeting.id ||
+      getMeetingPublicNumber(pendingSignalSession.meeting) !== getMeetingPublicNumber(meetingSession.meeting) ||
       pendingSignalSession.participant.id !== meetingSession.participant.id
     ) {
       return;
     }
 
-    connectSignalForSession(meetingSession);
-    setPendingSignalSession(null);
+    let cancelled = false;
+    const connect = async () => {
+      try {
+        await connectSignalForSession(meetingSession);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        logger.error("signal.connect_failed", {
+          ...meetingLogFields(meetingSession.meeting),
+          participantId: meetingSession.participant.id,
+          error
+        });
+        setErrorMessage(asMessage(error));
+      } finally {
+        if (!cancelled) {
+          setPendingSignalSession(null);
+        }
+      }
+    };
+
+    connect().catch((error) => {
+      logger.error("signal.connect_effect_failed", {
+        ...meetingLogFields(meetingSession.meeting),
+        participantId: meetingSession.participant.id,
+        error
+      });
+      setErrorMessage(asMessage(error));
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [meetingSession, pendingSignalSession]);
 
   const enterMeetingSession = useEffectEvent((meeting: Meeting, participant: Participant, nextStatus: string) => {
@@ -1272,76 +1852,146 @@ function App() {
     lastAppliedQualityPolicyRef.current = null;
     setMeetingSession(nextSession);
     setPendingSignalSession(nextSession);
-    setChatMessages(meeting.chatMessages ?? []);
+    replaceChatMessages(meeting.chatMessages ?? []);
     setWhiteboardActions(meeting.whiteboardActions ?? []);
     setActiveReadyCheck(meeting.activeReadyCheck ?? null);
     setTemporaryMinutes(meeting.temporaryMinutes ?? []);
     setAuditSummary(null);
     setEvents([]);
+    setPendingCapabilityRequest(null);
+    setPermissionFeedback("");
     setCurrentSidebar("none");
     setCurrentModal("none");
     setFeaturedStageId(null);
     setJoinLookupMeeting(null);
     setShowJoinPasswordModal(false);
+    setPrejoinSession(null);
+    setPrejoinOriginView(null);
     setStatusMessage(nextStatus);
     setErrorMessage("");
     scrollViewportToTop();
   });
 
-  const syncBaseMediaPreference = useEffectEvent(async (nextPreference: { camera: boolean; microphone: boolean }) => {
+  const openPrejoinSession = useEffectEvent(
+    (meeting: Meeting, participant: Participant, originView: PrejoinOriginView, nextStatus: string) => {
+      setPrejoinSession({ meeting, participant });
+      setPrejoinOriginView(originView);
+      setJoinLookupMeeting(meeting);
+      setShowJoinPasswordModal(false);
+      setEntryView("preview");
+      setStatusMessage(nextStatus);
+      setErrorMessage("");
+      scrollViewportToTop();
+    }
+  );
+
+  const syncBaseMediaPreference = useEffectEvent(async (
+    nextPreference: CapturePreference,
+    options: { skipCapabilityCheck?: boolean } = {}
+  ) => {
     if (!meetingSession) {
       setErrorMessage("请先进入会议");
       return;
     }
 
-    if (nextPreference.camera && !hasCapability(meetingSession, "camera")) {
-      setErrorMessage("当前账号还没有摄像头权限");
+    if (!options.skipCapabilityCheck && nextPreference.camera && !hasCapability(meetingSession, "camera")) {
+      openCapabilityRequestConfirm("camera");
       return;
     }
 
-    if (nextPreference.microphone && !hasCapability(meetingSession, "microphone")) {
-      setErrorMessage("当前账号还没有麦克风权限");
+    if (!options.skipCapabilityCheck && nextPreference.microphone && !hasCapability(meetingSession, "microphone")) {
+      openCapabilityRequestConfirm("microphone");
       return;
     }
 
     if ((nextPreference.camera || nextPreference.microphone) && !supportsUserMediaCapture()) {
-      setErrorMessage(describeUserMediaError(undefined));
+      setErrorMessage(describeUserMediaError(undefined, nextPreference));
       return;
     }
 
+    const requestGeneration = mediaRequestGenerationRef.current + 1;
+    mediaRequestGenerationRef.current = requestGeneration;
+    setMediaCaptureBusy(true);
+
     try {
-      if (!nextPreference.camera && !nextPreference.microphone) {
-        baseMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      const baseStream = baseMediaStreamRef.current;
+      if (!nextPreference.camera) {
+        for (const track of baseStream?.getVideoTracks() ?? []) {
+          baseStream?.removeTrack(track);
+          track.stop();
+        }
+      }
+      if (!nextPreference.microphone) {
+        for (const track of baseStream?.getAudioTracks() ?? []) {
+          baseStream?.removeTrack(track);
+          track.stop();
+        }
+      }
+      if (baseStream && baseStream.getTracks().length === 0) {
         baseMediaStreamRef.current = null;
-        setCaptureSelection(nextPreference);
-        await rebuildOutboundStream();
+      }
+
+      const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+      const missingPreference = {
+        camera: nextPreference.camera && !currentPreference.camera,
+        microphone: nextPreference.microphone && !currentPreference.microphone
+      };
+
+      if (missingPreference.camera || missingPreference.microphone) {
+        const mediaDevices = getMediaDevices();
+        if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
+          setErrorMessage(describeUserMediaError(undefined, nextPreference));
+          return;
+        }
+
+        await ensureCaptureDevicesAvailable(missingPreference);
+        const addedStream = await mediaDevices.getUserMedia({
+          video: missingPreference.camera,
+          audio: missingPreference.microphone
+        });
+
+        try {
+          assertCapturedTracks(addedStream, missingPreference);
+        } catch (error) {
+          addedStream.getTracks().forEach((track) => track.stop());
+          throw error;
+        }
+
+        if (mediaRequestGenerationRef.current !== requestGeneration) {
+          addedStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        const nextStream = baseMediaStreamRef.current ?? new MediaStream();
+        for (const track of addedStream.getTracks()) {
+          registerBaseMediaTrack(track);
+          nextStream.addTrack(track);
+        }
+        baseMediaStreamRef.current = nextStream;
+      }
+
+      if (mediaRequestGenerationRef.current !== requestGeneration) {
+        return;
+      }
+
+      const actualPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+      setCaptureSelection(actualPreference);
+      await rebuildOutboundStream();
+      if (!actualPreference.camera && !actualPreference.microphone) {
         setStatusMessage("本地媒体已关闭");
         appendEvent("rtc.local_media_stopped", "本地摄像头和麦克风均已关闭");
         return;
       }
 
-      const mediaDevices = getMediaDevices();
-      if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
-        setErrorMessage(describeUserMediaError(undefined));
-        return;
-      }
-
-      const stream = await mediaDevices.getUserMedia({
-        video: nextPreference.camera,
-        audio: nextPreference.microphone
-      });
-
-      baseMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-      baseMediaStreamRef.current = stream;
-      setCaptureSelection(nextPreference);
-      await rebuildOutboundStream();
       setStatusMessage("本地媒体已更新");
-      appendEvent(
-        "rtc.local_media_started",
-        `本地媒体已更新: ${describeCaptureSelection(nextPreference)}`
-      );
+      appendEvent("rtc.local_media_started", `本地媒体已更新: ${describeCaptureSelection(actualPreference)}`);
     } catch (error) {
-      setErrorMessage(describeUserMediaError(error));
+      setCaptureSelection(resolveBaseCapturePreference(baseMediaStreamRef.current));
+      setErrorMessage(describeUserMediaError(error, nextPreference));
+    } finally {
+      if (mediaRequestGenerationRef.current === requestGeneration) {
+        setMediaCaptureBusy(false);
+      }
     }
   });
 
@@ -1600,21 +2250,29 @@ function App() {
       const response = await createMeeting({
         title,
         password,
+        meetingType: "scheduled",
         hostUserId: currentUser.id,
         hostNickname: currentUser.nickname || "主持人",
-        deviceType
+        deviceType,
+        clientProfile: collectClientProfile()
       });
+      cacheRuntimeIceState(
+        response.meeting,
+        response.host,
+        response.iceServers,
+        response.iceCredentialExpiresAt
+      );
       setReturnAfterMeetingView("schedule");
       setMeetingAccessPassword(password);
       setJoinForm((current) => ({
         ...current,
-        meetingId: getMeetingPublicNumber(response.meeting),
+        meetingNumber: getMeetingPublicNumber(response.meeting),
         password
       }));
-      enterMeetingSession(response.meeting, response.host, "会议已创建，正在接入信令");
+      openPrejoinSession(response.meeting, response.host, "schedule", "会议已创建，请先确认入会预览");
       appendEvent("meeting.created", `会议 ${response.meeting.title} 已创建`);
       logger.info("meeting.schedule_create_succeeded", {
-        meetingId: response.meeting.id,
+        ...meetingLogFields(response.meeting),
         passwordRequired: response.meeting.passwordRequired
       });
     } catch (error) {
@@ -1643,21 +2301,29 @@ function App() {
       const response = await createMeeting({
         title,
         password,
+        meetingType: "quick",
         hostUserId: currentUser.id,
         hostNickname: currentUser.nickname || "主持人",
-        deviceType
+        deviceType,
+        clientProfile: collectClientProfile()
       });
+      cacheRuntimeIceState(
+        response.meeting,
+        response.host,
+        response.iceServers,
+        response.iceCredentialExpiresAt
+      );
       setReturnAfterMeetingView("home");
       setMeetingAccessPassword(password);
       setJoinForm((current) => ({
         ...current,
-        meetingId: getMeetingPublicNumber(response.meeting),
+        meetingNumber: getMeetingPublicNumber(response.meeting),
         password
       }));
-      enterMeetingSession(response.meeting, response.host, "快速会议已创建，正在接入信令");
-      appendEvent("meeting.created", `快速会议 ${response.meeting.title} 已创建`);
+      enterMeetingSession(response.meeting, response.host, "已进入会议，正在接入信令");
+      appendEvent("meeting.created", `快速会议 ${response.meeting.title} 已创建并直接进入会议`);
       logger.info("meeting.quick_create_succeeded", {
-        meetingId: response.meeting.id,
+        ...meetingLogFields(response.meeting),
         passwordRequired: response.meeting.passwordRequired
       });
     } catch (error) {
@@ -1670,26 +2336,42 @@ function App() {
   });
 
   const performJoinMeeting = useEffectEvent(async (meeting: Meeting, password: string) => {
+    const normalizedNickname = joinForm.nickname.trim();
     logger.info("meeting.join_requested", {
-      meetingId: meeting.id,
+      ...meetingLogFields(meeting),
       passwordProvided: password !== "",
-      nickname: joinForm.nickname.trim()
+      nickname: normalizedNickname
     });
     const response = await joinMeeting({
-      meetingId: meeting.id,
+      meetingNumber: getMeetingPublicNumber(meeting),
       password,
       userId: isAuthenticated && currentUser ? currentUser.id : "",
-      nickname: joinForm.nickname.trim(),
+      nickname: normalizedNickname,
       deviceType,
+      clientProfile: collectClientProfile(),
       isAnonymous: !isAuthenticated,
       requestCameraEnabled: joinForm.requestCameraEnabled,
       requestMicrophoneEnabled: joinForm.requestMicrophoneEnabled
     });
+    cacheRuntimeIceState(
+      response.meeting,
+      response.participant,
+      response.iceServers,
+      response.iceCredentialExpiresAt
+    );
+    if (!isAuthenticated) {
+      writeAnonymousNickname(response.participant.nickname);
+      setJoinForm((current) => ({
+        ...current,
+        nickname: response.participant.nickname
+      }));
+    }
     setMeetingAccessPassword(password);
-    enterMeetingSession(response.meeting, response.participant, "已加入会议，正在接入信令");
+    setReturnAfterMeetingView(isAuthenticated ? "home" : "login");
+    openPrejoinSession(response.meeting, response.participant, "join", "已加入会议，请先确认入会预览");
     appendEvent("meeting.joined", `${response.participant.nickname} 已加入会议`);
     logger.info("meeting.join_succeeded", {
-      meetingId: response.meeting.id,
+      ...meetingLogFields(response.meeting),
       participantId: response.participant.id,
       participantRole: response.participant.role
     });
@@ -1697,8 +2379,8 @@ function App() {
 
   const handleLookupMeeting = useEffectEvent(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const meetingId = normalizeMeetingLookupValue(joinForm.meetingId);
-    if (!meetingId) {
+    const meetingNumber = normalizeMeetingLookupValue(joinForm.meetingNumber);
+    if (!meetingNumber) {
       setErrorMessage("请输入会议号");
       return;
     }
@@ -1710,14 +2392,14 @@ function App() {
 
     try {
       logger.info("meeting.lookup_requested", {
-        meetingId,
+        meetingNumber,
         nickname: joinForm.nickname.trim()
       });
-      const response = await getMeeting({ meetingId });
+      const response = await getMeeting({ meetingNumber });
       setJoinLookupMeeting(response.meeting);
       if (response.meeting.passwordRequired) {
         logger.info("meeting.lookup_requires_password", {
-          meetingId: response.meeting.id
+          ...meetingLogFields(response.meeting)
         });
         setShowJoinPasswordModal(true);
         setStatusMessage("会议号已验证，请继续输入会议密码");
@@ -1727,7 +2409,7 @@ function App() {
 
       setJoinForm((current) => ({
         ...current,
-        meetingId,
+        meetingNumber,
         password: ""
       }));
       setShowJoinPasswordModal(false);
@@ -1736,12 +2418,12 @@ function App() {
       await performJoinMeeting(response.meeting, "");
     } catch (error) {
       logger.error("meeting.lookup_failed", {
-        meetingId,
+        meetingNumber,
         error
       });
       setJoinLookupMeeting(null);
       setShowJoinPasswordModal(false);
-      setErrorMessage(asMessage(error));
+      setErrorMessage(toJoinMeetingErrorMessage(error));
     }
   });
 
@@ -1759,13 +2441,87 @@ function App() {
     try {
       await performJoinMeeting(joinLookupMeeting, joinForm.password.trim());
     } catch (error) {
-      setErrorMessage(asMessage(error));
+      setErrorMessage(toJoinMeetingErrorMessage(error));
     }
+  });
+
+  const handleUpdatePrejoinPreference = useEffectEvent((nextPreference: {
+    camera: boolean;
+    microphone: boolean;
+  }) => {
+    setJoinForm((current) => ({
+      ...current,
+      requestCameraEnabled: nextPreference.camera,
+      requestMicrophoneEnabled: nextPreference.microphone
+    }));
+    setPrejoinSession((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        participant: {
+          ...current.participant,
+          requestedMediaPreference: {
+            ...current.participant.requestedMediaPreference,
+            cameraEnabled: nextPreference.camera,
+            microphoneEnabled: nextPreference.microphone
+          }
+        }
+      };
+    });
+    setStatusMessage("入会偏好已更新，进入会议后会按当前选择继续");
+    setErrorMessage("");
+  });
+
+  const handleReturnFromPrejoin = useEffectEvent(async () => {
+    if (!prejoinSession) {
+      setEntryView(prejoinOriginView ?? "home");
+      return;
+    }
+
+    try {
+      if (prejoinOriginView === "join") {
+        await leaveMeeting({
+          meetingNumber: getMeetingPublicNumber(prejoinSession.meeting),
+          participantId: prejoinSession.participant.id,
+          deviceType
+        });
+      } else if (prejoinOriginView === "home" || prejoinOriginView === "schedule") {
+        await endMeeting({
+          meetingNumber: getMeetingPublicNumber(prejoinSession.meeting),
+          hostParticipantId: prejoinSession.participant.id,
+          deviceType
+        });
+      }
+    } catch (error) {
+      setErrorMessage(asMessage(error));
+      return;
+    }
+
+    setPrejoinSession(null);
+    setPrejoinOriginView(null);
+    clearRuntimeIceState();
+    setJoinLookupMeeting(null);
+    setStatusMessage("已返回上一页，可继续修改入会信息");
+    setErrorMessage("");
+    setEntryView(prejoinOriginView ?? "home");
+    scrollViewportToTop();
+  });
+
+  const handleEnterMeetingFromPrejoin = useEffectEvent(() => {
+    if (!prejoinSession) {
+      setErrorMessage("当前没有待进入的会议");
+      return;
+    }
+
+    enterMeetingSession(prejoinSession.meeting, prejoinSession.participant, "已进入会议，正在接入信令");
   });
 
   const handleScannedJoinQRCode = useEffectEvent((payloadText: string) => {
     const payload = parseMeetingQRCodePayload(payloadText);
-    if (!payload.meetingId) {
+    if (!payload.meetingNumber) {
       logger.warn("join.scan_decoded_invalid_payload", {
         payloadText
       });
@@ -1774,7 +2530,7 @@ function App() {
     }
 
     logger.info("join.scan_decoded", {
-      meetingId: payload.meetingId,
+      meetingNumber: payload.meetingNumber,
       passwordProvided: payload.password !== ""
     });
     stopJoinScanner();
@@ -1785,7 +2541,7 @@ function App() {
     setJoinScanStatus("二维码已识别");
     setJoinForm((current) => ({
       ...current,
-      meetingId: normalizeMeetingLookupValue(payload.meetingId),
+      meetingNumber: normalizeMeetingLookupValue(payload.meetingNumber),
       password: payload.password ?? current.password
     }));
     setStatusMessage(
@@ -1941,7 +2697,7 @@ function App() {
   }
 
   function handleToggleCamera() {
-    const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+    const currentPreference = captureSelection;
     void syncBaseMediaPreference({
       camera: !currentPreference.camera,
       microphone: currentPreference.microphone
@@ -1949,7 +2705,7 @@ function App() {
   }
 
   function handleToggleMicrophone() {
-    const currentPreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+    const currentPreference = captureSelection;
     void syncBaseMediaPreference({
       camera: currentPreference.camera,
       microphone: !currentPreference.microphone
@@ -1963,7 +2719,7 @@ function App() {
     }
 
     if (!hasCapability(meetingSession, "screen_share")) {
-      setErrorMessage("当前账号还没有屏幕共享权限");
+      openCapabilityRequestConfirm("screen_share");
       return;
     }
 
@@ -2022,7 +2778,7 @@ function App() {
     }
 
     if (!hasCapability(meetingSession, "record")) {
-      setCurrentModal("record_request");
+      openCapabilityRequestConfirm("record");
       return;
     }
 
@@ -2095,65 +2851,143 @@ function App() {
       return;
     }
 
-    try {
-      signalClientRef.current?.send("chat.message", {
+    if (
+      sendMeetingSignal("chat.message", {
         message: chatInput.trim()
-      });
+      })
+    ) {
       setChatInput("");
-    } catch (error) {
-      setErrorMessage(asMessage(error));
     }
   }
 
-  function requestCapability(capability: Capability) {
-    try {
-      signalClientRef.current?.send("capability.request", {
+  function openCapabilityRequestConfirm(capability: Capability) {
+    if (!meetingSession) {
+      setErrorMessage("请先进入会议");
+      return;
+    }
+
+    if (hasCapability(meetingSession, capability)) {
+      setStatusMessage(`当前账号已经拥有${formatCapabilityLabel(capability)}权限`);
+      setErrorMessage("");
+      return;
+    }
+
+    if (!isParticipantCapabilityRequestable(capability)) {
+      setStatusMessage(`当前版本暂不支持在线申请${formatCapabilityLabel(capability)}权限，请联系主持人手动处理。`);
+      setErrorMessage("");
+      return;
+    }
+
+    setPendingCapabilityRequest({ capability });
+    openMeetingModal("capability_request_confirm");
+  }
+
+  function submitCapabilityRequest(capability: Capability) {
+    if (
+      sendMeetingSignal("capability.request", {
         capability
-      });
-      appendEvent("capability.request", `已请求 ${capability} 权限`);
-      setStatusMessage(`已向主持人申请 ${capability} 权限`);
-    } catch (error) {
-      setErrorMessage(asMessage(error));
+      })
+    ) {
+      appendEvent("capability.request", `已向主持人发起${formatCapabilityLabel(capability)}权限申请`);
+      setStatusMessage(`已向主持人发起${formatCapabilityLabel(capability)}权限申请`);
+      setPendingCapabilityRequest(null);
+      setCurrentModal("none");
     }
   }
 
   function handleRequestCapability() {
-    requestCapability(capabilityToRequest);
+    openCapabilityRequestConfirm(capabilityToRequest);
   }
 
-  function handleRequestRecordPermission() {
-    requestCapability("record");
-    setCurrentModal("none");
-  }
-
-  function handleGrantCapability() {
-    if (!grantTargetId.trim()) {
-      setErrorMessage("请先填写目标 participantId");
+  function handleConfirmCapabilityRequest() {
+    if (!pendingCapabilityRequest) {
+      setCurrentModal("none");
       return;
     }
 
-    try {
-      signalClientRef.current?.send("capability.grant", {
-        targetParticipantId: grantTargetId.trim(),
+    submitCapabilityRequest(pendingCapabilityRequest.capability);
+  }
+
+  function handleDismissCapabilityRequestConfirm() {
+    setPendingCapabilityRequest(null);
+    setCurrentModal("none");
+  }
+
+  function openPermissionGrantContext(message: ChatMessage) {
+    const action = message.action;
+    if (!action) {
+      return;
+    }
+    markCapabilityRequestReviewed(message.id);
+    setGrantTargetId(action.targetParticipantId);
+    setGrantCapability(action.capability);
+    setCurrentSidebar("none");
+    openMeetingModal("permissions");
+    const target = sessionRef.current?.meeting.participants[action.targetParticipantId];
+    const targetHasCapability = participantHasCapability(target, action.capability);
+    setPermissionFeedback(
+      targetHasCapability
+        ? `该申请已查看，可继续授权或禁止 ${target?.nickname ?? action.targetParticipantId} 的${formatCapabilityLabel(action.capability)}权限。`
+        : `已选择 ${formatCapabilityLabel(action.capability)} 权限申请，确认目标后点击“主持人授权”。`
+    );
+    setStatusMessage(`已定位到${formatCapabilityLabel(action.capability)}权限申请，可直接处理。`);
+    setErrorMessage("");
+  }
+
+  function handleGrantCapability() {
+    const targetParticipantId = grantTargetId.trim();
+    if (!targetParticipantId) {
+      setErrorMessage("请先选择授权目标");
+      setPermissionFeedback("");
+      return;
+    }
+
+    if (
+      sendMeetingSignal("capability.grant", {
+        targetParticipantId,
         capability: grantCapability
-      });
-    } catch (error) {
-      setErrorMessage(asMessage(error));
+      })
+    ) {
+      setPermissionFeedback(
+        `已发送授权操作：${findParticipantLabel(participants, targetParticipantId)} / ${formatCapabilityLabel(grantCapability)}。`
+      );
+    }
+  }
+
+  function handleRevokeCapability() {
+    const targetParticipantId = grantTargetId.trim();
+    if (!targetParticipantId) {
+      setErrorMessage("请先选择授权目标");
+      setPermissionFeedback("");
+      return;
+    }
+
+    if (
+      sendMeetingSignal("capability.revoke", {
+        targetParticipantId,
+        capability: grantCapability
+      })
+    ) {
+      setPermissionFeedback(
+        `已发送禁止权限操作：${findParticipantLabel(participants, targetParticipantId)} / ${formatCapabilityLabel(grantCapability)}。`
+      );
     }
   }
 
   function handleAssignAssistant() {
-    if (!assistantTargetId.trim()) {
-      setErrorMessage("请先填写助理 participantId");
+    const targetParticipantId = assistantTargetId.trim();
+    if (!targetParticipantId) {
+      setErrorMessage("请先选择助理目标");
+      setPermissionFeedback("");
       return;
     }
 
-    try {
-      signalClientRef.current?.send("role.assign_assistant", {
-        targetParticipantId: assistantTargetId.trim()
-      });
-    } catch (error) {
-      setErrorMessage(asMessage(error));
+    if (
+      sendMeetingSignal("role.assign_assistant", {
+        targetParticipantId
+      })
+    ) {
+      setPermissionFeedback(`已发送设为助理操作：${findParticipantLabel(participants, targetParticipantId)}。`);
     }
   }
 
@@ -2204,12 +3038,19 @@ function App() {
 
     try {
       const response = await updateNickname({
-        meetingId: meetingSession.meeting.id,
+        meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
         participantId: meetingSession.participant.id,
         nickname: trimmedNickname
       });
       if (!wsConnected) {
         applyNicknameUpdate(response);
+      }
+      if (meetingSession.participant.isAnonymous) {
+        writeAnonymousNickname(response.participant.nickname);
+        setJoinForm((current) => ({
+          ...current,
+          nickname: response.participant.nickname
+        }));
       }
     } catch (error) {
       setErrorMessage(asMessage(error));
@@ -2223,7 +3064,7 @@ function App() {
 
     try {
       await leaveMeeting({
-        meetingId: meetingSession.meeting.id,
+        meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
         participantId: meetingSession.participant.id,
         deviceType
       });
@@ -2244,16 +3085,16 @@ function App() {
       setEndingMeetingPending(true);
       setStatusMessage("正在结束会议...");
       logger.info("meeting.end_requested", {
-        meetingId: meetingSession.meeting.id,
+        ...meetingLogFields(meetingSession.meeting),
         participantId: meetingSession.participant.id
       });
       await endMeeting({
-        meetingId: meetingSession.meeting.id,
+        meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
         hostParticipantId: meetingSession.participant.id,
         deviceType
       });
       logger.info("meeting.end_request_succeeded", {
-        meetingId: meetingSession.meeting.id,
+        ...meetingLogFields(meetingSession.meeting),
         participantId: meetingSession.participant.id
       });
       preparePostEndSummary();
@@ -2261,7 +3102,7 @@ function App() {
       endingMeetingRef.current = false;
       setEndingMeetingPending(false);
       logger.error("meeting.end_request_failed", {
-        meetingId: meetingSession.meeting.id,
+        ...meetingLogFields(meetingSession.meeting),
         participantId: meetingSession.participant.id,
         error
       });
@@ -2287,7 +3128,7 @@ function App() {
     }
   }
 
-  async function handleCopyMeetingID() {
+  async function handleCopyMeetingNumber() {
     if (!meetingSession) {
       return;
     }
@@ -2411,6 +3252,10 @@ function App() {
 
   function openMeetingModal(nextModal: ModalView) {
     closeAttachedWindows();
+    if (nextModal === "permissions") {
+      setPermissionFeedback("");
+      setErrorMessage("");
+    }
     setCurrentModal(nextModal);
   }
 
@@ -2439,6 +3284,13 @@ function App() {
   const canAccessHostTools =
     meetingSession?.participant.role === "host" || meetingSession?.participant.role === "assistant";
   const participants = sortParticipantsByJoinOrder(Object.values(meetingSession?.meeting.participants ?? {}));
+  const currentParticipantId = meetingSession?.participant.id ?? "";
+  const permissionTargetOptions = participants.filter((participant) => participant.id !== currentParticipantId);
+  const assistantTargetOptions = permissionTargetOptions.filter(
+    (participant) => participant.role !== "assistant"
+  );
+  const selectedGrantTarget = participants.find((participant) => participant.id === grantTargetId.trim());
+  const selectedGrantTargetHasCapability = participantHasCapability(selectedGrantTarget, grantCapability);
   const stageParticipants = participants.filter(
     (participant) =>
       participant.id === meetingSession?.participant.id || onlineParticipantIds.includes(participant.id)
@@ -2449,11 +3301,24 @@ function App() {
   const canRecord = meetingSession ? hasCapability(meetingSession, "record") : false;
   const canWhiteboard = meetingSession ? hasCapability(meetingSession, "whiteboard") : false;
   const canReadyCheck = meetingSession ? hasCapability(meetingSession, "ready_check") : false;
+  const prejoinPreference = {
+    camera: joinForm.requestCameraEnabled,
+    microphone: joinForm.requestMicrophoneEnabled
+  };
+  const prejoinMeetingNumberLabel = prejoinSession
+    ? formatMeetingNumberDisplay(getMeetingPublicNumber(prejoinSession.meeting))
+    : "";
+  const prejoinEntryTitle =
+    prejoinOriginView === "schedule"
+      ? "预定会议"
+      : prejoinOriginView === "join"
+        ? "加入会议"
+        : "快速会议";
   const localReadyCheckStatus = activeReadyCheck && meetingSession
     ? activeReadyCheck.results[meetingSession.participant.id]?.status
     : undefined;
 
-  const basePreference = resolveBaseCapturePreference(baseMediaStreamRef.current);
+  const basePreference = captureSelection;
   const localMicEnabled = Boolean(
     baseMediaStreamRef.current?.getAudioTracks().some((track) => track.enabled && track.readyState === "live")
   );
@@ -2482,6 +3347,34 @@ function App() {
   const thumbnailItems = featuredStageItem
     ? stageItems.filter((item) => item.id !== featuredStageItem.id)
     : stageItems;
+  const stageItemByParticipantId = new Map(stageItems.map((item) => [item.participantId, item]));
+  const participantStripItems = stageParticipants.map((participant) => {
+    const stageItem = stageItemByParticipantId.get(participant.id);
+    const micEnabled = resolveParticipantMicEnabled(
+      participant,
+      meetingSession?.participant.id ?? "",
+      localMicEnabled
+    );
+    const isFeatured = featuredStageItem?.participantId === participant.id;
+    let statusLabel = micEnabled ? "发言中" : "已静音";
+
+    if (stageItem?.variant === "screen") {
+      statusLabel = isFeatured ? "主画面" : "共享屏幕";
+    } else if (stageItem?.variant === "camera") {
+      statusLabel = isFeatured ? "主画面" : micEnabled ? "发言中" : "摄像头开启";
+    } else if (!micEnabled) {
+      statusLabel = "摄像头关闭";
+    }
+
+    return {
+      id: participant.id,
+      isFeatured,
+      initials: initialsFromName(participant.nickname),
+      nickname: participant.nickname,
+      statusLabel,
+      stageId: stageItem?.id ?? null
+    };
+  });
   const roomClockLabel = meetingSession ? formatElapsedClock(meetingSession.meeting.createdAt) : "00:00";
   const connectionLabel = wsConnected ? "WSS 已连接" : "WSS 已断开";
   const networkStatusLabel = errorMessage ? "异常" : wsConnected ? "正常" : "断开";
@@ -2684,26 +3577,29 @@ function App() {
             {entryView === "home" ? (
               <section className="panel auth-card" data-view="home">
                 <div className="login-header-copy">
-                  <div className="login-mode-title">预定会议 / 快速会议</div>
+                  <div className="login-mode-title">快速会议 / 预定会议</div>
                   <button className="login-switch-link" onClick={handleLogoutAndReturnToLogin} type="button">
                     退出登录 &gt;
                   </button>
                 </div>
                 <div className="quick-list">
                   <article className="quick-card">
-                    <strong>预定会议</strong>
-                    <span>填写主题、时间、时区和可选密码，适合提前安排的正式会议。</span>
-                    <button className="secondary-button" onClick={() => setEntryView("schedule")} type="button">
-                      进入预定流程
+                    <strong>快速会议</strong>
+                    <button className="primary-button" onClick={() => void handleStartQuickMeeting()} type="button">
+                      快速会议
                     </button>
                   </article>
                   <article className="quick-card">
-                    <strong>快速会议</strong>
-                    <span>立即创建并开始会议，适合站会、短会和临时沟通。</span>
-                    <button className="primary-button" onClick={() => void handleStartQuickMeeting()} type="button">
-                      立即开始
+                    <strong>预定会议</strong>
+                    <button className="secondary-button" onClick={() => setEntryView("schedule")} type="button">
+                      预定会议
                     </button>
                   </article>
+                </div>
+                <div className="meeting-summary-card">
+                  <span className="meeting-badge">最近会议</span>
+                  <strong>821 503 974</strong>
+                  <p>全球产品评审会 · 今晚 19:30 · 需要会议密码</p>
                 </div>
                 <button className="ghost-button" onClick={() => setEntryView("join")} type="button">
                   已有会议号？加入会议
@@ -2717,9 +3613,6 @@ function App() {
                   <p className="eyebrow">Schedule meeting</p>
                   <h2>预定会议</h2>
                 </div>
-                <p className="section-copy">
-                  当前后端还没有真正的预约会议模型，本轮会按预定表单创建可立即进入的会议，同时保留未来扩展所需字段。
-                </p>
                 {showEntryFeedback ? (
                   <div className="status-stack compact">
                     {statusMessage !== defaultEntryStatusMessage ? (
@@ -2773,7 +3666,7 @@ function App() {
                   </label>
                   <div className="button-row">
                     <button className="primary-button" type="submit">
-                      预定会议
+                      预定并进入预览
                     </button>
                     <button className="ghost-button" onClick={() => setEntryView("home")} type="button">
                       返回
@@ -2789,9 +3682,6 @@ function App() {
                   <p className="eyebrow">Join meeting</p>
                   <h2>加入会议</h2>
                 </div>
-                <p className="section-copy">
-                  先输入会议号和昵称，确认会议存在且可加入后，再弹出固定悬浮窗继续输入密码。
-                </p>
                 {showEntryFeedback ? (
                   <div className="status-stack compact">
                     {statusMessage !== defaultEntryStatusMessage ? (
@@ -2802,15 +3692,15 @@ function App() {
                 ) : null}
                 <form className="form-grid" onSubmit={handleLookupMeeting}>
                   <label>
-                    会议号 / Meeting ID
+                    会议号
                     <div className="field-shell">
                       <input
                         onChange={(event) => {
-                          setJoinForm((current) => ({ ...current, meetingId: event.target.value }));
+                          setJoinForm((current) => ({ ...current, meetingNumber: event.target.value }));
                           setJoinLookupMeeting(null);
                           setShowJoinPasswordModal(false);
                         }}
-                        value={joinForm.meetingId}
+                        value={joinForm.meetingNumber}
                       />
                       <button
                         className="mini-action-button"
@@ -2824,9 +3714,13 @@ function App() {
                   <label>
                     昵称
                     <input
-                      onChange={(event) =>
-                        setJoinForm((current) => ({ ...current, nickname: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        const nextNickname = event.target.value;
+                        setJoinForm((current) => ({ ...current, nickname: nextNickname }));
+                        if (!isAuthenticated) {
+                          writeAnonymousNickname(nextNickname);
+                        }
+                      }}
                       value={joinForm.nickname}
                     />
                   </label>
@@ -2878,9 +3772,6 @@ function App() {
                       </span>
                       <div>
                         <h3>请输入会议密码</h3>
-                        <p className="section-copy">
-                          当前会议需要密码，继续输入后将基于现有后端接口使用 `会议号 + 密码` 加入会议。
-                        </p>
                       </div>
                       <label>
                         会议密码
@@ -2894,7 +3785,7 @@ function App() {
                       </label>
                       <div className="button-row">
                         <button className="primary-button" onClick={() => void handleConfirmJoinMeeting()} type="button">
-                          加入并进入会议
+                          加入并进入预览
                         </button>
                         <button className="ghost-button" onClick={() => setShowJoinPasswordModal(false)} type="button">
                           返回
@@ -2942,14 +3833,130 @@ function App() {
                 ) : null}
               </section>
             ) : null}
+
+            {entryView === "preview" && prejoinSession ? (
+              <section className="panel auth-card auth-card-preview" data-view="preview">
+                <div className="section-copy">
+                  <h2>{prejoinEntryTitle}</h2>
+                </div>
+
+                <div className="prejoin-layout">
+                  <article className="prejoin-stage-card">
+                    <div className="prejoin-stage-shell">
+                      <span className="meeting-badge">本地预览</span>
+                      <StreamFrame
+                        className="prejoin-stage-media"
+                        muted
+                        placeholder={<div className="prejoin-stage-placeholder" aria-hidden="true" />}
+                        stream={localStream}
+                      />
+                      <div className="prejoin-stage-copy">
+                        {!localStream ? (
+                          <div className="prejoin-stage-avatar" aria-hidden="true">
+                            {initialsFromName(prejoinSession.participant.nickname)}
+                          </div>
+                        ) : null}
+                        <strong>{prejoinSession.participant.nickname}</strong>
+                        <span>
+                          {prejoinPreference.camera ? "摄像头申请开启" : "摄像头默认关闭"} ·{" "}
+                          {prejoinPreference.microphone ? "麦克风申请开启" : "麦克风默认静音"}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+
+                  <div className="prejoin-preferences">
+                    <div className="prejoin-pill-row">
+                      <span className="meeting-badge">会议号 {prejoinMeetingNumberLabel}</span>
+                      <span className={`prejoin-status-chip ${supportsUserMediaCapture() ? "is-live" : ""}`}>
+                        {supportsUserMediaCapture() ? "当前环境支持媒体采集" : "当前环境需要 HTTPS 或 localhost"}
+                      </span>
+                    </div>
+
+                    <div className="prejoin-toggle-grid">
+                      <button
+                        className={`prejoin-toggle-card ${prejoinPreference.camera ? "is-active" : ""}`}
+                        onClick={() =>
+                          handleUpdatePrejoinPreference({
+                            camera: !prejoinPreference.camera,
+                            microphone: prejoinPreference.microphone
+                          })
+                        }
+                        type="button"
+                      >
+                        <span className="prejoin-toggle-copy">
+                          <strong>摄像头</strong>
+                          <small>{prejoinPreference.camera ? "进入会议后申请开启" : "进入会议后默认关闭"}</small>
+                        </span>
+                        <span className={`prejoin-toggle-indicator ${prejoinPreference.camera ? "is-on" : ""}`} aria-hidden="true" />
+                      </button>
+                      <button
+                        className={`prejoin-toggle-card ${prejoinPreference.microphone ? "is-active" : ""}`}
+                        onClick={() =>
+                          handleUpdatePrejoinPreference({
+                            camera: prejoinPreference.camera,
+                            microphone: !prejoinPreference.microphone
+                          })
+                        }
+                        type="button"
+                      >
+                        <span className="prejoin-toggle-copy">
+                          <strong>麦克风</strong>
+                          <small>{prejoinPreference.microphone ? "进入会议后申请开启" : "进入会议后默认静音"}</small>
+                        </span>
+                        <span
+                          className={`prejoin-toggle-indicator ${prejoinPreference.microphone ? "is-on" : ""}`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </div>
+
+                    <article className="prejoin-checklist-card">
+                      <strong>入会前检查</strong>
+                      <ul>
+                        <li>会议主题：{prejoinSession.meeting.title}</li>
+                        <li>密码状态：{prejoinSession.meeting.passwordRequired ? "已完成密码校验" : "该会议无需密码"}</li>
+                        <li>
+                          {supportsUserMediaCapture()
+                            ? "网络与浏览器环境可继续入会"
+                            : "当前页面无法直接调用摄像头或麦克风，请优先通过 HTTPS 或 localhost 访问"}
+                        </li>
+                      </ul>
+                    </article>
+                  </div>
+                </div>
+
+                <div className="button-row">
+                  <button className="primary-button" onClick={handleEnterMeetingFromPrejoin} type="button">
+                    进入会议
+                  </button>
+                  <button className="ghost-button" onClick={handleReturnFromPrejoin} type="button">
+                    返回修改入会信息
+                  </button>
+                </div>
+              </section>
+            ) : null}
           </aside>
         </section>
+        <BuildMetadataBadge />
       </main>
     );
   }
 
   return (
     <main className="page-shell room-page">
+      <RemoteAudioSinks
+        tiles={remoteTiles}
+        onPlaybackError={(participantId, error) => {
+          logger.warn("rtc.remote_audio_playback_failed", {
+            ...meetingLogFields(meetingSession.meeting),
+            participantId,
+            error
+          });
+          setErrorMessage("远端音频播放被浏览器拦截，请点击页面任意位置后重试。");
+        }}
+      />
+
       {meetingSession && activeReadyCheck?.status === "active" && localReadyCheckStatus === "pending" ? (
         <ReadyCheckOverlay
           round={activeReadyCheck}
@@ -2963,19 +3970,22 @@ function App() {
           <div className="topbar-left">
             <div className="room-brand">
               <div className="room-meta">
-                <strong>会议详情</strong>
-                <span>{roomClockLabel}</span>
+                <strong>{meetingSession.meeting.title}</strong>
+                <span>{inviteMeetingNumberLabel} · {roomClockLabel}</span>
               </div>
             </div>
 
             <div className="topbar-status" aria-label="连接与分享">
               <div className="network-hover-anchor">
                 <button
-                  className="topbar-action topbar-action--plain icon-only"
+                  className="topbar-action topbar-status-pill"
                   type="button"
                   aria-label="网络状态"
                 >
-                  <MeetingIcon name="signal" />
+                  <span className="topbar-icon">
+                    <MeetingIcon name="signal" />
+                  </span>
+                  <span className="topbar-status-text">{networkStatusLabel}</span>
                 </button>
                 <div className="network-hover-card">
                   <div className="network-hover-row">
@@ -3126,8 +4136,8 @@ function App() {
               {currentAttachedPanel === "settings" ? (
                 <div className="attached-panel attached-panel--top attached-panel--settings">
                   <div className="attached-panel-header">
-                    <strong>设置</strong>
-                    <span>{formatMeetingStatus(meetingSession.meeting.status)}</span>
+                    <strong>会议工具</strong>
+                    <span>{meetingSession.participant.nickname}</span>
                   </div>
                   <div className="attached-stat-grid">
                     <div>
@@ -3138,6 +4148,28 @@ function App() {
                       <strong>身份</strong>
                       <span>{meetingSession.participant.nickname} / {formatParticipantRole(meetingSession.participant.role)}</span>
                     </div>
+                  </div>
+                  <div className="attached-action-list">
+                    <AttachedActionButton
+                      description="修改你当前在会议中的显示昵称。"
+                      icon="edit"
+                      onClick={() => openMeetingModal("nickname")}
+                      title="修改昵称"
+                    />
+                    <AttachedActionButton
+                      description={canAccessHostTools ? "管理或处理会中的能力授权。" : "向主持人申请摄像头、麦克风、录制等能力。"}
+                      icon="person"
+                      onClick={() => openMeetingModal("permissions")}
+                      title={canAccessHostTools ? "授权与角色" : "申请权限"}
+                    />
+                    {canReadyCheck ? (
+                      <AttachedActionButton
+                        description="发起点名并查看当前轮次状态。"
+                        icon="members"
+                        onClick={() => openMeetingModal("ready_check_panel")}
+                        title="就位确认"
+                      />
+                    ) : null}
                   </div>
                   <div className="attached-button-stack">
                     <button className="secondary-button" onClick={handleConnectSignal} type="button">
@@ -3188,7 +4220,7 @@ function App() {
                   />
                   <div className="featured-overlay">
                     <strong>{featuredStageItem.variant === "screen" ? "共享内容主舞台" : "视频主舞台"}</strong>
-                    <span>双击右侧缩略窗可以切换主画面。默认优先展示主持人的活动画面。</span>
+                    <span>当前主舞台会优先展示共享或活跃视频画面。</span>
                   </div>
                 </div>
               </section>
@@ -3264,14 +4296,36 @@ function App() {
             </div>
           )}
 
+          <section className="participant-strip" aria-label="参会者缩略条">
+            {participantStripItems.map((item) => (
+              <button
+                className={`participant-chip ${item.isFeatured ? "active" : ""}`}
+                disabled={!item.stageId}
+                key={item.id}
+                onClick={() => {
+                  if (item.stageId) {
+                    setFeaturedStageId(item.stageId);
+                  }
+                }}
+                type="button"
+              >
+                <span className="chip-avatar">{item.initials}</span>
+                <span className="chip-copy">
+                  <strong>{item.nickname}</strong>
+                  <span>{item.statusLabel}</span>
+                </span>
+              </button>
+            ))}
+          </section>
+
           {currentSidebar === "members" ? (
             <aside className="side-drawer">
               <div className="drawer-header">
                 <div>
                   <h3>成员</h3>
-                  <p>默认隐藏，打开后从右侧抽出。</p>
+                  <p>当前在线成员与角色</p>
                 </div>
-                <span className="drawer-pill">{onlineParticipantIds.length} online</span>
+                <span className="drawer-pill">在线 {onlineParticipantIds.length}</span>
               </div>
               <ul className="member-list">
                 {participants.map((participant) => (
@@ -3279,7 +4333,7 @@ function App() {
                     <strong>{participant.nickname}</strong>
                     <div className="member-meta">
                       <span>{formatParticipantRole(participant.role)}</span>
-                      <span>{onlineParticipantIds.includes(participant.id) ? "online" : "offline"}</span>
+                      <span>{onlineParticipantIds.includes(participant.id) ? "在线" : "离线"}</span>
                     </div>
                   </li>
                 ))}
@@ -3295,26 +4349,69 @@ function App() {
               <div className="drawer-header">
                 <div>
                   <h3>聊天</h3>
-                  <p>默认隐藏，打开后贴在舞台右侧。</p>
+                  <p>会议内聊天记录</p>
                 </div>
                 <span className="drawer-pill">{chatMessages.length} 条</span>
               </div>
-              <ul className="chat-list">
+              <ul className="chat-list" ref={chatListRef}>
                 {chatMessages.length === 0 ? (
                   <li className="chat-row empty">当前还没有聊天消息。</li>
                 ) : (
-                  chatMessages
-                    .slice()
-                    .reverse()
-                    .map((message) => (
-                      <li className="chat-row" key={message.id}>
-                        <strong>{message.nickname}</strong>
+                  chatMessages.map((message) => {
+                    const isSystemMessage = message.kind !== "user";
+                    const canOpenPermissionRequest =
+                      isHost &&
+                      message.kind === "capability_request" &&
+                      message.action?.type === "open_permissions";
+                    const isCapabilityRequestReviewed = reviewedCapabilityRequestIds.has(message.id);
+                    const actionTargetHasCapability = message.action
+                      ? participantHasCapability(
+                          meetingSession?.meeting.participants[message.action.targetParticipantId],
+                          message.action.capability
+                        )
+                      : false;
+
+                    return (
+                      <li
+                        className={`chat-row ${isSystemMessage ? "is-system" : ""} ${canOpenPermissionRequest ? "is-actionable" : ""} ${isCapabilityRequestReviewed ? "is-reviewed" : ""}`}
+                        key={message.id}
+                      >
+                        <div className="chat-row-header">
+                          <strong>{message.nickname}</strong>
+                          {message.kind === "capability_request" ? (
+                            <span className="chat-kind-badge">
+                              {isCapabilityRequestReviewed ? "已查看" : "权限申请"}
+                            </span>
+                          ) : message.kind === "system" ? (
+                            <span className="chat-kind-badge">系统</span>
+                          ) : null}
+                        </div>
                         <div className="chat-meta">
-                          <span>{message.message}</span>
-                          <span>{new Date(message.sentAt).toLocaleTimeString("zh-CN", { hour12: false })}</span>
+                          {canOpenPermissionRequest && message.action ? (
+                            <button
+                              className="chat-message-action"
+                              onClick={() => openPermissionGrantContext(message)}
+                              type="button"
+                            >
+                              <span className="chat-message-copy">{message.message}</span>
+                              <span className="chat-message-link">
+                                {isCapabilityRequestReviewed
+                                  ? actionTargetHasCapability
+                                    ? "再次处理 / 禁止权限"
+                                    : "再次处理"
+                                  : "点此快速处理"}
+                              </span>
+                            </button>
+                          ) : (
+                            <span className="chat-message-copy">{message.message}</span>
+                          )}
+                          <span className="chat-row-time">
+                            {new Date(message.sentAt).toLocaleTimeString("zh-CN", { hour12: false })}
+                          </span>
                         </div>
                       </li>
-                    ))
+                    );
+                  })
                 )}
               </ul>
               <form className="chat-composer" onSubmit={handleSendChat}>
@@ -3344,14 +4441,14 @@ function App() {
 
                 <div className="invite-head">
                   <div className="invite-title-row">
-                      <div className="invite-title-copy">
-                        <div className="invite-eyebrow">meeting</div>
-                        <div className="invite-id-row">
-                          <h3>会议号：{inviteMeetingNumberLabel}</h3>
-                          <button
-                            aria-label="复制会议号"
-                            className="meeting-id-copy"
-                          onClick={() => void handleCopyMeetingID()}
+                    <div className="invite-title-copy">
+                      <div className="invite-eyebrow">meeting</div>
+                      <div className="invite-id-row">
+                        <h3>会议号：{inviteMeetingNumberLabel}</h3>
+                        <button
+                          aria-label="复制会议号"
+                          className="meeting-id-copy"
+                          onClick={() => void handleCopyMeetingNumber()}
                           type="button"
                         >
                           <MeetingIcon name="copy" />
@@ -3378,7 +4475,7 @@ function App() {
                     ) : (
                       <div className="qr-share-placeholder room-share-qr-placeholder">二维码生成中...</div>
                     )}
-                    <div className="qr-caption">会议ID：{inviteMeetingNumberLabel}</div>
+                    <div className="qr-caption">会议号：{inviteMeetingNumberLabel}</div>
                   </div>
                 </div>
 
@@ -3394,28 +4491,32 @@ function App() {
             </div>
           ) : null}
 
-          {currentModal === "record_request" ? (
+          {currentModal === "capability_request_confirm" && pendingCapabilityRequest && meetingSession ? (
             <div className="modal-layer">
-              <div className="modal-card">
+              <div className="modal-card modal-card--compact">
                 <div>
-                  <h3>申请录制权限</h3>
-                  <p>当前账号没有录制权限。确认后会向主持人发送权限申请，而不是直接开始录制。</p>
+                  <h3>确认申请权限</h3>
+                  <p>确认后会向主持人发送一条权限申请消息，并同步留痕到会议聊天区。</p>
                 </div>
                 <div className="info-grid dense">
                   <div>
-                    <strong>当前状态</strong>
-                    <span>record capability unavailable</span>
+                    <strong>申请能力</strong>
+                    <span>{formatCapabilityLabel(pendingCapabilityRequest.capability)}</span>
                   </div>
                   <div>
                     <strong>发起对象</strong>
                     <span>{findParticipantLabel(participants, meetingSession.meeting.hostParticipantId)}</span>
                   </div>
+                  <div>
+                    <strong>申请人</strong>
+                    <span>{meetingSession.participant.nickname}</span>
+                  </div>
                 </div>
                 <div className="button-row">
-                  <button className="primary-button" onClick={handleRequestRecordPermission} type="button">
-                    向主持人申请
+                  <button className="primary-button" onClick={handleConfirmCapabilityRequest} type="button">
+                    确认申请
                   </button>
-                  <button className="ghost-button" onClick={() => setCurrentModal("none")} type="button">
+                  <button className="ghost-button" onClick={handleDismissCapabilityRequestConfirm} type="button">
                     取消
                   </button>
                 </div>
@@ -3428,7 +4529,7 @@ function App() {
               <div className="modal-card modal-card--compact">
                 <div>
                   <h3>修改昵称</h3>
-                  <p>输入框默认加载当前昵称，保存后会同步更新当前预览中的昵称文本。</p>
+                  <p>修改当前会议中的显示昵称。</p>
                 </div>
                 <label className="form-grid">
                   <span>昵称</span>
@@ -3451,30 +4552,48 @@ function App() {
               <div className="modal-card modal-card--wide">
                 <div>
                   <h3>权限与角色</h3>
-                  <p>参会者默认只拥有基础聊天能力，更多能力由主持人或助理管理。</p>
+                  <p>{isHost ? "处理参会者的能力授权和助理角色。" : "申请麦克风、摄像头、共享屏幕或录制权限。"}</p>
                 </div>
                 <div className="form-grid">
-                  <label>
-                    我想申请
-                    <select
-                      onChange={(event) => setCapabilityToRequest(event.target.value as Capability)}
-                      value={capabilityToRequest}
-                    >
-                      {requestableCapabilities.map((capability) => (
-                        <option key={capability} value={capability}>
-                          {capability}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button className="primary-button" onClick={handleRequestCapability} type="button">
-                    发起权限申请
-                  </button>
+                  {!isHost ? (
+                    <>
+                      <label>
+                        我想申请
+                        <select
+                          onChange={(event) => setCapabilityToRequest(event.target.value as Capability)}
+                          value={capabilityToRequest}
+                        >
+                          {participantRequestableCapabilities.map((capability) => (
+                            <option key={capability} value={capability}>
+                              {formatCapabilityLabel(capability)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button className="primary-button" onClick={handleRequestCapability} type="button">
+                        发起权限申请
+                      </button>
+                    </>
+                  ) : null}
                   {isHost ? (
                     <>
                       <label>
-                        授权目标 participantId
-                        <input onChange={(event) => setGrantTargetId(event.target.value)} value={grantTargetId} />
+                        授权目标
+                        <select
+                          onChange={(event) => setGrantTargetId(event.target.value)}
+                          value={grantTargetId}
+                        >
+                          <option value="">请选择参会者</option>
+                          {grantTargetId &&
+                          !permissionTargetOptions.some((participant) => participant.id === grantTargetId) ? (
+                            <option value={grantTargetId}>{grantTargetId}</option>
+                          ) : null}
+                          {permissionTargetOptions.map((participant) => (
+                            <option key={participant.id} value={participant.id}>
+                              {formatParticipantPickerLabel(participant)}
+                            </option>
+                          ))}
+                        </select>
                       </label>
                       <label>
                         授权能力
@@ -3482,26 +4601,51 @@ function App() {
                           onChange={(event) => setGrantCapability(event.target.value as Capability)}
                           value={grantCapability}
                         >
-                          {requestableCapabilities.map((capability) => (
+                          {hostGrantableCapabilities.map((capability) => (
                             <option key={capability} value={capability}>
-                              {capability}
+                              {formatCapabilityLabel(capability)}
                             </option>
                           ))}
                         </select>
                       </label>
-                      <button className="secondary-button" onClick={handleGrantCapability} type="button">
-                        主持人授权
+                      <button
+                        className={selectedGrantTargetHasCapability ? "danger-button" : "secondary-button"}
+                        disabled={!grantTargetId.trim()}
+                        onClick={selectedGrantTargetHasCapability ? handleRevokeCapability : handleGrantCapability}
+                        type="button"
+                      >
+                        {selectedGrantTargetHasCapability ? "禁止该权限" : "主持人授权"}
                       </button>
                       <label>
-                        助理 participantId
-                        <input
+                        助理目标
+                        <select
                           onChange={(event) => setAssistantTargetId(event.target.value)}
                           value={assistantTargetId}
-                        />
+                        >
+                          <option value="">请选择参会者</option>
+                          {assistantTargetId &&
+                          !assistantTargetOptions.some((participant) => participant.id === assistantTargetId) ? (
+                            <option value={assistantTargetId}>{assistantTargetId}</option>
+                          ) : null}
+                          {assistantTargetOptions.map((participant) => (
+                            <option key={participant.id} value={participant.id}>
+                              {formatParticipantPickerLabel(participant)}
+                            </option>
+                          ))}
+                        </select>
                       </label>
-                      <button className="ghost-button" onClick={handleAssignAssistant} type="button">
+                      <button
+                        className="ghost-button"
+                        disabled={!assistantTargetId.trim()}
+                        onClick={handleAssignAssistant}
+                        type="button"
+                      >
                         设为助理
                       </button>
+                      {permissionFeedback ? (
+                        <p className="permission-feedback">{permissionFeedback}</p>
+                      ) : null}
+                      {errorMessage ? <p className="permission-feedback is-error">{errorMessage}</p> : null}
                     </>
                   ) : null}
                 </div>
@@ -3568,7 +4712,7 @@ function App() {
               <div className="modal-card modal-card--wide">
                 <div>
                   <h3>录制与纪要</h3>
-                  <p>在单屏布局下，录制控制和纪要导出收纳到一个覆盖层中处理。</p>
+                  <p>控制录制并导出当前会议的临时纪要。</p>
                 </div>
                 <div className="form-grid">
                   <label>
@@ -3769,6 +4913,7 @@ function App() {
             <div className="tool-rack">
               <button
                 className={`meeting-tool ${basePreference.microphone ? "is-active" : "is-muted"}`}
+                disabled={mediaCaptureBusy}
                 onClick={handleToggleMicrophone}
                 type="button"
               >
@@ -3779,6 +4924,7 @@ function App() {
               </button>
               <button
                 className={`meeting-tool ${basePreference.camera ? "is-active" : "is-camera-off"}`}
+                disabled={mediaCaptureBusy}
                 onClick={handleToggleCamera}
                 type="button"
               >
@@ -3819,6 +4965,9 @@ function App() {
                 onClick={() => toggleSidebarDrawer("chat")}
                 type="button"
               >
+                {unreadChatCount > 0 && currentSidebar !== "chat" ? (
+                  <span className="tool-badge">{formatUnreadCount(unreadChatCount)}</span>
+                ) : null}
                 <span className="tool-icon">
                   <MeetingIcon name="chat" />
                 </span>
@@ -4105,6 +5254,51 @@ function StreamFrame(props: {
   );
 }
 
+function RemoteAudioSinks(props: {
+  tiles: RemoteTile[];
+  onPlaybackError: (participantId: string, error: unknown) => void;
+}) {
+  return (
+    <>
+      {props.tiles
+        .filter((tile) => tile.stream.getAudioTracks().length > 0 && tile.stream.getVideoTracks().length === 0)
+        .map((tile) => (
+          <RemoteAudioSink
+            key={tile.participantId}
+            participantId={tile.participantId}
+            stream={tile.stream}
+            onPlaybackError={props.onPlaybackError}
+          />
+        ))}
+    </>
+  );
+}
+
+function RemoteAudioSink(props: {
+  participantId: string;
+  stream: MediaStream;
+  onPlaybackError: (participantId: string, error: unknown) => void;
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    audio.srcObject = props.stream;
+    const playPromise = audio.play();
+    if (playPromise) {
+      playPromise.catch((error) => {
+        props.onPlaybackError(props.participantId, error);
+      });
+    }
+  }, [props.participantId, props.stream]);
+
+  return <audio autoPlay className="remote-audio-sink" playsInline ref={audioRef} />;
+}
+
 function ReadyCheckOverlay(props: {
   round: ReadyCheckRound;
   participant: Participant;
@@ -4132,11 +5326,56 @@ function ReadyCheckOverlay(props: {
 }
 
 function hasCapability(session: SessionState, capability: Capability): boolean {
-  return Object.prototype.hasOwnProperty.call(session.participant.grantedCapabilities, capability);
+  return participantHasCapability(session.participant, capability);
+}
+
+function participantHasCapability(participant: Participant | undefined, capability: Capability): boolean {
+  return Boolean(participant && Object.prototype.hasOwnProperty.call(participant.grantedCapabilities, capability));
+}
+
+function isParticipantCapabilityRequestable(capability: Capability): boolean {
+  return participantRequestableCapabilities.includes(capability);
+}
+
+function formatCapabilityLabel(capability: Capability): string {
+  switch (capability) {
+    case "microphone":
+      return "麦克风";
+    case "camera":
+      return "摄像头";
+    case "whiteboard":
+      return "白板";
+    case "screen_share":
+      return "共享屏幕";
+    case "record":
+      return "录制";
+    case "ready_check":
+      return "就位确认";
+    case "chat":
+      return "聊天";
+    default:
+      return capability;
+  }
+}
+
+function describeCapabilityGrantFollowup(capability: Capability): string {
+  return `主持人已授权${formatCapabilityLabel(capability)}权限，可重新尝试。`;
+}
+
+function describeCapabilityRevokedFollowup(capability: Capability): string {
+  return `主持人已禁止${formatCapabilityLabel(capability)}权限，当前能力已关闭。`;
 }
 
 function findParticipantLabel(participants: Participant[], participantId: string): string {
   return participants.find((participant) => participant.id === participantId)?.nickname ?? participantId;
+}
+
+function formatParticipantPickerLabel(participant: Participant): string {
+  return `${participant.nickname} · ${formatParticipantRole(participant.role)} · ${participant.id.slice(0, 8)}`;
+}
+
+function formatUnreadCount(count: number): string {
+  return count > 99 ? "99+" : String(count);
 }
 
 function resolveBaseCapturePreference(stream: MediaStream | null) {
@@ -4416,7 +5655,7 @@ function parseMeetingQRCodePayload(payloadText: string) {
   const trimmed = payloadText.trim();
   if (!trimmed) {
     return {
-      meetingId: "",
+      meetingNumber: "",
       password: ""
     };
   }
@@ -4424,21 +5663,28 @@ function parseMeetingQRCodePayload(payloadText: string) {
   try {
     const url = new URL(trimmed);
     return {
-      meetingId: normalizeMeetingLookupValue(
+      meetingNumber: normalizeMeetingLookupValue(
         url.searchParams.get("meetingNumber") ?? url.searchParams.get("meetingId") ?? ""
       ),
       password: url.searchParams.get("password") ?? ""
     };
   } catch {
     return {
-      meetingId: normalizeMeetingLookupValue(trimmed),
+      meetingNumber: normalizeMeetingLookupValue(trimmed),
       password: ""
     };
   }
 }
 
 function getMeetingPublicNumber(meeting: Pick<Meeting, "meetingNumber" | "id">) {
-  return meeting.meetingNumber || meeting.id;
+  return meeting.meetingNumber || meeting.id || "";
+}
+
+function meetingLogFields(meeting: Pick<Meeting, "meetingNumber" | "id"> | null | undefined) {
+  return {
+    meetingId: meeting?.id ?? "",
+    meetingNumber: meeting ? getMeetingPublicNumber(meeting) : ""
+  };
 }
 
 function normalizeMeetingLookupValue(value: string) {
@@ -4489,7 +5735,44 @@ function supportsLiveJoinScanner() {
   return supportsUserMediaCapture();
 }
 
-function describeUserMediaError(error: unknown) {
+async function ensureCaptureDevicesAvailable(preference: CapturePreference) {
+  const mediaDevices = getMediaDevices();
+  if (!mediaDevices || typeof mediaDevices.enumerateDevices !== "function") {
+    return;
+  }
+
+  let devices: MediaDeviceInfo[];
+  try {
+    devices = await mediaDevices.enumerateDevices();
+  } catch (error) {
+    logger.warn("media.enumerate_devices_failed", { error });
+    return;
+  }
+
+  if (devices.length === 0) {
+    return;
+  }
+
+  if (preference.microphone && !devices.some((device) => device.kind === "audioinput")) {
+    throw new Error("未检测到可用麦克风，请检查系统声音设置或重新启用麦克风后再试。");
+  }
+
+  if (preference.camera && !devices.some((device) => device.kind === "videoinput")) {
+    throw new Error("未检测到可用摄像头，请检查系统或浏览器设备设置后再试。");
+  }
+}
+
+function assertCapturedTracks(stream: MediaStream, preference: CapturePreference) {
+  if (preference.microphone && !stream.getAudioTracks().some((track) => track.readyState === "live")) {
+    throw new Error("浏览器没有返回可用麦克风轨道，请检查麦克风权限或设备状态后重试。");
+  }
+
+  if (preference.camera && !stream.getVideoTracks().some((track) => track.readyState === "live")) {
+    throw new Error("浏览器没有返回可用摄像头轨道，请检查摄像头权限或设备状态后重试。");
+  }
+}
+
+function describeUserMediaError(error: unknown, preference?: CapturePreference) {
   if (!supportsUserMediaCapture()) {
     return "当前页面无法直接打开摄像头或麦克风。请优先通过 HTTPS 或 localhost 访问，再重试。";
   }
@@ -4499,6 +5782,12 @@ function describeUserMediaError(error: unknown) {
       return "浏览器未授予摄像头或麦克风权限，请允许访问后重试。";
     }
     if (error.name === "NotFoundError") {
+      if (preference?.microphone && !preference.camera) {
+        return "未检测到可用麦克风，请检查系统声音设置或重新启用麦克风后再试。";
+      }
+      if (preference?.camera && !preference.microphone) {
+        return "未检测到可用摄像头，请检查系统或浏览器设备设置后再试。";
+      }
       return "未检测到可用的摄像头或麦克风，请检查设备后重试。";
     }
     if (error.name === "NotReadableError") {
@@ -4830,6 +6119,75 @@ function asMessage(error: unknown): string {
   return "发生未知错误";
 }
 
+function toJoinMeetingErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 404 && error.message === "meeting not found") {
+      return "会议号不存在，请检查后重新输入。";
+    }
+    if (error.status === 401 && error.message === "invalid meeting password") {
+      return "会议密码错误，请重新输入。";
+    }
+  }
+
+  return asMessage(error);
+}
+
+function normalizeAnonymousNickname(value: unknown): string {
+  if (typeof value !== "string") {
+    return defaultJoinForm.nickname;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || defaultJoinForm.nickname;
+}
+
+function readAnonymousNickname(): string {
+  if (typeof window === "undefined") {
+    return defaultJoinForm.nickname;
+  }
+
+  try {
+    return normalizeAnonymousNickname(window.localStorage.getItem(anonymousNicknameStorageKey));
+  } catch {
+    // Local storage may be unavailable in private mode; keep the default nickname.
+    return defaultJoinForm.nickname;
+  }
+}
+
+function writeAnonymousNickname(nickname: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const normalizedNickname = normalizeAnonymousNickname(nickname);
+  try {
+    window.localStorage.setItem(anonymousNicknameStorageKey, normalizedNickname);
+  } catch {
+    // Ignore local storage write failures and fall back to the in-memory join form.
+  }
+}
+
+function resolveInitialJoinForm(
+  persistedJoinForm: JoinFormState | undefined,
+  isAuthenticated: boolean,
+  anonymousNickname: string
+): JoinFormState {
+  const base = persistedJoinForm ?? defaultJoinForm;
+  if (isAuthenticated) {
+    return base;
+  }
+
+  const persistedNickname = base.nickname.trim();
+  const nickname = persistedNickname && persistedNickname !== defaultJoinForm.nickname
+    ? persistedNickname
+    : normalizeAnonymousNickname(anonymousNickname);
+
+  return {
+    ...base,
+    nickname
+  };
+}
+
 function readPersistedAppState(): PersistedAppState | null {
   if (typeof window === "undefined") {
     return null;
@@ -4844,13 +6202,16 @@ function readPersistedAppState(): PersistedAppState | null {
     const parsed = JSON.parse(raw) as Partial<PersistedAppState>;
     const defaultScheduleForm = buildDefaultScheduleForm();
     const currentUser = isPersistedAuthUser(parsed.currentUser) ? parsed.currentUser : null;
+    const prejoinSession = isPersistedSessionState(parsed.prejoinSession) ? parsed.prejoinSession : null;
+    const persistedJoinForm = parsed.joinForm as
+      | (Partial<JoinFormState> & { meetingId?: string })
+      | undefined;
+    const fallbackEntryView =
+      parsed.isAuthenticated === true || Boolean(currentUser) ? "home" : "login";
     return {
       isAuthenticated: parsed.isAuthenticated === true || Boolean(currentUser),
       currentUser,
-      entryView: normalizeEntryView(
-        parsed.entryView,
-        parsed.isAuthenticated === true || Boolean(currentUser) ? "home" : "login"
-      ),
+      entryView: normalizeEntryView(parsed.entryView, fallbackEntryView, prejoinSession !== null),
       loginForm: {
         mode: parsed.loginForm?.mode === "password" ? "password" : defaultLoginForm.mode,
         email: parsed.loginForm?.email ?? defaultLoginForm.email,
@@ -4869,15 +6230,23 @@ function readPersistedAppState(): PersistedAppState | null {
         password: parsed.scheduleForm?.password ?? defaultScheduleForm.password
       },
       joinForm: {
-        meetingId: parsed.joinForm?.meetingId ?? defaultJoinForm.meetingId,
-        password: parsed.joinForm?.password ?? defaultJoinForm.password,
-        nickname: parsed.joinForm?.nickname ?? defaultJoinForm.nickname,
+        meetingNumber:
+          persistedJoinForm?.meetingNumber ?? persistedJoinForm?.meetingId ?? defaultJoinForm.meetingNumber,
+        password: persistedJoinForm?.password ?? defaultJoinForm.password,
+        nickname: persistedJoinForm?.nickname ?? defaultJoinForm.nickname,
         requestCameraEnabled:
-          parsed.joinForm?.requestCameraEnabled ?? defaultJoinForm.requestCameraEnabled,
+          persistedJoinForm?.requestCameraEnabled ?? defaultJoinForm.requestCameraEnabled,
         requestMicrophoneEnabled:
-          parsed.joinForm?.requestMicrophoneEnabled ?? defaultJoinForm.requestMicrophoneEnabled
+          persistedJoinForm?.requestMicrophoneEnabled ?? defaultJoinForm.requestMicrophoneEnabled
       },
       meetingAccessPassword: parsed.meetingAccessPassword ?? "",
+      prejoinSession,
+      prejoinOriginView:
+        parsed.prejoinOriginView === "home" ||
+        parsed.prejoinOriginView === "schedule" ||
+        parsed.prejoinOriginView === "join"
+          ? parsed.prejoinOriginView
+          : null,
       meetingSession: isPersistedSessionState(parsed.meetingSession) ? parsed.meetingSession : null,
       returnAfterMeetingView: parsed.returnAfterMeetingView === "schedule" ? "schedule" : "home"
     };
@@ -4898,13 +6267,18 @@ function writePersistedAppState(state: PersistedAppState) {
   }
 }
 
-function normalizeEntryView(value: EntryView | undefined, fallback: EntryView): EntryView {
+function normalizeEntryView(
+  value: EntryView | undefined,
+  fallback: EntryView,
+  allowPreview = false
+): EntryView {
   if (
     value === "login" ||
     value === "register" ||
     value === "home" ||
     value === "schedule" ||
-    value === "join"
+    value === "join" ||
+    (allowPreview && value === "preview")
   ) {
     return value;
   }

@@ -99,6 +99,22 @@ select {
   transition: 180ms ease;
 }
 
+.build-metadata {
+  position: absolute;
+  left: 20px;
+  bottom: 14px;
+  display: grid;
+  gap: 2px;
+  color: rgba(162, 162, 170, 0.62);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  z-index: 4;
+}
+
 .preview-switch.active {
   border-color: rgba(10, 132, 255, 0.38);
   background: rgba(10, 132, 255, 0.2);
@@ -382,16 +398,12 @@ select {
 }
 
 .auth-frame[data-auth-view="home"] .quick-card {
-  gap: 6px;
+  gap: 10px;
   padding: 14px 16px;
 }
 
 .auth-frame[data-auth-view="home"] .quick-card strong {
   font-size: 14px;
-}
-
-.auth-frame[data-auth-view="home"] .quick-card span {
-  font-size: 13px;
 }
 
 .auth-frame[data-auth-view="home"] .quick-card .button,
@@ -551,11 +563,6 @@ select {
   font-size: 15px;
 }
 
-.quick-card span {
-  color: var(--muted);
-  line-height: 1.55;
-}
-
 .quick-card {
   position: relative;
 }
@@ -657,12 +664,13 @@ select {
   box-shadow: 0 0 14px rgba(48, 209, 88, 0.65);
 }
 
-.auth-note {
-  font-size: 13px;
-  color: var(--muted);
-}
-
 @media (max-width: 1180px) {
+  .build-metadata {
+    left: 16px;
+    bottom: 12px;
+    font-size: 10px;
+  }
+
   .auth-frame {
     grid-template-columns: 1fr;
     min-height: 100vh;
@@ -684,64 +692,5 @@ select {
 
   .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .brand-stage {
     min-height: auto;
-  }
-}
-
-@media (max-width: 760px) {
-  body {
-    padding: 0;
-  }
-
-  .page-shell {
-    width: 100vw;
-  }
-
-  .preview-toolbar {
-    display: none;
-  }
-
-  .switch-group {
-    justify-content: flex-start;
-  }
-
-  .auth-panel {
-    padding: 20px;
-  }
-
-  .auth-card {
-    padding: 20px;
-  }
-
-  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) {
-    row-gap: 64px;
-    padding: 44px 16px 36px;
-  }
-
-  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .brand-stage {
-    min-height: auto;
-    padding: 0;
-    transform: translateY(-10px);
-  }
-
-  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="login"],
-  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="home"],
-  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="schedule"],
-  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-card[data-view="join"] {
-    width: min(440px, calc(100vw - 32px));
-    padding: 22px;
-    margin-top: 0;
-    min-height: 0;
-  }
-
-  .auth-frame:is([data-auth-view="login"], [data-auth-view="home"], [data-auth-view="schedule"], [data-auth-view="join"], [data-auth-view="join-password"]) .auth-panel {
-    padding: 0;
-  }
-
-  .button-row {
-    grid-template-columns: 1fr;
-  }
-
-  .join-password-modal {
-    padding: 16px;
   }
 }

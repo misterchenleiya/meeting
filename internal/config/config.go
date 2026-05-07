@@ -11,6 +11,10 @@ type Config struct {
 	HTTPAddr                    string
 	SQLitePath                  string
 	LogDir                      string
+	MeetingSTUNURLs             string
+	MeetingTURNURLs             string
+	MeetingTURNSharedSecret     string
+	MeetingTURNTTLSeconds       int
 	MailerMode                  string
 	SMTPHost                    string
 	SMTPPort                    int
@@ -19,11 +23,14 @@ type Config struct {
 	SMTPFromAddress             string
 	SMTPFromName                string
 	SMTPRequireTLS              bool
+	SMTPTLSMode                 string
 	SendCloudAPIBaseURL         string
 	SendCloudAPIUser            string
 	SendCloudAPIKey             string
 	SendCloudFromAddress        string
 	SendCloudFromName           string
+	StatsReportRecipients       []string
+	StatsReportSendAtUTC        string
 	WechatMiniProgramAppID      string
 	WechatMiniProgramAppSecret  string
 	WechatMiniProgramAPIBaseURL string
@@ -41,10 +48,19 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	turnTTLSeconds, err := envIntOrDefault("MEETING_TURN_TTL_SECONDS", 43200)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		HTTPAddr:                    envOrDefault("MEETING_HTTP_ADDR", ":5180"),
 		SQLitePath:                  envOrDefault("MEETING_SQLITE_PATH", "./data/meeting.db"),
 		LogDir:                      envOrDefault("MEETING_LOG_DIR", "./logs"),
+		MeetingSTUNURLs:             envOrDefault("MEETING_STUN_URLS", "stun:stun.l.google.com:19302"),
+		MeetingTURNURLs:             envOrDefault("MEETING_TURN_URLS", ""),
+		MeetingTURNSharedSecret:     envOrDefault("MEETING_TURN_SHARED_SECRET", ""),
+		MeetingTURNTTLSeconds:       turnTTLSeconds,
 		MailerMode:                  strings.ToLower(envOrDefault("MEETING_MAILER_MODE", "debug")),
 		SMTPHost:                    envOrDefault("MEETING_SMTP_HOST", ""),
 		SMTPPort:                    smtpPort,
@@ -53,16 +69,43 @@ func Load() (Config, error) {
 		SMTPFromAddress:             envOrDefault("MEETING_SMTP_FROM_ADDRESS", ""),
 		SMTPFromName:                envOrDefault("MEETING_SMTP_FROM_NAME", "meeting"),
 		SMTPRequireTLS:              smtpRequireTLS,
+		SMTPTLSMode:                 strings.ToLower(envOrDefault("MEETING_SMTP_TLS_MODE", "starttls")),
 		SendCloudAPIBaseURL:         envOrDefault("MEETING_SENDCLOUD_API_BASE_URL", "https://api.sendcloud.net/apiv2"),
 		SendCloudAPIUser:            envOrDefault("MEETING_SENDCLOUD_API_USER", ""),
 		SendCloudAPIKey:             envOrDefault("MEETING_SENDCLOUD_API_KEY", ""),
 		SendCloudFromAddress:        envOrDefault("MEETING_SENDCLOUD_FROM_ADDRESS", "no-reply@mail.07c2.com.cn"),
 		SendCloudFromName:           envOrDefault("MEETING_SENDCLOUD_FROM_NAME", "meeting"),
+		StatsReportRecipients:       envList("MEETING_STATS_REPORT_TO"),
+		StatsReportSendAtUTC:        envOrDefault("MEETING_STATS_REPORT_SEND_AT_UTC", "12:00"),
 		WechatMiniProgramAppID:      envOrDefault("MEETING_WECHAT_MINIPROGRAM_APP_ID", ""),
 		WechatMiniProgramAppSecret:  envOrDefault("MEETING_WECHAT_MINIPROGRAM_APP_SECRET", ""),
 		WechatMiniProgramAPIBaseURL: envOrDefault("MEETING_WECHAT_MINIPROGRAM_API_BASE_URL", "https://api.weixin.qq.com"),
 		AuthCodeSubjectPrefix:       envOrDefault("MEETING_AUTH_CODE_SUBJECT_PREFIX", "[meeting]"),
 	}, nil
+}
+
+func envList(key string) []string {
+	raw := os.Getenv(key)
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	values := strings.Split(raw, ",")
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+
+	return result
 }
 
 func envOrDefault(key string, fallback string) string {

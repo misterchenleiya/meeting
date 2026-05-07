@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 1 << 20
+	writeWait              = 10 * time.Second
+	pongWait               = 60 * time.Second
+	pingPeriod             = (pongWait * 9) / 10
+	maxMessageSize         = 1 << 20
+	meetingEndedCloseDelay = 500 * time.Millisecond
 )
 
 var disconnectGracePeriod = 3 * time.Second
@@ -32,7 +33,9 @@ var (
 type MeetingService interface {
 	GetMeeting(meetingID string) (*meeting.Meeting, bool)
 	LeaveMeeting(ctx context.Context, meetingID string, participantID string, deviceType string, ipAddress string) error
+	RequestCapability(ctx context.Context, input meeting.CapabilityRequestInput) (*meeting.ChatMessage, error)
 	GrantCapability(ctx context.Context, input meeting.GrantCapabilityInput) error
+	RevokeCapability(ctx context.Context, input meeting.RevokeCapabilityInput) error
 	AssignAssistant(ctx context.Context, input meeting.AssignAssistantInput) (*meeting.Participant, error)
 	UpdateNickname(ctx context.Context, input meeting.UpdateNicknameInput) (*meeting.Participant, *meeting.ChatMessage, string, error)
 	AppendChatMessage(ctx context.Context, input meeting.ChatMessageInput) (*meeting.ChatMessage, error)
@@ -66,6 +69,7 @@ type client struct {
 	conn          *websocket.Conn
 	hub           *Hub
 	meetingID     string
+	meetingNumber string
 	participantID string
 	send          chan serverEnvelope
 }
@@ -98,6 +102,12 @@ type capabilityRequestPayload struct {
 type capabilityGrantedPayload struct {
 	TargetParticipantID string             `json:"targetParticipantId"`
 	GrantedBy           string             `json:"grantedBy"`
+	Capability          meeting.Capability `json:"capability"`
+}
+
+type capabilityRevokedPayload struct {
+	TargetParticipantID string             `json:"targetParticipantId"`
+	RevokedBy           string             `json:"revokedBy"`
 	Capability          meeting.Capability `json:"capability"`
 }
 
@@ -161,12 +171,12 @@ func NewHub(logger *slog.Logger, meetings MeetingService) *Hub {
 	}
 }
 
-func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request, meetingID string, participantID string) error {
+func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request, meetingIdentifier string, participantID string) error {
 	if participantID == "" {
 		return fmt.Errorf("%w: participantId is required", ErrInvalidMessage)
 	}
 
-	meetingValue, found := h.meetings.GetMeeting(meetingID)
+	meetingValue, found := h.meetings.GetMeeting(meetingIdentifier)
 	if !found {
 		return meeting.ErrMeetingNotFound
 	}
@@ -177,20 +187,21 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request, meetingID string, 
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		h.logger.Warn("websocket upgrade failed", "meetingId", meetingID, "participantId", participantID, "error", err)
+		h.logger.Warn("websocket upgrade failed", "meetingId", meetingValue.ID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID, "error", err)
 		return fmt.Errorf("upgrade websocket: %w", err)
 	}
 
 	clientValue := &client{
 		conn:          conn,
 		hub:           h,
-		meetingID:     meetingID,
+		meetingID:     meetingValue.ID,
+		meetingNumber: meetingValue.MeetingNumber,
 		participantID: participantID,
 		send:          make(chan serverEnvelope, 32),
 	}
 
 	onlineParticipantIDs := h.register(clientValue)
-	h.logger.Info("websocket connected", "meetingId", meetingID, "participantId", participantID)
+	h.logger.Info("websocket connected", "meetingId", meetingValue.ID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID)
 	clientValue.send <- serverEnvelope{
 		Type: "session.welcome",
 		Payload: welcomePayload{
@@ -225,12 +236,50 @@ func (h *Hub) NotifyParticipantLeft(meetingID string, participantID string) {
 	}, "")
 }
 
+func (h *Hub) DisconnectParticipant(meetingID string, participantID string, reason string) {
+	meetingID = h.canonicalMeetingID(meetingID)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.cancelDisconnectCleanupLocked(meetingID, participantID)
+
+	room, ok := h.rooms[meetingID]
+	if !ok {
+		return
+	}
+
+	clientValue, ok := room[participantID]
+	if !ok {
+		return
+	}
+
+	close(clientValue.send)
+	_ = clientValue.conn.Close()
+	delete(room, participantID)
+	if len(room) == 0 {
+		delete(h.rooms, meetingID)
+	}
+
+	h.logger.Info("websocket disconnected by server", "meetingId", meetingID, "meetingNumber", h.meetingNumber(meetingID), "participantId", participantID, "reason", reason)
+}
+
 func (h *Hub) NotifyCapabilityGranted(meetingID string, grantedBy string, participantID string, capability meeting.Capability) {
 	h.broadcast(meetingID, serverEnvelope{
 		Type: "capability.granted",
 		Payload: capabilityGrantedPayload{
 			TargetParticipantID: participantID,
 			GrantedBy:           grantedBy,
+			Capability:          capability,
+		},
+	}, "")
+}
+
+func (h *Hub) NotifyCapabilityRevoked(meetingID string, revokedBy string, participantID string, capability meeting.Capability) {
+	h.broadcast(meetingID, serverEnvelope{
+		Type: "capability.revoked",
+		Payload: capabilityRevokedPayload{
+			TargetParticipantID: participantID,
+			RevokedBy:           revokedBy,
 			Capability:          capability,
 		},
 	}, "")
@@ -303,6 +352,7 @@ func (h *Hub) NotifyReadyCheckFinished(meetingID string, round *meeting.ReadyChe
 }
 
 func (h *Hub) NotifyMeetingEnded(meetingID string, endedByParticipantID string) {
+	meetingID = h.canonicalMeetingID(meetingID)
 	h.broadcast(meetingID, serverEnvelope{
 		Type: "meeting.ended",
 		Payload: meetingEndedPayload{
@@ -310,7 +360,9 @@ func (h *Hub) NotifyMeetingEnded(meetingID string, endedByParticipantID string) 
 		},
 	}, "")
 
-	h.closeRoom(meetingID)
+	time.AfterFunc(meetingEndedCloseDelay, func() {
+		h.closeRoom(meetingID)
+	})
 }
 
 func (h *Hub) register(clientValue *client) []string {
@@ -323,6 +375,12 @@ func (h *Hub) register(clientValue *client) []string {
 	if !ok {
 		room = make(map[string]*client)
 		h.rooms[clientValue.meetingID] = room
+	}
+
+	if existingClient := room[clientValue.participantID]; existingClient != nil {
+		close(existingClient.send)
+		_ = existingClient.conn.Close()
+		h.logger.Info("websocket replaced existing participant connection", "meetingId", clientValue.meetingID, "meetingNumber", clientValue.meetingNumber, "participantId", clientValue.participantID)
 	}
 
 	room[clientValue.participantID] = clientValue
@@ -375,11 +433,12 @@ func (h *Hub) unregister(clientValue *client) {
 
 	h.mu.Unlock()
 
-	h.logger.Info("websocket disconnected", "meetingId", clientValue.meetingID, "participantId", clientValue.participantID)
+	h.logger.Info("websocket disconnected", "meetingId", clientValue.meetingID, "meetingNumber", clientValue.meetingNumber, "participantId", clientValue.participantID)
 	h.scheduleDisconnectCleanup(clientValue.meetingID, clientValue.participantID)
 }
 
 func (h *Hub) closeRoom(meetingID string) {
+	meetingID = h.canonicalMeetingID(meetingID)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -400,6 +459,7 @@ func (h *Hub) closeRoom(meetingID string) {
 }
 
 func (h *Hub) broadcast(meetingID string, event serverEnvelope, excludeParticipantID string) {
+	meetingID = h.canonicalMeetingID(meetingID)
 	h.mu.RLock()
 	room := h.rooms[meetingID]
 	clients := make([]*client, 0, len(room))
@@ -417,6 +477,7 @@ func (h *Hub) broadcast(meetingID string, event serverEnvelope, excludeParticipa
 		default:
 			h.logger.Warn("dropping websocket event for slow client",
 				"meetingId", meetingID,
+				"meetingNumber", h.meetingNumber(meetingID),
 				"participantId", clientValue.participantID,
 				"type", event.Type,
 			)
@@ -436,7 +497,7 @@ func (h *Hub) scheduleDisconnectCleanup(meetingID string, participantID string) 
 	}
 
 	if participant.Role == meeting.RoleHost {
-		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "participantId", participantID, "reason", "host")
+		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID, "reason", "host")
 		return
 	}
 
@@ -452,17 +513,18 @@ func (h *Hub) scheduleDisconnectCleanup(meetingID string, participantID string) 
 	h.disconnectCleanups[key] = timer
 	h.mu.Unlock()
 
-	h.logger.Info("participant disconnect cleanup scheduled", "meetingId", meetingID, "participantId", participantID, "gracePeriod", disconnectGracePeriod.String())
+	h.logger.Info("participant disconnect cleanup scheduled", "meetingId", meetingID, "meetingNumber", meetingValue.MeetingNumber, "participantId", participantID, "gracePeriod", disconnectGracePeriod.String())
 }
 
 func (h *Hub) runDisconnectCleanup(meetingID string, participantID string) {
+	meetingNumber := h.meetingNumber(meetingID)
 	h.mu.Lock()
 	delete(h.disconnectCleanups, disconnectCleanupKey(meetingID, participantID))
 	room := h.rooms[meetingID]
 	if room != nil {
 		if _, ok := room[participantID]; ok {
 			h.mu.Unlock()
-			h.logger.Info("participant disconnect cleanup canceled", "meetingId", meetingID, "participantId", participantID, "reason", "reconnected")
+			h.logger.Info("participant disconnect cleanup canceled", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID, "reason", "reconnected")
 			return
 		}
 	}
@@ -471,15 +533,31 @@ func (h *Hub) runDisconnectCleanup(meetingID string, participantID string) {
 	err := h.meetings.LeaveMeeting(context.Background(), meetingID, participantID, "signal_disconnect", "")
 	switch {
 	case err == nil:
-		h.logger.Info("participant disconnect cleanup completed", "meetingId", meetingID, "participantId", participantID)
+		h.logger.Info("participant disconnect cleanup completed", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID)
 		h.NotifyParticipantLeft(meetingID, participantID)
 	case errors.Is(err, meeting.ErrMeetingNotFound), errors.Is(err, meeting.ErrParticipantNotFound):
-		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "participantId", participantID, "reason", "already_removed")
+		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID, "reason", "already_removed")
 	case errors.Is(err, meeting.ErrUnauthorized):
-		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "participantId", participantID, "reason", "unauthorized")
+		h.logger.Info("participant disconnect cleanup skipped", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID, "reason", "unauthorized")
 	default:
-		h.logger.Error("participant disconnect cleanup failed", "meetingId", meetingID, "participantId", participantID, "error", err)
+		h.logger.Error("participant disconnect cleanup failed", "meetingId", meetingID, "meetingNumber", meetingNumber, "participantId", participantID, "error", err)
 	}
+}
+
+func (h *Hub) meetingNumber(meetingID string) string {
+	meetingValue, found := h.meetings.GetMeeting(meetingID)
+	if !found {
+		return ""
+	}
+	return meetingValue.MeetingNumber
+}
+
+func (h *Hub) canonicalMeetingID(meetingIdentifier string) string {
+	meetingValue, found := h.meetings.GetMeeting(meetingIdentifier)
+	if !found {
+		return meetingIdentifier
+	}
+	return meetingValue.ID
 }
 
 func (h *Hub) cancelDisconnectCleanupLocked(meetingID string, participantID string) {
@@ -505,6 +583,7 @@ func disconnectCleanupKey(meetingID string, participantID string) string {
 }
 
 func (h *Hub) sendToParticipant(meetingID string, participantID string, event serverEnvelope) error {
+	meetingID = h.canonicalMeetingID(meetingID)
 	h.mu.RLock()
 	room := h.rooms[meetingID]
 	clientValue, ok := room[participantID]
@@ -584,6 +663,8 @@ func (c *client) handleMessage(message envelope) error {
 		return c.handleCapabilityRequest(message.Payload)
 	case "capability.grant":
 		return c.handleCapabilityGrant(message.Payload)
+	case "capability.revoke":
+		return c.handleCapabilityRevoke(message.Payload)
 	case "role.assign_assistant":
 		return c.handleAssignAssistant(message.Payload)
 	case "chat.message":
@@ -637,13 +718,33 @@ func (c *client) handleCapabilityRequest(rawPayload json.RawMessage) error {
 		return fmt.Errorf("%w: capability is required", ErrInvalidMessage)
 	}
 
-	return c.hub.sendToParticipant(c.meetingID, meetingValue.HostParticipantID, serverEnvelope{
+	systemMessage, err := c.hub.meetings.RequestCapability(context.Background(), meeting.CapabilityRequestInput{
+		MeetingID:     c.meetingID,
+		ParticipantID: participant.ID,
+		Capability:    payload.Capability,
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := c.hub.sendToParticipant(c.meetingID, meetingValue.HostParticipantID, serverEnvelope{
 		Type: "capability.requested",
 		Payload: capabilityRequestPayload{
 			FromParticipantID: participant.ID,
 			Capability:        payload.Capability,
 		},
-	})
+	}); err != nil {
+		return err
+	}
+
+	c.hub.broadcast(c.meetingID, serverEnvelope{
+		Type: "chat.message",
+		Payload: chatMessagePayload{
+			Message: *systemMessage,
+		},
+	}, "")
+
+	return nil
 }
 
 func (c *client) handleCapabilityGrant(rawPayload json.RawMessage) error {
@@ -678,6 +779,41 @@ func (c *client) handleCapabilityGrant(rawPayload json.RawMessage) error {
 	}
 
 	c.hub.NotifyCapabilityGranted(c.meetingID, participant.ID, payload.TargetParticipantID, payload.Capability)
+	return nil
+}
+
+func (c *client) handleCapabilityRevoke(rawPayload json.RawMessage) error {
+	meetingValue, participant, err := c.meetingParticipant()
+	if err != nil {
+		return err
+	}
+
+	if participant.Role != meeting.RoleHost {
+		return meeting.ErrUnauthorized
+	}
+
+	var payload struct {
+		TargetParticipantID string             `json:"targetParticipantId"`
+		Capability          meeting.Capability `json:"capability"`
+	}
+	if err := json.Unmarshal(rawPayload, &payload); err != nil {
+		return fmt.Errorf("%w: decode capability revoke: %v", ErrInvalidMessage, err)
+	}
+
+	if payload.TargetParticipantID == "" || payload.Capability == "" {
+		return fmt.Errorf("%w: targetParticipantId and capability are required", ErrInvalidMessage)
+	}
+
+	if err := c.hub.meetings.RevokeCapability(context.Background(), meeting.RevokeCapabilityInput{
+		MeetingID:     meetingValue.ID,
+		HostID:        participant.ID,
+		ParticipantID: payload.TargetParticipantID,
+		Capability:    payload.Capability,
+	}); err != nil {
+		return err
+	}
+
+	c.hub.NotifyCapabilityRevoked(c.meetingID, participant.ID, payload.TargetParticipantID, payload.Capability)
 	return nil
 }
 

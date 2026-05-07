@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+declare const __MEETING_WEB_VERSION__: string;
+declare const __MEETING_WEB_COMMIT__: string;
+declare const __MEETING_WEB_BUILD_TIME__: string;
+
 interface ImportMetaEnv {
   readonly VITE_MEETING_API_BASE_URL?: string;
   readonly VITE_MEETING_SIGNALING_BASE_URL?: string;

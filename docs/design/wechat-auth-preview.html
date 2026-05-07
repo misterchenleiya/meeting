@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Meeting WeChat Mini Program Auth Preview</title>
+    <link rel="stylesheet" href="./wechat-auth-preview.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="preview-toolbar" aria-label="微信小程序预览控制">
+        <div class="preview-caption">
+          <strong>Meeting / WeChat Mini Program Preview</strong>
+          <p>按当前小程序实现同步的设计稿，覆盖登录、首页、加入会议、密码确认和入会预览，视觉与 `H5 / PC` 保持同源。</p>
+        </div>
+
+        <div class="preview-controls">
+          <div class="control-group">
+            <span>设备</span>
+            <button class="preview-switch active" data-device-target="phone" type="button">手机</button>
+            <button class="preview-switch" data-device-target="pad" type="button">Pad</button>
+          </div>
+
+          <div class="control-group">
+            <span>页面</span>
+            <button class="preview-switch active" data-view-target="login" type="button">登录</button>
+            <button class="preview-switch" data-view-target="home" type="button">首页</button>
+            <button class="preview-switch" data-view-target="join" type="button">加入会议</button>
+            <button class="preview-switch" data-view-target="join-password" type="button">密码确认</button>
+            <button class="preview-switch" data-view-target="preview" type="button">入会预览</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="wechat-auth-preview" data-device="phone" data-view="login">
+        <div class="wechat-device">
+          <div class="device-shell">
+            <div class="device-camera" aria-hidden="true"></div>
+
+            <div class="device-screen">
+              <header class="mini-nav">
+                <button class="nav-back ghost" type="button" aria-label="返回">
+                  <svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7" /></svg>
+                </button>
+                <strong>meeting</strong>
+                <button class="nav-more ghost" type="button" aria-label="更多">
+                  <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="18" cy="12" r="1.6" /></svg>
+                </button>
+              </header>
+
+              <section class="content-stage">
+                <header class="brand-stage">
+                  <div class="brand-wordmark">meeting</div>
+                  <div class="brand-spotlight" aria-hidden="true"></div>
+                </header>
+
+                <section class="surface-card" data-card-view="login">
+                  <div class="section-copy compact-copy">
+                    <div class="eyebrow">WeChat Login</div>
+                    <h2>登录 meeting</h2>
+                  </div>
+
+                  <div class="wechat-login-panel">
+                    <button class="wechat-login-button" type="button">
+                      <span class="wechat-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                          <circle cx="9" cy="10" r="6.5" fill="#09b83e" />
+                          <circle cx="15.2" cy="13.6" r="5.4" fill="#09b83e" />
+                          <circle cx="7.3" cy="9.7" r="0.9" fill="#ffffff" />
+                          <circle cx="10.4" cy="9.7" r="0.9" fill="#ffffff" />
+                          <circle cx="13.8" cy="13.2" r="0.75" fill="#ffffff" />
+                          <circle cx="16.6" cy="13.2" r="0.75" fill="#ffffff" />
+                          <path d="M8.3 14.2 7.1 15.4v-1.7" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1" />
+                        </svg>
+                      </span>
+                      微信快捷登录
+                    </button>
+                  </div>
+
+                  <div class="status-card">
+                    <strong>状态提示</strong>
+                    <p>登录中、恢复登录态和登录失败都在当前卡片内就地反馈。</p>
+                  </div>
+                </section>
+
+                <section class="surface-card" data-card-view="home">
+                  <div class="hero-copy">
+                    <div class="hero-title">欢迎回来</div>
+                  </div>
+
+                  <div class="profile-card">
+                    <strong>设计评审嘉宾</strong>
+                    <span>meeting@07c2.com.cn</span>
+                  </div>
+
+                  <div class="hub-card primary-hub">
+                    <div class="card-title">加入会议</div>
+                    <button class="button primary" data-view-target="join" type="button">加入会议</button>
+                  </div>
+
+                  <div class="hub-card">
+                    <div class="card-title">最近会议</div>
+                    <div class="recent-number">821 503 974</div>
+                    <div class="recent-title">全球产品评审会</div>
+                    <div class="recent-meta">需要会议密码</div>
+                    <button class="button secondary" data-view-target="join" type="button">继续加入</button>
+                  </div>
+
+                  <button class="button ghost" type="button">退出登录</button>
+                </section>
+
+                <section class="surface-card" data-card-view="join">
+                  <div class="section-copy">
+                    <div class="eyebrow">Join Meeting</div>
+                    <h2>加入会议</h2>
+                  </div>
+
+                  <form class="form-stack">
+                    <div class="input-row">
+                      <input class="input-core" type="text" value="821 503 974" />
+                      <button class="scan-button" type="button">扫码</button>
+                    </div>
+
+                    <input class="input-core" type="text" value="设计评审嘉宾" />
+
+                    <div class="toggle-grid">
+                      <button class="toggle-card active" type="button">
+                        <div class="toggle-title">摄像头</div>
+                        <div class="toggle-copy">入会开启</div>
+                      </button>
+                      <button class="toggle-card" type="button">
+                        <div class="toggle-title">麦克风</div>
+                        <div class="toggle-copy">入会静音</div>
+                      </button>
+                    </div>
+                  </form>
+
+                  <div class="action-stack">
+                    <button class="button primary" data-view-target="join-password" type="button">验证会议号</button>
+                    <button class="button ghost" data-view-target="home" type="button">返回首页</button>
+                  </div>
+
+                  <div class="meeting-summary-card">
+                    <div class="summary-badge">会议号已确认</div>
+                    <div class="meeting-title">全球产品评审会</div>
+                    <div class="meeting-number">821 503 974</div>
+                    <div class="meeting-meta">需要会议密码</div>
+                  </div>
+                </section>
+
+                <section class="surface-card" data-card-view="preview">
+                  <div class="section-copy">
+                    <div class="eyebrow">Prejoin</div>
+                    <h2>入会预览</h2>
+                  </div>
+
+                  <div class="prejoin-layout">
+                    <article class="preview-stage-card">
+                      <div class="preview-stage">
+                        <span class="preview-badge">本地预览</span>
+                        <div class="preview-avatar">设</div>
+                        <div class="preview-copy">
+                          <strong>设计评审嘉宾</strong>
+                          <span>摄像头开启 · 麦克风静音</span>
+                        </div>
+                      </div>
+                    </article>
+
+                    <div class="meeting-summary-card compact">
+                      <div class="meeting-title">全球产品评审会</div>
+                      <div class="meeting-number">821 503 974</div>
+                      <div class="meeting-meta">密码已确认</div>
+                    </div>
+
+                    <div class="toggle-grid">
+                      <button class="toggle-card active" type="button">
+                        <div class="toggle-title">摄像头</div>
+                        <div class="toggle-copy">入会开启</div>
+                      </button>
+                      <button class="toggle-card" type="button">
+                        <div class="toggle-title">麦克风</div>
+                        <div class="toggle-copy">入会静音</div>
+                      </button>
+                    </div>
+
+                    <div class="status-card">
+                      <strong>入会检查</strong>
+                      <p>会议号与密码状态已确认，昵称已填写，媒体偏好已保存。</p>
+                    </div>
+                  </div>
+
+                  <div class="action-stack">
+                    <a class="button primary" href="./wechat-room-preview.html">进入会议</a>
+                    <button class="button ghost" data-view-target="join" type="button">返回修改</button>
+                  </div>
+                </section>
+              </section>
+
+              <div class="password-layer">
+                <div class="sheet-scrim"></div>
+                <section class="password-sheet">
+                  <div class="sheet-badge">会议号 821 503 974 已确认</div>
+                  <div class="section-copy compact-copy">
+                    <div class="eyebrow">Password</div>
+                    <h3>输入会议密码</h3>
+                  </div>
+
+                  <form class="form-stack compact-form">
+                    <input class="input-core" type="password" value="stage2026" />
+                  </form>
+
+                  <div class="action-stack">
+                    <button class="button primary" data-view-target="preview" type="button">加入并进入预览</button>
+                    <button class="button ghost" data-view-target="join" type="button">返回修改</button>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      (() => {
+        const preview = document.querySelector(".wechat-auth-preview");
+        if (!preview) {
+          return;
+        }
+
+        const deviceButtons = Array.from(document.querySelectorAll("[data-device-target]"));
+        const viewButtons = Array.from(document.querySelectorAll("[data-view-target]"));
+        const supportedViews = new Set(["login", "home", "join", "join-password", "preview"]);
+
+        function setDevice(nextDevice) {
+          if (nextDevice !== "phone" && nextDevice !== "pad") {
+            return;
+          }
+
+          preview.dataset.device = nextDevice;
+          for (const button of deviceButtons) {
+            button.classList.toggle("active", button.dataset.deviceTarget === nextDevice);
+          }
+        }
+
+        function setView(nextView) {
+          if (!supportedViews.has(nextView)) {
+            return;
+          }
+
+          preview.dataset.view = nextView;
+          for (const button of viewButtons) {
+            button.classList.toggle("active", button.dataset.viewTarget === nextView);
+          }
+        }
+
+        function resolveView() {
+          const hashView = window.location.hash.replace(/^#/, "");
+          if (supportedViews.has(hashView)) {
+            return hashView;
+          }
+          return preview.dataset.view || "login";
+        }
+
+        for (const button of deviceButtons) {
+          button.addEventListener("click", () => {
+            const nextDevice = button.dataset.deviceTarget;
+            if (nextDevice) {
+              setDevice(nextDevice);
+            }
+          });
+        }
+
+        for (const button of viewButtons) {
+          button.addEventListener("click", () => {
+            const nextView = button.dataset.viewTarget;
+            if (nextView) {
+              setView(nextView);
+            }
+          });
+        }
+
+        window.addEventListener("hashchange", () => {
+          setView(resolveView());
+        });
+
+        setDevice(preview.dataset.device || "phone");
+        setView(resolveView());
+      })();
+    </script>
+  </body>
+</html>

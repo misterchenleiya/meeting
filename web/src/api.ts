@@ -1,5 +1,6 @@
 import { createClientLogger } from "./logger";
-import { resolveApiUrl } from "./runtime-config";
+import { normalizeIceServers, resolveApiUrl, type RuntimeIceServer } from "./runtime-config";
+import type { ClientProfile } from "./clientProfile";
 import type {
   AuthUser,
   ChatMessage,
@@ -24,22 +25,52 @@ export type AuthLoginResponse = {
   autoRegistered?: boolean;
 };
 
+type RuntimeIceResponseFields = {
+  iceServers: RTCIceServer[];
+  iceCredentialExpiresAt?: string;
+};
+
 type CreateMeetingResponse = {
   meeting: Meeting;
   host: Participant;
-};
+} & RuntimeIceResponseFields;
 
 type JoinMeetingResponse = {
   meeting: Meeting;
   participant: Participant;
-};
+} & RuntimeIceResponseFields;
 
 type GetMeetingResponse = {
   meeting: Meeting;
 };
 
+type RawRuntimeIceResponseFields = {
+  iceServers: RuntimeIceServer[];
+  iceCredentialExpiresAt?: string;
+};
+
+type RawCreateMeetingResponse = {
+  meeting: Meeting;
+  host: Participant;
+} & RawRuntimeIceResponseFields;
+
+type RawJoinMeetingResponse = {
+  meeting: Meeting;
+  participant: Participant;
+} & RawRuntimeIceResponseFields;
+
+type RawMeetingIceServersResponse = {
+  iceServers: RuntimeIceServer[];
+  expiresAt?: string;
+};
+
+export type MeetingIceServersResponse = {
+  iceServers: RTCIceServer[];
+  expiresAt?: string;
+};
+
 export type MeetingMinutesSnapshot = {
-  meetingId: string;
+  meetingNumber: string;
   title: string;
   chatMessages: ChatMessage[];
   whiteboardActions: WhiteboardAction[];
@@ -48,6 +79,29 @@ export type MeetingMinutesSnapshot = {
 };
 
 const logger = createClientLogger("frontend.api");
+
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+function meetingPathSegment(meetingNumber: string): string {
+  return encodeURIComponent(meetingNumber);
+}
+
+function normalizeRuntimeIcePayload<T extends { iceServers: RuntimeIceServer[] }>(
+  payload: T
+): Omit<T, "iceServers"> & { iceServers: RTCIceServer[] } {
+  return {
+    ...payload,
+    iceServers: normalizeIceServers(payload.iceServers)
+  };
+}
 
 async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? "GET";
@@ -74,7 +128,7 @@ async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
       status: response.status,
       error: data.error ?? `Request failed with status ${response.status}`
     });
-    throw new Error(data.error ?? `Request failed with status ${response.status}`);
+    throw new ApiError(data.error ?? `Request failed with status ${response.status}`, response.status);
   }
 
   logger.debug("request.succeeded", {
@@ -89,14 +143,17 @@ async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
 export async function createMeeting(input: {
   title: string;
   password: string;
+  meetingType: "quick" | "scheduled";
   hostUserId: string;
   hostNickname: string;
   deviceType: string;
+  clientProfile?: ClientProfile;
 }): Promise<CreateMeetingResponse> {
-  return requestJSON<CreateMeetingResponse>("/api/meetings", {
+  const response = await requestJSON<RawCreateMeetingResponse>("/api/meetings", {
     method: "POST",
     body: JSON.stringify(input)
   });
+  return normalizeRuntimeIcePayload(response);
 }
 
 export async function requestRegisterCode(input: {
@@ -157,39 +214,55 @@ export async function logout(): Promise<{ status: string }> {
 }
 
 export async function joinMeeting(input: {
-  meetingId: string;
+  meetingNumber: string;
   password: string;
   userId?: string;
   nickname: string;
   deviceType: string;
+  clientProfile?: ClientProfile;
   isAnonymous: boolean;
   requestCameraEnabled?: boolean;
   requestMicrophoneEnabled?: boolean;
 }): Promise<JoinMeetingResponse> {
-  return requestJSON<JoinMeetingResponse>(`/api/meetings/${input.meetingId}/join`, {
+  const response = await requestJSON<RawJoinMeetingResponse>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/join`, {
     method: "POST",
     body: JSON.stringify({
       password: input.password,
       userId: input.userId ?? "",
       nickname: input.nickname,
       deviceType: input.deviceType,
+      clientProfile: input.clientProfile ?? {},
       isAnonymous: input.isAnonymous,
       requestCameraEnabled: input.requestCameraEnabled,
       requestMicrophoneEnabled: input.requestMicrophoneEnabled
     })
   });
+  return normalizeRuntimeIcePayload(response);
 }
 
-export async function getMeeting(input: { meetingId: string }): Promise<GetMeetingResponse> {
-  return requestJSON<GetMeetingResponse>(`/api/meetings/${input.meetingId}`);
+export async function getMeeting(input: { meetingNumber: string }): Promise<GetMeetingResponse> {
+  return requestJSON<GetMeetingResponse>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}`);
+}
+
+export async function fetchMeetingIceServers(input: {
+  meetingNumber: string;
+  participantId: string;
+}): Promise<MeetingIceServersResponse> {
+  const response = await requestJSON<RawMeetingIceServersResponse>(
+    `/api/meetings/${meetingPathSegment(input.meetingNumber)}/participants/${input.participantId}/ice-servers`,
+    {
+      method: "POST"
+    }
+  );
+  return normalizeRuntimeIcePayload(response);
 }
 
 export async function endMeeting(input: {
-  meetingId: string;
+  meetingNumber: string;
   hostParticipantId: string;
   deviceType: string;
 }): Promise<{ status: string }> {
-  return requestJSON<{ status: string }>(`/api/meetings/${input.meetingId}/end`, {
+  return requestJSON<{ status: string }>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/end`, {
     method: "POST",
     body: JSON.stringify({
       hostParticipantId: input.hostParticipantId,
@@ -199,12 +272,12 @@ export async function endMeeting(input: {
 }
 
 export async function leaveMeeting(input: {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
   deviceType: string;
 }): Promise<{ status: string }> {
   return requestJSON<{ status: string }>(
-    `/api/meetings/${input.meetingId}/participants/${input.participantId}/leave`,
+    `/api/meetings/${meetingPathSegment(input.meetingNumber)}/participants/${input.participantId}/leave`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -215,7 +288,7 @@ export async function leaveMeeting(input: {
 }
 
 export async function updateNickname(input: {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
   nickname: string;
 }): Promise<{
@@ -227,7 +300,7 @@ export async function updateNickname(input: {
     participant: Participant;
     previousNickname: string;
     systemMessage?: ChatMessage;
-  }>(`/api/meetings/${input.meetingId}/participants/${input.participantId}/nickname`, {
+  }>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/participants/${input.participantId}/nickname`, {
     method: "POST",
     body: JSON.stringify({
       nickname: input.nickname
@@ -236,17 +309,17 @@ export async function updateNickname(input: {
 }
 
 export async function getMeetingMinutes(input: {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
 }): Promise<MeetingMinutesSnapshot> {
   const query = new URLSearchParams({
     participantId: input.participantId
   });
-  return requestJSON<MeetingMinutesSnapshot>(`/api/meetings/${input.meetingId}/minutes?${query.toString()}`);
+  return requestJSON<MeetingMinutesSnapshot>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/minutes?${query.toString()}`);
 }
 
 export async function reportAudit(input: {
-  meetingId: string;
+  meetingNumber: string;
   participantId: string;
   userId?: string;
   participantRole: Participant["role"];
@@ -256,9 +329,10 @@ export async function reportAudit(input: {
   averageFps: number;
   averageBitrateKbps: number;
   details: Record<string, unknown>;
+  clientProfile?: ClientProfile;
 }): Promise<{ status: string }> {
   return requestJSON<{ status: string }>(
-    `/api/meetings/${input.meetingId}/participants/${input.participantId}/audit`,
+    `/api/meetings/${meetingPathSegment(input.meetingNumber)}/participants/${input.participantId}/audit`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -269,7 +343,10 @@ export async function reportAudit(input: {
         packetLossRate: input.packetLossRate,
         averageFps: input.averageFps,
         averageBitrateKbps: Math.round(input.averageBitrateKbps),
-        details: input.details
+        details: {
+          ...input.details,
+          clientProfile: input.clientProfile ?? {}
+        }
       })
     }
   );

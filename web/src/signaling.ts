@@ -7,7 +7,7 @@ export type SignalEnvelope = {
 
 type SignalClientOptions = {
   onOpen?: () => void;
-  onClose?: () => void;
+  onClose?: (event: CloseEvent) => void;
   onError?: (message: string) => void;
   onMessage?: (event: SignalEnvelope) => void;
 };
@@ -15,10 +15,10 @@ type SignalClientOptions = {
 export class SignalClient {
   private socket: WebSocket | null = null;
 
-  connect(meetingId: string, participantId: string, options: SignalClientOptions): void {
+  connect(meetingNumber: string, participantId: string, options: SignalClientOptions): void {
     this.close();
 
-    const url = resolveSignalUrl(`/ws/meetings/${meetingId}`);
+    const url = resolveSignalUrl(`/ws/meetings/${encodeURIComponent(meetingNumber)}`);
     url.searchParams.set("participantId", participantId);
 
     const socket = new WebSocket(url.toString());
@@ -31,12 +31,12 @@ export class SignalClient {
       options.onOpen?.();
     });
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       if (this.socket !== socket) {
         return;
       }
       this.socket = null;
-      options.onClose?.();
+      options.onClose?.(event);
     });
 
     socket.addEventListener("error", () => {

@@ -25,9 +25,16 @@ var (
 )
 
 type PreferenceStore interface {
+	GetUserByID(ctx context.Context, userID string) (sqlite.UserRecord, bool, error)
 	GetUserPreference(ctx context.Context, userID string) (sqlite.UserPreference, bool, error)
 	UpsertUserPreference(ctx context.Context, pref sqlite.UserPreference) error
 	InsertAuditEvent(ctx context.Context, event sqlite.AuditEvent) error
+	UpsertMeetingUsage(ctx context.Context, record sqlite.MeetingUsageRecord) error
+	UpdateMeetingUsageEndedAt(ctx context.Context, meetingID string, endedAt time.Time, updatedAt time.Time) error
+	UpsertMeetingParticipantUsage(ctx context.Context, record sqlite.MeetingParticipantUsageRecord) error
+	UpdateMeetingParticipantUsageLeftAt(ctx context.Context, meetingID string, participantID string, leftAt time.Time, updatedAt time.Time) error
+	UpdateMeetingParticipantUsageNickname(ctx context.Context, meetingID string, participantID string, nickname string, updatedAt time.Time) error
+	UpdateMeetingParticipantUsageRole(ctx context.Context, meetingID string, participantID string, role string, updatedAt time.Time) error
 }
 
 type Service struct {
@@ -39,20 +46,25 @@ type Service struct {
 }
 
 type CreateMeetingInput struct {
-	Title        string
-	Password     string
-	HostUserID   string
-	HostNickname string
-	DeviceType   string
-	IPAddress    string
+	Title         string
+	Password      string
+	MeetingType   MeetingType
+	HostUserID    string
+	HostEmail     string
+	HostNickname  string
+	DeviceType    string
+	ClientProfile map[string]string
+	IPAddress     string
 }
 
 type JoinMeetingInput struct {
 	MeetingID                string
 	Password                 string
 	UserID                   string
+	Email                    string
 	Nickname                 string
 	DeviceType               string
+	ClientProfile            map[string]string
 	IPAddress                string
 	IsAnonymous              bool
 	RequestCameraEnabled     *bool
@@ -62,6 +74,19 @@ type JoinMeetingInput struct {
 type GrantCapabilityInput struct {
 	MeetingID     string
 	HostID        string
+	ParticipantID string
+	Capability    Capability
+}
+
+type RevokeCapabilityInput struct {
+	MeetingID     string
+	HostID        string
+	ParticipantID string
+	Capability    Capability
+}
+
+type CapabilityRequestInput struct {
+	MeetingID     string
 	ParticipantID string
 	Capability    Capability
 }
@@ -168,18 +193,24 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 		return nil, nil, err
 	}
 
+	hostEmail, err := s.resolveUserEmail(ctx, input.HostUserID, input.HostEmail)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	hostID, err := generateID(12)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	now := time.Now().UTC()
 	host := &Participant{
 		ID:          hostID,
 		UserID:      input.HostUserID,
 		Nickname:    input.HostNickname,
 		Role:        RoleHost,
 		IsAnonymous: false,
-		JoinedAt:    time.Now().UTC(),
+		JoinedAt:    now,
 		RequestedMediaPreference: MediaPreference{
 			CameraEnabled:     hostPreference.CameraEnabled,
 			MicrophoneEnabled: hostPreference.MicrophoneEnabled,
@@ -201,31 +232,37 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 		JoinCode:          joinCode,
 		PasswordRequired:  passwordRequired,
 		Title:             input.Title,
+		MeetingType:       normalizeMeetingType(input.MeetingType),
 		HostParticipantID: hostID,
 		Status:            StatusActive,
-		CreatedAt:         time.Now().UTC(),
+		CreatedAt:         now,
 		PasswordSalt:      salt,
 		PasswordHash:      passwordHash,
 		Participants: map[string]*Participant{
 			hostID: host,
 		},
 	}
-	addMinuteLocked(meeting, time.Now().UTC(), fmt.Sprintf("会议已创建，主持人 %s 已入会。", host.Nickname))
+	addMinuteLocked(meeting, now, fmt.Sprintf("会议已创建，主持人 %s 已入会。", host.Nickname))
 
 	s.meetings[meeting.ID] = meeting
 	s.numbers[meeting.MeetingNumber] = meeting.ID
 	s.mu.Unlock()
 
+	if err := s.recordMeetingCreated(ctx, meeting, host, hostEmail, input); err != nil {
+		return nil, nil, err
+	}
+
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
 		ParticipantID:   host.ID,
 		UserID:          host.UserID,
 		ParticipantRole: string(host.Role),
 		EventType:       "meeting_created",
 		IPAddress:       input.IPAddress,
 		DeviceType:      input.DeviceType,
-		DetailsJSON:     fmt.Sprintf(`{"title":%q,"joinCode":%q}`, input.Title, joinCode),
-		CreatedAt:       time.Now().UTC(),
+		DetailsJSON:     fmt.Sprintf(`{"title":%q,"joinCode":%q,"meetingType":%q}`, input.Title, joinCode, meeting.MeetingType),
+		CreatedAt:       now,
 	}); err != nil {
 		return nil, nil, err
 	}
@@ -234,6 +271,11 @@ func (s *Service) CreateMeeting(ctx context.Context, input CreateMeetingInput) (
 }
 
 func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Meeting, *Participant, error) {
+	participantEmail, err := s.resolveUserEmail(ctx, input.UserID, input.Email)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -248,6 +290,10 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 
 	if meeting.PasswordRequired && hashPassword(input.Password, meeting.PasswordSalt) != meeting.PasswordHash {
 		return nil, nil, ErrMeetingPassword
+	}
+
+	if host := activeRegisteredHostParticipant(meeting, input.UserID, input.IsAnonymous); host != nil {
+		return copyMeeting(meeting), copyParticipant(host), nil
 	}
 
 	pref, err := s.resolvePreference(
@@ -267,23 +313,33 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 		return nil, nil, err
 	}
 
+	now := time.Now().UTC()
+	if err := s.replaceActiveRegisteredParticipantLocked(ctx, meeting, input, now); err != nil {
+		return nil, nil, err
+	}
+
 	participant := &Participant{
 		ID:                       participantID,
 		UserID:                   input.UserID,
 		Nickname:                 input.Nickname,
 		Role:                     RoleParticipant,
 		IsAnonymous:              input.IsAnonymous,
-		JoinedAt:                 time.Now().UTC(),
+		JoinedAt:                 now,
 		RequestedMediaPreference: pref,
 		EffectiveMediaState:      MediaPreference{},
-		GrantedCapabilities:      capabilitySet(CapabilityChat),
+		GrantedCapabilities:      defaultParticipantCapabilities(input.UserID, input.IsAnonymous),
 	}
 
 	meeting.Participants[participant.ID] = participant
 	addMinuteLocked(meeting, participant.JoinedAt, fmt.Sprintf("%s 加入会议。", participant.Nickname))
 
+	if err := s.recordParticipantJoined(ctx, meeting.ID, participant, participantEmail, input); err != nil {
+		return nil, nil, err
+	}
+
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
 		ParticipantID:   participant.ID,
 		UserID:          participant.UserID,
 		ParticipantRole: string(participant.Role),
@@ -291,7 +347,7 @@ func (s *Service) JoinMeeting(ctx context.Context, input JoinMeetingInput) (*Mee
 		IPAddress:       input.IPAddress,
 		DeviceType:      input.DeviceType,
 		DetailsJSON:     fmt.Sprintf(`{"nickname":%q,"anonymous":%t}`, participant.Nickname, participant.IsAnonymous),
-		CreatedAt:       time.Now().UTC(),
+		CreatedAt:       now,
 	}); err != nil {
 		return nil, nil, err
 	}
@@ -318,25 +374,16 @@ func (s *Service) LeaveMeeting(ctx context.Context, meetingID string, participan
 	}
 
 	now := time.Now().UTC()
-	participant.LeftAt = &now
-	addMinuteLocked(meeting, now, fmt.Sprintf("%s 离开会议。", participant.Nickname))
-
-	if err := s.insertAudit(ctx, sqlite.AuditEvent{
-		MeetingID:       meeting.ID,
-		ParticipantID:   participant.ID,
-		UserID:          participant.UserID,
-		ParticipantRole: string(participant.Role),
-		EventType:       "participant_left",
-		IPAddress:       ipAddress,
-		DeviceType:      deviceType,
-		CreatedAt:       now,
-	}); err != nil {
+	if err := s.markParticipantLeftLocked(ctx, meeting, participant, now, deviceType, ipAddress, fmt.Sprintf("%s 离开会议。", participant.Nickname)); err != nil {
 		return err
 	}
 
 	delete(meeting.Participants, participantID)
 	if len(meeting.Participants) == 0 {
-		endMeetingLocked(meeting)
+		endMeetingLocked(meeting, now)
+		if err := s.recordMeetingEnded(ctx, meeting.ID, now); err != nil {
+			return err
+		}
 		delete(s.meetings, internalMeetingID)
 		delete(s.numbers, meeting.MeetingNumber)
 	}
@@ -360,6 +407,7 @@ func (s *Service) EndMeeting(ctx context.Context, meetingID string, endedByParti
 	now := time.Now().UTC()
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
 		ParticipantID:   endedByParticipantID,
 		ParticipantRole: string(RoleHost),
 		EventType:       "meeting_ended",
@@ -370,7 +418,20 @@ func (s *Service) EndMeeting(ctx context.Context, meetingID string, endedByParti
 		return err
 	}
 
-	endMeetingLocked(meeting)
+	for _, participant := range meeting.Participants {
+		if participant.LeftAt == nil {
+			leftAt := now
+			participant.LeftAt = &leftAt
+		}
+		if err := s.recordParticipantLeft(ctx, meeting.ID, participant.ID, now); err != nil {
+			return err
+		}
+	}
+
+	endMeetingLocked(meeting, now)
+	if err := s.recordMeetingEnded(ctx, meeting.ID, now); err != nil {
+		return err
+	}
 	delete(s.meetings, internalMeetingID)
 	delete(s.numbers, meeting.MeetingNumber)
 
@@ -400,6 +461,7 @@ func (s *Service) GrantCapability(ctx context.Context, input GrantCapabilityInpu
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
 		ParticipantID:   participant.ID,
 		UserID:          participant.UserID,
 		ParticipantRole: string(participant.Role),
@@ -411,6 +473,113 @@ func (s *Service) GrantCapability(ctx context.Context, input GrantCapabilityInpu
 	}
 
 	return nil
+}
+
+func (s *Service) RevokeCapability(ctx context.Context, input RevokeCapabilityInput) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meeting, _, ok := s.meetingByIdentifierLocked(input.MeetingID)
+	if !ok {
+		return ErrMeetingNotFound
+	}
+
+	if meeting.HostParticipantID != input.HostID {
+		return ErrUnauthorized
+	}
+
+	if !isHostGrantableCapability(input.Capability) {
+		return ErrUnauthorized
+	}
+
+	participant, ok := meeting.Participants[input.ParticipantID]
+	if !ok {
+		return ErrParticipantNotFound
+	}
+
+	if participant.Role == RoleHost {
+		return ErrUnauthorized
+	}
+
+	delete(participant.GrantedCapabilities, input.Capability)
+	now := time.Now().UTC()
+	addMinuteLocked(meeting, now, fmt.Sprintf("%s 已禁止 %s 使用 %s。", actorLabel(meeting, input.HostID), participant.Nickname, input.Capability))
+
+	if err := s.insertAudit(ctx, sqlite.AuditEvent{
+		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
+		ParticipantID:   participant.ID,
+		UserID:          participant.UserID,
+		ParticipantRole: string(participant.Role),
+		EventType:       "capability_revoked",
+		DetailsJSON:     fmt.Sprintf(`{"capability":%q,"revokedBy":%q}`, input.Capability, input.HostID),
+		CreatedAt:       now,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) RequestCapability(ctx context.Context, input CapabilityRequestInput) (*ChatMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meetingValue, actor, err := s.meetingActorLocked(input.MeetingID, input.ParticipantID)
+	if err != nil {
+		return nil, err
+	}
+
+	if actor.Role != RoleParticipant {
+		return nil, ErrUnauthorized
+	}
+
+	if !isParticipantCapabilityRequestable(input.Capability) {
+		return nil, ErrUnauthorized
+	}
+
+	if _, alreadyGranted := actor.GrantedCapabilities[input.Capability]; alreadyGranted {
+		return nil, ErrUnauthorized
+	}
+
+	messageText := fmt.Sprintf(
+		"@主持人，%s 申请开启%s权限。",
+		actor.Nickname,
+		formatCapabilityLabel(input.Capability),
+	)
+	systemMessage, err := s.appendSystemChatLocked(
+		meetingValue,
+		actor.ID,
+		ChatMessageKindCapabilityRequest,
+		messageText,
+		&ChatMessageAction{
+			Type:                ChatMessageActionTypeOpenPermissions,
+			TargetParticipantID: actor.ID,
+			Capability:          input.Capability,
+			RequestedBy:         actor.ID,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	addMinuteLocked(meetingValue, systemMessage.SentAt, messageText)
+
+	if err := s.insertAudit(ctx, sqlite.AuditEvent{
+		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
+		ParticipantID:   actor.ID,
+		UserID:          actor.UserID,
+		ParticipantRole: string(actor.Role),
+		EventType:       "capability_requested",
+		DetailsJSON:     fmt.Sprintf(`{"capability":%q}`, input.Capability),
+		CreatedAt:       systemMessage.SentAt,
+	}); err != nil {
+		return nil, err
+	}
+
+	copied := copyChatMessage(systemMessage)
+	return &copied, nil
 }
 
 func (s *Service) AssignAssistant(ctx context.Context, input AssignAssistantInput) (*Participant, error) {
@@ -428,16 +597,22 @@ func (s *Service) AssignAssistant(ctx context.Context, input AssignAssistantInpu
 
 	participant.Role = RoleAssistant
 	participant.GrantedCapabilities = capabilitySet(allCapabilities()...)
-	addMinuteLocked(meetingValue, time.Now().UTC(), fmt.Sprintf("%s 已将 %s 设为助理。", actor.Nickname, participant.Nickname))
+	now := time.Now().UTC()
+	addMinuteLocked(meetingValue, now, fmt.Sprintf("%s 已将 %s 设为助理。", actor.Nickname, participant.Nickname))
+
+	if err := s.store.UpdateMeetingParticipantUsageRole(ctx, meetingValue.ID, participant.ID, string(participant.Role), now); err != nil {
+		return nil, err
+	}
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   participant.ID,
 		UserID:          participant.UserID,
 		ParticipantRole: string(participant.Role),
 		EventType:       "assistant_assigned",
 		DetailsJSON:     fmt.Sprintf(`{"assignedBy":%q}`, actor.ID),
-		CreatedAt:       time.Now().UTC(),
+		CreatedAt:       now,
 	}); err != nil {
 		return nil, err
 	}
@@ -466,15 +641,26 @@ func (s *Service) UpdateNickname(ctx context.Context, input UpdateNicknameInput)
 	}
 
 	actor.Nickname = trimmedNickname
-	systemMessage, err := s.appendSystemChatLocked(meetingValue, actor.ID, fmt.Sprintf("%s 将昵称修改为 %s。", previousNickname, trimmedNickname))
+	systemMessage, err := s.appendSystemChatLocked(
+		meetingValue,
+		actor.ID,
+		ChatMessageKindSystem,
+		fmt.Sprintf("%s 将昵称修改为 %s。", previousNickname, trimmedNickname),
+		nil,
+	)
 	if err != nil {
 		return nil, nil, "", err
 	}
 
 	addMinuteLocked(meetingValue, systemMessage.SentAt, fmt.Sprintf("%s 将昵称修改为 %s。", previousNickname, trimmedNickname))
 
+	if err := s.store.UpdateMeetingParticipantUsageNickname(ctx, meetingValue.ID, actor.ID, actor.Nickname, systemMessage.SentAt); err != nil {
+		return nil, nil, "", err
+	}
+
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -512,6 +698,7 @@ func (s *Service) AppendChatMessage(ctx context.Context, input ChatMessageInput)
 		ID:            messageID,
 		ParticipantID: actor.ID,
 		Nickname:      actor.Nickname,
+		Kind:          ChatMessageKindUser,
 		Message:       input.Message,
 		SentAt:        time.Now().UTC(),
 	}
@@ -520,6 +707,7 @@ func (s *Service) AppendChatMessage(ctx context.Context, input ChatMessageInput)
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -560,6 +748,7 @@ func (s *Service) AppendWhiteboardAction(ctx context.Context, input WhiteboardAc
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -592,6 +781,7 @@ func (s *Service) ClearWhiteboard(ctx context.Context, input ClearWhiteboardInpu
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -649,6 +839,7 @@ func (s *Service) StartReadyCheck(ctx context.Context, input StartReadyCheckInpu
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -691,6 +882,7 @@ func (s *Service) RespondReadyCheck(ctx context.Context, input RespondReadyCheck
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:       meetingValue.ID,
+		MeetingNumber:   meetingValue.MeetingNumber,
 		ParticipantID:   actor.ID,
 		UserID:          actor.UserID,
 		ParticipantRole: string(actor.Role),
@@ -739,6 +931,7 @@ func (s *Service) FinalizeReadyCheck(ctx context.Context, input FinalizeReadyChe
 
 	if err := s.insertAudit(ctx, sqlite.AuditEvent{
 		MeetingID:     meetingValue.ID,
+		MeetingNumber: meetingValue.MeetingNumber,
 		ParticipantID: round.StartedBy,
 		EventType:     "ready_check_completed",
 		DetailsJSON:   fmt.Sprintf(`{"roundId":%q}`, round.ID),
@@ -764,9 +957,16 @@ func (s *Service) RecordAuditReport(ctx context.Context, input AuditReportInput)
 	if err != nil {
 		return fmt.Errorf("marshal audit details: %w", err)
 	}
+	meetingID := input.MeetingID
+	meetingNumber := ""
+	if meetingValue, found := s.GetMeeting(input.MeetingID); found {
+		meetingID = meetingValue.ID
+		meetingNumber = meetingValue.MeetingNumber
+	}
 
 	return s.insertAudit(ctx, sqlite.AuditEvent{
-		MeetingID:        input.MeetingID,
+		MeetingID:        meetingID,
+		MeetingNumber:    meetingNumber,
 		ParticipantID:    input.ParticipantID,
 		UserID:           input.UserID,
 		ParticipantRole:  string(input.ParticipantRole),
@@ -804,11 +1004,134 @@ func (s *Service) insertAudit(ctx context.Context, event sqlite.AuditEvent) erro
 
 	s.logger.Info("audit event recorded",
 		"meetingId", event.MeetingID,
+		"meetingNumber", event.MeetingNumber,
 		"participantId", event.ParticipantID,
 		"eventType", event.EventType,
 	)
 
 	return nil
+}
+
+func (s *Service) recordMeetingCreated(ctx context.Context, meetingValue *Meeting, host *Participant, hostEmail string, input CreateMeetingInput) error {
+	record := sqlite.MeetingUsageRecord{
+		ID:                meetingValue.ID,
+		MeetingNumber:     meetingValue.MeetingNumber,
+		JoinCode:          meetingValue.JoinCode,
+		Title:             meetingValue.Title,
+		MeetingType:       string(meetingValue.MeetingType),
+		HostParticipantID: meetingValue.HostParticipantID,
+		HostUserID:        host.UserID,
+		HostEmail:         hostEmail,
+		HostNickname:      host.Nickname,
+		HostIPAddress:     input.IPAddress,
+		CreatedAt:         meetingValue.CreatedAt,
+		UpdatedAt:         meetingValue.CreatedAt,
+	}
+	if err := s.store.UpsertMeetingUsage(ctx, record); err != nil {
+		return err
+	}
+
+	return s.store.UpsertMeetingParticipantUsage(ctx, sqlite.MeetingParticipantUsageRecord{
+		MeetingID:         meetingValue.ID,
+		ParticipantID:     host.ID,
+		UserID:            host.UserID,
+		Email:             hostEmail,
+		Nickname:          host.Nickname,
+		IsAnonymous:       host.IsAnonymous,
+		IPAddress:         input.IPAddress,
+		DeviceType:        input.DeviceType,
+		ClientProfileJSON: encodeClientProfile(input.ClientProfile),
+		ParticipantRole:   string(host.Role),
+		JoinedAt:          host.JoinedAt,
+		UpdatedAt:         host.JoinedAt,
+	})
+}
+
+func (s *Service) recordParticipantJoined(ctx context.Context, meetingID string, participant *Participant, email string, input JoinMeetingInput) error {
+	return s.store.UpsertMeetingParticipantUsage(ctx, sqlite.MeetingParticipantUsageRecord{
+		MeetingID:         meetingID,
+		ParticipantID:     participant.ID,
+		UserID:            participant.UserID,
+		Email:             email,
+		Nickname:          participant.Nickname,
+		IsAnonymous:       participant.IsAnonymous,
+		IPAddress:         input.IPAddress,
+		DeviceType:        input.DeviceType,
+		ClientProfileJSON: encodeClientProfile(input.ClientProfile),
+		ParticipantRole:   string(participant.Role),
+		JoinedAt:          participant.JoinedAt,
+		UpdatedAt:         participant.JoinedAt,
+	})
+}
+
+func (s *Service) recordParticipantLeft(ctx context.Context, meetingID string, participantID string, leftAt time.Time) error {
+	return s.store.UpdateMeetingParticipantUsageLeftAt(ctx, meetingID, participantID, leftAt, leftAt)
+}
+
+func (s *Service) recordMeetingEnded(ctx context.Context, meetingID string, endedAt time.Time) error {
+	return s.store.UpdateMeetingUsageEndedAt(ctx, meetingID, endedAt, endedAt)
+}
+
+func (s *Service) resolveUserEmail(ctx context.Context, userID string, email string) (string, error) {
+	trimmedEmail := strings.TrimSpace(email)
+	if trimmedEmail != "" || strings.TrimSpace(userID) == "" {
+		return trimmedEmail, nil
+	}
+
+	user, found, err := s.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", nil
+	}
+
+	return strings.TrimSpace(user.Email), nil
+}
+
+func encodeClientProfile(profile map[string]string) string {
+	if len(profile) == 0 {
+		return "{}"
+	}
+
+	allowedKeys := map[string]struct{}{
+		"browser":               {},
+		"os":                    {},
+		"deviceCategory":        {},
+		"language":              {},
+		"timeZone":              {},
+		"screenWidthBucket":     {},
+		"viewportWidthBucket":   {},
+		"colorScheme":           {},
+		"networkEffectiveType":  {},
+		"webRTCSupported":       {},
+		"mediaDevicesSupported": {},
+		"audioInputSupported":   {},
+		"videoInputSupported":   {},
+	}
+	sanitized := make(map[string]string, len(profile))
+	for key, value := range profile {
+		normalizedKey := strings.TrimSpace(key)
+		if _, ok := allowedKeys[normalizedKey]; !ok {
+			continue
+		}
+		normalizedValue := strings.TrimSpace(value)
+		if len(normalizedValue) > 80 {
+			normalizedValue = normalizedValue[:80]
+		}
+		if normalizedValue != "" {
+			sanitized[normalizedKey] = normalizedValue
+		}
+	}
+	if len(sanitized) == 0 {
+		return "{}"
+	}
+
+	data, err := json.Marshal(sanitized)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }
 
 func (s *Service) resolvePreference(
@@ -852,6 +1175,134 @@ func capabilitySet(capabilities ...Capability) map[Capability]struct{} {
 		set[capability] = struct{}{}
 	}
 	return set
+}
+
+func defaultParticipantCapabilities(userID string, isAnonymous bool) map[Capability]struct{} {
+	if isRegisteredParticipant(userID, isAnonymous) {
+		return capabilitySet(
+			CapabilityChat,
+			CapabilityMicrophone,
+			CapabilityCamera,
+			CapabilityScreenShare,
+		)
+	}
+
+	return capabilitySet(CapabilityChat)
+}
+
+func isRegisteredParticipant(userID string, isAnonymous bool) bool {
+	return strings.TrimSpace(userID) != "" && !isAnonymous
+}
+
+func normalizeMeetingType(value MeetingType) MeetingType {
+	switch value {
+	case MeetingTypeScheduled:
+		return MeetingTypeScheduled
+	default:
+		return MeetingTypeQuick
+	}
+}
+
+func isParticipantCapabilityRequestable(capability Capability) bool {
+	for _, candidate := range requestableParticipantCapabilities() {
+		if capability == candidate {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isHostGrantableCapability(capability Capability) bool {
+	for _, candidate := range hostGrantableCapabilities() {
+		if capability == candidate {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *Service) replaceActiveRegisteredParticipantLocked(ctx context.Context, meeting *Meeting, input JoinMeetingInput, now time.Time) error {
+	if !isRegisteredParticipant(input.UserID, input.IsAnonymous) {
+		return nil
+	}
+
+	for participantID, participant := range meeting.Participants {
+		if participant.UserID != input.UserID || participant.LeftAt != nil {
+			continue
+		}
+		if participant.Role == RoleHost {
+			continue
+		}
+
+		message := fmt.Sprintf("%s 已在其他设备重新加入会议，当前设备自动离开。", participant.Nickname)
+		if err := s.markParticipantLeftLocked(ctx, meeting, participant, now, "single_account_replaced", input.IPAddress, message); err != nil {
+			return err
+		}
+		delete(meeting.Participants, participantID)
+	}
+
+	return nil
+}
+
+func activeRegisteredHostParticipant(meeting *Meeting, userID string, isAnonymous bool) *Participant {
+	if !isRegisteredParticipant(userID, isAnonymous) {
+		return nil
+	}
+
+	host := meeting.Participants[meeting.HostParticipantID]
+	if host == nil || host.LeftAt != nil || host.UserID != userID {
+		return nil
+	}
+
+	return host
+}
+
+func (s *Service) markParticipantLeftLocked(ctx context.Context, meeting *Meeting, participant *Participant, leftAt time.Time, deviceType string, ipAddress string, minute string) error {
+	participant.LeftAt = &leftAt
+	addMinuteLocked(meeting, leftAt, minute)
+
+	if err := s.insertAudit(ctx, sqlite.AuditEvent{
+		MeetingID:       meeting.ID,
+		MeetingNumber:   meeting.MeetingNumber,
+		ParticipantID:   participant.ID,
+		UserID:          participant.UserID,
+		ParticipantRole: string(participant.Role),
+		EventType:       "participant_left",
+		IPAddress:       ipAddress,
+		DeviceType:      deviceType,
+		CreatedAt:       leftAt,
+	}); err != nil {
+		return err
+	}
+
+	if err := s.recordParticipantLeft(ctx, meeting.ID, participant.ID, leftAt); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func formatCapabilityLabel(capability Capability) string {
+	switch capability {
+	case CapabilityMicrophone:
+		return "麦克风"
+	case CapabilityCamera:
+		return "摄像头"
+	case CapabilityWhiteboard:
+		return "白板"
+	case CapabilityScreenShare:
+		return "共享屏幕"
+	case CapabilityRecord:
+		return "录制"
+	case CapabilityReadyCheck:
+		return "就位确认"
+	case CapabilityChat:
+		return "聊天"
+	default:
+		return string(capability)
+	}
 }
 
 func copyMeeting(value *Meeting) *Meeting {
@@ -901,10 +1352,9 @@ func copyParticipant(value *Participant) *Participant {
 	return &copied
 }
 
-func endMeetingLocked(meeting *Meeting) {
-	now := time.Now().UTC()
+func endMeetingLocked(meeting *Meeting, endedAt time.Time) {
 	meeting.Status = StatusEnded
-	meeting.EndedAt = &now
+	meeting.EndedAt = &endedAt
 	meeting.ChatMessages = nil
 	meeting.WhiteboardActions = nil
 	meeting.ActiveReadyCheck = nil
@@ -948,6 +1398,10 @@ func copyWhiteboardAction(value WhiteboardAction) WhiteboardAction {
 }
 
 func copyChatMessage(value ChatMessage) ChatMessage {
+	if value.Action != nil {
+		actionCopy := *value.Action
+		value.Action = &actionCopy
+	}
 	return value
 }
 
@@ -1023,7 +1477,13 @@ func (s *Service) meetingByIdentifierLocked(identifier string) (*Meeting, string
 	return meetingValue, internalMeetingID, true
 }
 
-func (s *Service) appendSystemChatLocked(meetingValue *Meeting, participantID string, message string) (ChatMessage, error) {
+func (s *Service) appendSystemChatLocked(
+	meetingValue *Meeting,
+	participantID string,
+	kind ChatMessageKind,
+	message string,
+	action *ChatMessageAction,
+) (ChatMessage, error) {
 	messageID, err := generateID(10)
 	if err != nil {
 		return ChatMessage{}, err
@@ -1033,7 +1493,9 @@ func (s *Service) appendSystemChatLocked(meetingValue *Meeting, participantID st
 		ID:            messageID,
 		ParticipantID: participantID,
 		Nickname:      "系统消息",
+		Kind:          kind,
 		Message:       message,
+		Action:        action,
 		SentAt:        time.Now().UTC(),
 	}
 	meetingValue.ChatMessages = append(meetingValue.ChatMessages, systemMessage)

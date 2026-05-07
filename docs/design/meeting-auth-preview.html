@@ -65,19 +65,17 @@
 
           <section class="auth-card" data-view="home">
             <div class="login-header-copy">
-              <div class="login-mode-title">预定会议 / 快速会议</div>
+              <div class="login-mode-title">快速会议 / 预定会议</div>
               <button class="login-switch-link" data-auth-target="login" type="button">返回登录 &gt;</button>
             </div>
             <div class="quick-list">
               <article class="quick-card">
-                <strong>预定会议</strong>
-                <span>填写主题、时间、时区和可选密码，适合提前安排的正式会议。</span>
-                <button class="button secondary" data-auth-target="schedule" type="button">进入预定流程</button>
+                <strong>快速会议</strong>
+                <a class="action-link primary" href="./meeting-room-preview.html">快速会议</a>
               </article>
               <article class="quick-card">
-                <strong>快速会议</strong>
-                <span>立即创建并开始会议，进入会中主舞台页面。适合临时沟通、站会和短会。</span>
-                <a class="action-link primary" href="./meeting-room-preview.html">立即开始</a>
+                <strong>预定会议</strong>
+                <button class="button secondary" data-auth-target="schedule" type="button">预定会议</button>
               </article>
             </div>
             <button class="button ghost" data-auth-target="join" type="button">已有会议号？加入会议</button>
@@ -88,7 +86,6 @@
               <div class="eyebrow">Schedule meeting</div>
               <h2>预定会议</h2>
             </div>
-            <p>这一页只保留预定所需字段，底部动作固定为“预定会议 / 返回”，避免和快速会议混在同一张卡里。</p>
             <form class="form-grid">
               <label>
                 会议主题
@@ -122,7 +119,6 @@
               <div class="eyebrow">Join meeting</div>
               <h2>加入会议</h2>
             </div>
-            <p>第一步只输入会议号。确认会议存在且可加入后，再弹出固定悬浮窗要求输入密码。</p>
             <form class="form-grid">
               <label>
                 会议号 / Meeting Code
@@ -137,7 +133,6 @@
               <button class="button primary" data-auth-target="join-password" type="button">验证会议号</button>
               <button class="button ghost" data-auth-target="login" type="button">返回</button>
             </div>
-            <div class="auth-note">此处预览的是产品交互，不代表后端接口已完成。</div>
           </section>
 
           <div class="join-password-modal">
@@ -145,7 +140,6 @@
               <div class="meeting-badge">会议号 82C1F0 已确认</div>
               <div>
                 <h3>请输入会议密码</h3>
-                <p>这个悬浮窗不可移动，固定停留在当前页面中心。会议号校验通过后才出现。</p>
               </div>
               <form class="form-grid">
                 <label>
@@ -159,6 +153,12 @@
               </div>
             </div>
           </div>
+
+          <aside class="build-metadata" aria-label="版本信息">
+            <span>version: 0.0.1</span>
+            <span>commit: 9f4c3b2a1d6e</span>
+            <span>build time: 2026-05-05 21:14:08 +08:00</span>
+          </aside>
         </aside>
       </section>
     </main>

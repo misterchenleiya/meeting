@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 匿名参会者昵称现在会在浏览器本地缓存；下次匿名加入会议时自动回填最近使用的昵称，减少重复手动修改。
+- SMTP 邮件适配器新增 `MEETING_SMTP_TLS_MODE=starttls|implicit|auto`，可在保留 SendCloud API 模式的同时接入阿里云 DirectMail、腾讯 SES 等 `465 SSL` 邮件服务。
+- 新增每日用户流量统计邮件：配置 `MEETING_STATS_REPORT_TO` 后，后端会按 UTC 指定时间发送过去 24 小时的统计结果，在邮件正文展示摘要表格，并在有数据时附带 `users.csv`、`meetings.csv`、`new_users.csv`、`email_code_logins.csv` 和 `meeting_quality.csv`。
+- 新增会议与参会者统计持久化表，记录会议类型、主持人、注册用户邮箱、匿名昵称、IP、参会时间和离会时间，默认不自动清理，便于后续审计。
+- 流量统计邮件新增会议质量摘要、客户端画像分布、新增用户 IP 统计和 `meeting_quality.csv` 明细，便于运营识别设备、浏览器、网络与会议体验问题。
+- 后端构建产物新增 `tag / commit / build time` 版本信息注入，统计邮件会在末尾展示当前后端版本。
+- 新增 `docs/design/20260506-chat-permission-preview.*` 和 `docs/design/20260506-chat-permission-ui-spec.md`，用于约束聊天未读、消息流和主持人权限处理弹窗的交互修复。
+- 新增运行时 ICE 配置接口 `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers`，后端现在会基于共享密钥为当前参会者签发短期 TURN 动态凭据。
+- 微信小程序加入会议页新增会议号输入框内嵌扫码入口，可直接调用摄像头识别会议二维码，并自动回填会议号与二维码中附带的会议密码。
+- 新增独立的 `微信小程序` 设计资产：`docs/design/wechat-auth-preview.html`、`docs/design/wechat-auth-preview.css`、`docs/design/wechat-room-preview.html`、`docs/design/wechat-room-preview.css` 和 `docs/design/wechat-ui-spec.md`，用于在保留 `H5 / PC` 黑色舞台风格的前提下，适配小程序导航栏、安全区和会中壳层。
+- 新增独立的 `H5` 设计资产：`docs/design/h5-auth-preview.html`、`docs/design/h5-auth-preview.css`、`docs/design/h5-room-preview.html`、`docs/design/h5-room-preview.css` 和 `docs/design/h5-ui-spec.md`，用于覆盖手机浏览器与 `iPad` 的登录到入会首屏方案，并与 `PC` 端保持同一套深色产品风格。
 - 新增独立的 `wechat/` 微信小程序客户端工程第一阶段实现，支持微信快捷登录、显式 `sessionToken` 持久化、基础首页、会议查询、带密码加入会议和基础会中占位页。
 - 新增小程序快捷登录后端接口 `POST /api/auth/wechat/mini/login`，服务端会使用 `wx.login` 返回的 code 调用微信 `jscode2session` 接口换取 `openid`，并基于现有 `auth_sessions` 返回 Bearer 会话。
 - 新增黑色风格的 `meeting` 主图标 SVG 资产 `docs/design/meeting-logo-black.svg`，保留 `me` 两个小写字母和底部聚光灯效果，适用于移动 APP、微信和网站 Logo。
@@ -22,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增前端屏幕共享与本地录制缓存流程，支持浏览器内存缓存、下载保存和手动丢弃。
 - 新增助理授权、白板协作、就位确认和会中临时聊天/纪要运行态，支持会内查看并在会议结束后自动清理。
 - 新增基于 `RTCPeerConnection.getStats()` 的基础审计统计上报与前端摘要展示，向后端周期性上报延迟、丢包、帧率和码率。
-- 新增临时会议纪要查询接口 `GET /api/meetings/{meetingID}/minutes`，用于读取会中聊天、白板和就位确认快照。
+- 新增临时会议纪要查询接口 `GET /api/meetings/{meetingNumber}/minutes`，用于读取会中聊天、白板和就位确认快照。
 - 新增昵称修改接口和前端入口，修改昵称后会自动写入临时聊天记录与会议纪要。
 - 新增参会者离开会议入口和主持人保护规则，主持人在仍有其他参会者时必须显式结束会议，避免房间进入无主持人状态。
 - 新增临时纪要本地导出入口，支持把会中纪要、聊天、白板数量和就位确认摘要导出为文本文件。
@@ -46,6 +57,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 账号登录策略改为单账号单有效会话：同一账号新登录会撤销旧登录态；同一注册账号重新加入同一会议时，旧参会设备会自动退出，避免多设备同时登录或重复参会。
+- 对外展示、统计邮件和 CSV 报表统一使用 9 位“会议号”；后端与前端日志在记录内部 `meetingId` 时同步携带 `meetingNumber`，便于双向反查。
+- REST/WSS 会议级路径参数、前端运行态调用和接口文档统一切换为公开 `meetingNumber`；服务端仍兼容旧内部 ID 路径值，并在信令房间注册前归一到内部 ID。
+- 登录页版本角标、后端构建信息和发布包名中的 `commit` 统一改为 `git rev-parse --short HEAD` 默认短 hash，避免展示过长的 12 位提交号。
+- 会中权限策略已按“已注册参会者 / 匿名参会者”拆分默认能力矩阵：已注册参会者默认可直接使用麦克风、摄像头和共享屏幕，匿名参会者仍默认仅聊天。
+- 麦克风、摄像头、共享屏幕和录制的权限申请流已改为“前端二次确认 -> 全员可见系统聊天消息 -> 主持人点击消息快速授权”的闭环交互；系统聊天消息现在带有结构化 `kind / action` 元数据。
+- `coturn` 发布模板和后端运行配置已切换为 `use-auth-secret + static-auth-secret` 动态凭据模式；生产前端发布包不再注入固定 TURN 用户名和密码，浏览器产物中默认只保留 STUN fallback。
+- `Web` 桌面端与 `H5` 移动端左下角新增低干扰版本角标，固定按 `version / commit / build time` 三行显示当前前端构建信息，并同步到 `PC / H5` 设计稿与 `H5 UI` 规格中。
+- `Web` 桌面端与 `H5` 移动端进入会议后不再显示左下角版本信息；版本角标仅保留在登录、登录后入口、加入会议和入会预览等登录前壳层页面，并同步更新会中设计稿与 `H5 UI` 规格。
+- `docs/design/` 下的 `H5` 与微信小程序设计稿、结构化 UI 规格和目录说明已按当前实现同步，补齐 `H5` 注册、扫码加入、密码确认、入会预览和当前会中工具栏，并移除小程序设计稿中残留的说明性旧文案与过时壳层内容。
+- `web/src/App.tsx` 现在把 `H5` 入会预览落成了真实流程节点：快速会议、预定会议和加入会议都会先进入预览页，再正式进入会议；同时首页补上最近会议摘要，移动端预览页按手机 / `iPad` 的信息密度重新排布。
+- `wechat/miniprogram` 现在把小程序主路径补齐为“登录 -> 首页 -> 加入会议 -> 密码确认 -> 入会预览 -> 会中壳层”，并增加最近会议摘要、入会偏好透传和会中成员 / 聊天 / 更多面板壳层。
+- `docs/design/render-previews.sh` 和设计目录说明已补齐 `wechat` 专用渲染与索引，便于并行维护 `PC`、`H5` 和 `微信小程序` 三套同风格设计稿。
+- 现有 `docs/design/meeting-auth-preview.css` 和 `docs/design/meeting-room-preview.css` 不再继续承载 `H5` 专项断点；手机与 `iPad` 适配已迁移到独立的 `h5-` 设计稿中，设计目录说明和渲染脚本也同步切换为 `H5` 专用输出。
 - `make publish` 和 `make upload` 现在会优先读取当前本地环境中的 `UPLOAD_BASE`、`UPLOAD_USERNAME` 和 `UPLOAD_PASSWORD`；当这些变量未提供时，才会回退到交互式输入，便于本地通过环境变量复用上传配置。
 - 微信小程序接入方案文档已从草案推进到第一阶段已实现状态，并明确当前采用显式 Bearer token 而不是 Cookie 维持小程序登录态。
 - 生产环境配置模版 `env.example` 现在同时补充了 `MEETING_WECHAT_MINIPROGRAM_APP_ID`、`MEETING_WECHAT_MINIPROGRAM_APP_SECRET` 和微信接口基地址，便于后端启用小程序快捷登录。
@@ -92,6 +117,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复加入会议时会议号不存在或会议密码错误直接透出英文错误的问题，前端现在显示中文提示。
+- 修复 iPad / H5 浏览器中麦克风关闭后重新打开图标显示正常但远端听不到声音的问题；WebRTC 现在优先复用既有音视频 sender，避免反复移除轨道触发移动端重新协商异常。
+- 修复主持人处理多条权限申请时缺少已查看区分的问题；权限申请消息点开后会置灰但仍可再次处理，已授权能力可在同一窗口中禁止并同步关闭目标端相关能力。
+- 修复主持人结束会议后部分参会者仍停留在会中页的问题；结束事件现在会在关闭信令房间前优先送达，前端在信令断开时也会确认会议状态并自动退出已结束会议。
+- 修复会中音视频开关在移动端浏览器中反复重建整条媒体流导致的开关失效问题；麦克风/摄像头现在按轨道增量开启或关闭，并在授权通过后自动尝试打开对应设备。
+- 修复远端纯音频参会者没有播放节点的问题，H5 或桌面端只开麦克风时其他参会者也能收到音频。
+- 修复无可用麦克风或摄像头时会中按钮缺少明确反馈的问题，现在会优先检测设备并提示具体缺失项。
+- 修复会中分享窗口会议号右侧复制按钮默认颜色偏暗的问题，使按钮在深色背景上保持白色可见。
+- 修复 Web 桌面端聊天抽屉的未读提示、消息排序和消息流样式；新消息现在在底部追加，聊天关闭时会在工具栏显示未读数。
+- 修复主持人处理权限申请和设为助理时缺少反馈的问题；权限目标和助理目标现在改为参会者下拉选择，并在信令未连接或服务端拒绝时显示错误。
+- `H5` 移动端进入会议后的真实会中页已按现有设计稿重新收口，顶部信息、主舞台、参会者缩略条、底部工具栏以及成员 / 聊天 / 应用面板的布局现在与 `docs/design/h5-room-preview.*` 和 `docs/design/h5-ui-spec.md` 保持一致。
 - 修复登录页的卡片切换：`去注册` 现在保持在同一套全屏登录壳层中无缝切换到注册卡片，`加入会议` 不再被认证初始化流程立即打回登录卡片。
 - 调整登录预览页为全窗口展示，左侧仅保留 `meeting` 标识，右侧邮箱和密码提示改为输入框占位文案 `请输入邮箱` 和 `请输入密码`。
 - 进一步收紧登录预览页内容：右侧登录框改为居中悬浮卡片，仅保留邮箱登录标题、邮箱与密码输入框、获取临时验证码按钮、登录 / 加入会议按钮以及右下角的忘记密码入口。
@@ -134,9 +170,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 前端 Mesh 连接在 ICE 失败或断开时会自动触发重协商恢复，减少多人房间里个别 peer 短暂掉线后的人工介入。
 - 登录入口拆分为独立的注册和登录路径，注册完成后会返回登录页并要求重新用验证码登录。
 - 新增生产环境 Nginx 配置草案，并修正 `api.07c2.com.cn/meeting` 的反代规则为前缀剥离模式，确保后端收到的是原始 `/api/...` 与 `/ws/...` 路径。
+- `Web` 登录页、登录后入口和预定/入会预览流程进一步移除了设计稿式说明文案；首页主操作文案同步收敛为 `快速会议` 和 `预定会议`，避免把内部方案说明直接暴露给用户。
+- `Web` 预定会议和加入会议共用的入会预览页进一步对齐 `H5` 设计稿：顶部标题收敛为单行入口标题，预览区改回“本地预览 + 开关卡 + 入会前检查”的稳定布局，避免预览页出现卡片挤压和文案错位。
+- `Web` 左下角版本角标的 `version` 改为只读取当前提交的 `git tag`；未打 tag 的构建不再回退到 `package.json` 版本号，而是明确显示 `untagged`。
+- `Web` 快速会议改为创建成功后直接进入会议房间，不再经过入会预览；`H5` 设计稿、UI 规格和 README 已同步为当前实际流程。
 
 ### Fixed
 
+- 修复 `Web` 端登录后首页被认证初始化副作用反复拉回 `home` 的问题；点击 `快速会议` 和 `预定会议` 时不再因为循环请求 `GET /api/auth/me` 而停留在原页，快速会议可正常进入会议房间，预定会议表单可正常进入。
+- 修复微信小程序登录、首页、加入会议、入会预览和会中页残留设计稿说明性文案的问题，页面文案已收敛为实际产品文案，避免模拟器中出现大量实现说明。
+- 修复微信小程序多个页面按钮仅左右居中而未稳定垂直居中的问题，统一改为基于 `flex` 的按钮居中布局，并补齐多行按钮与工具栏控件的对齐样式。
 - 修复微信小程序上传校验对空值合并与可选链语法的兼容问题；小程序工程编译目标已下调到 `ES2019`，并移除了当前登录请求封装中的 `??` 与 `?.` 用法，避免上传时出现 `Unexpected token ?`。
 - 修复生产发布包默认将前端 API / WSS 地址硬编码到 `api.07c2.com.cn/meeting` 的问题；`make linux` 现在默认生成同源 `/api` 与 `/ws` 的前端包，避免在未配置 CORS 的生产环境中触发浏览器 `Failed to fetch`。
 - 修复生产同源前端包在 `meeting-frontend` 容器内仍将 `/api/...` 当成静态路由返回 `index.html` 的问题；打包随附的前端 Nginx 现在会把 `/api/` 和 `/ws/` 代理到 `meeting-backend`，避免验证码登录时报 `Unexpected token '<'`。

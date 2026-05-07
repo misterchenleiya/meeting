@@ -122,9 +122,9 @@
 - `POST /api/auth/register/verify`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
-- `GET /api/meetings/{meetingID}`
-- `POST /api/meetings/{meetingID}/join`
-- `POST /api/meetings/{meetingID}/participants/{participantID}/leave`
+- `GET /api/meetings/{meetingNumber}`
+- `POST /api/meetings/{meetingNumber}/join`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/leave`
 
 但要明确一个风险点：
 
