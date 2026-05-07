@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `make publish` 的 Docker 后端构建现在会透传宿主机已设置的 `GOPROXY`、`GOPRIVATE`、`GONOPROXY`、`GONOSUMDB` 和 `GOSUMDB`，便于发布时复用本地 Go 模块代理与私有仓库配置。
 - 加入会议流程改为验证会议号后直接进入会议；需要密码的会议在密码确认成功后也直接进入会议，不再进入入会预览页。
 - `H5` 会中页按移动端设计稿重排为 5 个底部主入口和“更多”抽屉，并支持按钮进入全屏、双击画面进入/退出全屏、全屏后单击显示或隐藏底部工具栏。
 - 账号登录策略改为单账号单有效会话：同一账号新登录会撤销旧登录态；同一注册账号重新加入同一会议时，旧参会设备会自动退出，避免多设备同时登录或重复参会。
