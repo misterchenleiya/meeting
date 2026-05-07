@@ -1208,6 +1208,7 @@ function App() {
       ...meetingLogFields(summarySession?.meeting),
       participantId: summarySession?.participant.id ?? ""
     });
+    clearCachedJoinMeetingNumber("meeting_ended_by_host", summarySession?.meeting);
     setEndingMeetingPending(false);
     sessionRef.current = null;
     setPendingSignalSession(null);
@@ -1484,6 +1485,7 @@ function App() {
           preparePostEndSummary();
           return;
         }
+        clearCachedJoinMeetingNumber("meeting_ended_signal", sessionRef.current?.meeting);
         exitMeetingShell("会议已结束");
         return;
       }
@@ -1705,6 +1707,7 @@ function App() {
           participantId: session.participant.id,
           reason: "meeting_status_ended"
         });
+        clearCachedJoinMeetingNumber("meeting_status_ended", response.meeting);
         exitMeetingShell("会议已结束");
         return;
       }
@@ -1727,6 +1730,7 @@ function App() {
           participantId: session.participant.id,
           reason: "meeting_not_found"
         });
+        clearCachedJoinMeetingNumber("meeting_status_not_found", session.meeting);
         exitMeetingShell("会议已结束");
         return;
       }
@@ -1924,6 +1928,69 @@ function App() {
       scrollViewportToTop();
     }
   );
+
+  const clearCachedJoinMeetingNumber = useEffectEvent((
+    reason: string,
+    meeting?: Pick<Meeting, "meetingNumber" | "id">
+  ) => {
+    logger.info("join.cached_meeting_cleared", {
+      ...meetingLogFields(meeting),
+      reason
+    });
+    setJoinLookupMeeting(null);
+    setShowJoinPasswordModal(false);
+    setMeetingAccessPassword("");
+    setJoinForm((current) => ({
+      ...current,
+      meetingNumber: "",
+      password: ""
+    }));
+  });
+
+  const validateCachedJoinMeetingNumber = useEffectEvent(async () => {
+    const cachedMeetingNumber = normalizeMeetingLookupValue(joinForm.meetingNumber);
+    if (!cachedMeetingNumber) {
+      return;
+    }
+
+    try {
+      const response = await getMeeting({ meetingNumber: cachedMeetingNumber });
+      if (response.meeting.status === "ended") {
+        clearCachedJoinMeetingNumber("cached_meeting_ended", response.meeting);
+        setStatusMessage("上一次会议已结束，已清空会议号");
+        setErrorMessage("");
+        return;
+      }
+
+      setJoinForm((current) => ({
+        ...current,
+        meetingNumber: getMeetingPublicNumber(response.meeting)
+      }));
+      setJoinLookupMeeting(response.meeting);
+      setStatusMessage("上一次会议仍在进行中，已保留会议号");
+      setErrorMessage("");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        clearCachedJoinMeetingNumber("cached_meeting_not_found");
+        setStatusMessage("上一次会议不存在或已结束，已清空会议号");
+        setErrorMessage("");
+        return;
+      }
+
+      logger.warn("join.cached_meeting_check_failed", {
+        meetingNumber: cachedMeetingNumber,
+        error
+      });
+      setStatusMessage("暂时无法确认上一次会议状态，已保留会议号");
+      setErrorMessage("");
+    }
+  });
+
+  const handleOpenJoinView = useEffectEvent(async () => {
+    await validateCachedJoinMeetingNumber();
+    setEntryView("join");
+    scrollViewportToTop();
+  });
 
   const syncBaseMediaPreference = useEffectEvent(async (
     nextPreference: CapturePreference,
@@ -3603,7 +3670,7 @@ function App() {
                     </button>
                   </div>
                   <div className="auth-divider" aria-hidden="true" />
-                  <button className="secondary-button join-button" onClick={() => setEntryView("join")} type="button">
+                  <button className="secondary-button join-button" onClick={() => void handleOpenJoinView()} type="button">
                     加入会议
                   </button>
                 </form>
@@ -3666,7 +3733,7 @@ function App() {
                     </button>
                   </div>
                   <div className="auth-divider" aria-hidden="true" />
-                  <button className="secondary-button join-button" onClick={() => setEntryView("join")} type="button">
+                  <button className="secondary-button join-button" onClick={() => void handleOpenJoinView()} type="button">
                     加入会议
                   </button>
                 </form>
@@ -3700,7 +3767,7 @@ function App() {
                   <strong>821 503 974</strong>
                   <p>全球产品评审会 · 今晚 19:30 · 需要会议密码</p>
                 </div>
-                <button className="ghost-button" onClick={() => setEntryView("join")} type="button">
+                <button className="ghost-button" onClick={() => void handleOpenJoinView()} type="button">
                   已有会议号？加入会议
                 </button>
               </section>
