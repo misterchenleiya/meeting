@@ -182,6 +182,7 @@ type PersistedAppState = {
 };
 
 const appStateStorageKey = "meeting:app-state:v3";
+const anonymousNicknameStorageKey = "meeting:anonymous-nickname:v1";
 const defaultEntryStatusMessage = "准备开始会议";
 const authSessionCheckIntervalMs = 30_000;
 const defaultLoginForm: LoginFormState = {
@@ -221,6 +222,14 @@ function BuildMetadataBadge() {
 
 function App() {
   const initialPersistedState = useRef(readPersistedAppState()).current;
+  const initialAnonymousNickname = useRef(readAnonymousNickname()).current;
+  const initialJoinForm = useRef(
+    resolveInitialJoinForm(
+      initialPersistedState?.joinForm,
+      initialPersistedState?.isAuthenticated ?? false,
+      initialAnonymousNickname
+    )
+  ).current;
   const initialMeetingSession = initialPersistedState?.meetingSession ?? null;
   const signalClientRef = useRef<SignalClient | null>(null);
   const meshRef = useRef<PeerMesh | null>(null);
@@ -309,7 +318,7 @@ function App() {
     initialPersistedState?.scheduleForm ?? buildDefaultScheduleForm()
   );
   const [joinForm, setJoinForm] = useState<JoinFormState>(
-    initialPersistedState?.joinForm ?? defaultJoinForm
+    initialJoinForm
   );
   const [joinLookupMeeting, setJoinLookupMeeting] = useState<Meeting | null>(null);
   const [showJoinPasswordModal, setShowJoinPasswordModal] = useState(false);
@@ -407,7 +416,7 @@ function App() {
 
     setJoinForm((current) => ({
       ...current,
-      nickname: defaultJoinForm.nickname
+      nickname: readAnonymousNickname()
     }));
   });
 
@@ -2327,16 +2336,17 @@ function App() {
   });
 
   const performJoinMeeting = useEffectEvent(async (meeting: Meeting, password: string) => {
+    const normalizedNickname = joinForm.nickname.trim();
     logger.info("meeting.join_requested", {
       ...meetingLogFields(meeting),
       passwordProvided: password !== "",
-      nickname: joinForm.nickname.trim()
+      nickname: normalizedNickname
     });
     const response = await joinMeeting({
       meetingNumber: getMeetingPublicNumber(meeting),
       password,
       userId: isAuthenticated && currentUser ? currentUser.id : "",
-      nickname: joinForm.nickname.trim(),
+      nickname: normalizedNickname,
       deviceType,
       clientProfile: collectClientProfile(),
       isAnonymous: !isAuthenticated,
@@ -2349,6 +2359,13 @@ function App() {
       response.iceServers,
       response.iceCredentialExpiresAt
     );
+    if (!isAuthenticated) {
+      writeAnonymousNickname(response.participant.nickname);
+      setJoinForm((current) => ({
+        ...current,
+        nickname: response.participant.nickname
+      }));
+    }
     setMeetingAccessPassword(password);
     setReturnAfterMeetingView(isAuthenticated ? "home" : "login");
     openPrejoinSession(response.meeting, response.participant, "join", "已加入会议，请先确认入会预览");
@@ -3028,6 +3045,13 @@ function App() {
       if (!wsConnected) {
         applyNicknameUpdate(response);
       }
+      if (meetingSession.participant.isAnonymous) {
+        writeAnonymousNickname(response.participant.nickname);
+        setJoinForm((current) => ({
+          ...current,
+          nickname: response.participant.nickname
+        }));
+      }
     } catch (error) {
       setErrorMessage(asMessage(error));
     }
@@ -3690,9 +3714,13 @@ function App() {
                   <label>
                     昵称
                     <input
-                      onChange={(event) =>
-                        setJoinForm((current) => ({ ...current, nickname: event.target.value }))
-                      }
+                      onChange={(event) => {
+                        const nextNickname = event.target.value;
+                        setJoinForm((current) => ({ ...current, nickname: nextNickname }));
+                        if (!isAuthenticated) {
+                          writeAnonymousNickname(nextNickname);
+                        }
+                      }}
                       value={joinForm.nickname}
                     />
                   </label>
@@ -6089,6 +6117,62 @@ function asMessage(error: unknown): string {
     return error.message;
   }
   return "发生未知错误";
+}
+
+function normalizeAnonymousNickname(value: unknown): string {
+  if (typeof value !== "string") {
+    return defaultJoinForm.nickname;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || defaultJoinForm.nickname;
+}
+
+function readAnonymousNickname(): string {
+  if (typeof window === "undefined") {
+    return defaultJoinForm.nickname;
+  }
+
+  try {
+    return normalizeAnonymousNickname(window.localStorage.getItem(anonymousNicknameStorageKey));
+  } catch {
+    // Local storage may be unavailable in private mode; keep the default nickname.
+    return defaultJoinForm.nickname;
+  }
+}
+
+function writeAnonymousNickname(nickname: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const normalizedNickname = normalizeAnonymousNickname(nickname);
+  try {
+    window.localStorage.setItem(anonymousNicknameStorageKey, normalizedNickname);
+  } catch {
+    // Ignore local storage write failures and fall back to the in-memory join form.
+  }
+}
+
+function resolveInitialJoinForm(
+  persistedJoinForm: JoinFormState | undefined,
+  isAuthenticated: boolean,
+  anonymousNickname: string
+): JoinFormState {
+  const base = persistedJoinForm ?? defaultJoinForm;
+  if (isAuthenticated) {
+    return base;
+  }
+
+  const persistedNickname = base.nickname.trim();
+  const nickname = persistedNickname && persistedNickname !== defaultJoinForm.nickname
+    ? persistedNickname
+    : normalizeAnonymousNickname(anonymousNickname);
+
+  return {
+    ...base,
+    nickname
+  };
 }
 
 function readPersistedAppState(): PersistedAppState | null {
