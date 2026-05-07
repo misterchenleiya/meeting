@@ -4012,7 +4012,6 @@ function App() {
                       <span className="meeting-badge">本地预览</span>
                       <StreamFrame
                         className="prejoin-stage-media"
-                        muted
                         placeholder={<div className="prejoin-stage-placeholder" aria-hidden="true" />}
                         stream={localStream}
                       />
@@ -4399,7 +4398,6 @@ function App() {
                 <div className={`featured-canvas ${featuredStageItem.variant === "screen" ? "is-screen" : ""}`}>
                   <StreamFrame
                     className="featured-stream"
-                    muted={featuredStageItem.isLocal}
                     placeholder={renderStreamFallback(featuredStageItem.label, featuredStageItem.variant)}
                     stream={featuredStageItem.stream}
                   />
@@ -4424,7 +4422,6 @@ function App() {
                       <div className={`thumbnail-preview ${item.variant === "screen" ? "is-screen" : ""}`}>
                         <StreamFrame
                           className="thumbnail-stream"
-                          muted={item.isLocal}
                           placeholder={renderStreamFallback(item.label, item.variant)}
                           stream={item.stream}
                         />
@@ -5541,7 +5538,6 @@ function AttachedActionButton(props: {
 
 function StreamFrame(props: {
   stream: MediaStream | null;
-  muted: boolean;
   className?: string;
   placeholder?: ReactNode;
 }) {
@@ -5561,7 +5557,7 @@ function StreamFrame(props: {
 
   return (
     <div className={props.className}>
-      <video autoPlay muted={props.muted} playsInline ref={videoRef} />
+      <video autoPlay muted playsInline ref={videoRef} />
     </div>
   );
 }
@@ -5573,7 +5569,7 @@ function RemoteAudioSinks(props: {
   return (
     <>
       {props.tiles
-        .filter((tile) => tile.stream.getAudioTracks().length > 0 && tile.stream.getVideoTracks().length === 0)
+        .filter((tile) => tile.stream.getAudioTracks().length > 0)
         .map((tile) => (
           <RemoteAudioSink
             key={tile.participantId}
@@ -5592,6 +5588,10 @@ function RemoteAudioSink(props: {
   onPlaybackError: (participantId: string, error: unknown) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioTrackKey = props.stream
+    .getAudioTracks()
+    .map((track) => track.id)
+    .join(":");
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -5599,14 +5599,19 @@ function RemoteAudioSink(props: {
       return;
     }
 
-    audio.srcObject = props.stream;
+    audio.srcObject = new MediaStream(props.stream.getAudioTracks());
     const playPromise = audio.play();
     if (playPromise) {
       playPromise.catch((error) => {
         props.onPlaybackError(props.participantId, error);
       });
     }
-  }, [props.participantId, props.stream]);
+
+    return () => {
+      audio.pause();
+      audio.srcObject = null;
+    };
+  }, [audioTrackKey, props.participantId, props.stream]);
 
   return <audio autoPlay className="remote-audio-sink" playsInline ref={audioRef} />;
 }

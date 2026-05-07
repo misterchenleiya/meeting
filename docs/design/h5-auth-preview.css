@@ -253,6 +253,7 @@ button {
 
 .auth-stage {
   position: relative;
+  height: 100%;
   min-height: 100%;
   padding: 74px 18px 24px;
   display: grid;
@@ -319,8 +320,8 @@ button {
   position: relative;
   z-index: 1;
   display: none;
-  gap: 18px;
-  padding: 22px;
+  gap: 14px;
+  padding: 18px;
   border-radius: 28px;
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(24, 24, 27, 0.96), rgba(18, 18, 20, 0.98));
@@ -930,18 +931,21 @@ button {
   }
 
   .device-screen {
+    height: 100vh;
     min-height: 100vh;
     border-radius: 0;
   }
 
   .auth-stage {
+    overflow: hidden;
     padding-inline: 14px;
     padding-bottom: calc(22px + env(safe-area-inset-bottom));
   }
 
   .surface-card {
-    padding: 18px;
-    border-radius: 24px;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 20px;
   }
 
   .brand-spotlight {
@@ -961,6 +965,91 @@ button {
   .field-inline-action,
   .mini-action-button {
     width: 100%;
+  }
+
+  .section-copy {
+    gap: 5px;
+  }
+
+  .section-copy h2 {
+    font-size: 24px;
+  }
+
+  .mode-strip {
+    gap: 5px;
+    padding: 4px;
+  }
+
+  .mode-chip {
+    min-height: 34px;
+    font-size: 12px;
+  }
+
+  .status-stack,
+  .form-stack,
+  .action-stack,
+  .button-stack,
+  .feature-grid,
+  .preview-layout,
+  .preview-settings,
+  .toggle-grid,
+  .button-row-preview {
+    gap: 8px;
+  }
+
+  .form-stack label,
+  .toggle-card {
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  .form-stack input,
+  .form-stack select,
+  .field-inline-action,
+  .mini-action-button,
+  .button {
+    min-height: 40px;
+    border-radius: 13px;
+  }
+
+  .form-stack input,
+  .form-stack select {
+    padding: 0 12px;
+  }
+
+  .button {
+    padding: 0 14px;
+  }
+
+  .icon-button-only {
+    width: 40px;
+    padding: 0;
+  }
+
+  .status-pill,
+  .status-error {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .auth-divider {
+    margin: 0;
+  }
+
+  .feature-card,
+  .meeting-summary,
+  .checklist-card,
+  .local-preview-card {
+    gap: 8px;
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .feature-card strong,
+  .meeting-summary strong,
+  .checklist-card strong {
+    font-size: 16px;
   }
 
   .scan-modal {
