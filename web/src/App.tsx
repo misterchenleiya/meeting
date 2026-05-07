@@ -2423,7 +2423,7 @@ function App() {
       });
       setJoinLookupMeeting(null);
       setShowJoinPasswordModal(false);
-      setErrorMessage(asMessage(error));
+      setErrorMessage(toJoinMeetingErrorMessage(error));
     }
   });
 
@@ -2441,7 +2441,7 @@ function App() {
     try {
       await performJoinMeeting(joinLookupMeeting, joinForm.password.trim());
     } catch (error) {
-      setErrorMessage(asMessage(error));
+      setErrorMessage(toJoinMeetingErrorMessage(error));
     }
   });
 
@@ -6117,6 +6117,19 @@ function asMessage(error: unknown): string {
     return error.message;
   }
   return "发生未知错误";
+}
+
+function toJoinMeetingErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 404 && error.message === "meeting not found") {
+      return "会议号不存在，请检查后重新输入。";
+    }
+    if (error.status === 401 && error.message === "invalid meeting password") {
+      return "会议密码错误，请重新输入。";
+    }
+  }
+
+  return asMessage(error);
 }
 
 function normalizeAnonymousNickname(value: unknown): string {
