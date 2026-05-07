@@ -20,6 +20,7 @@ type PeerState = {
   pc: RTCPeerConnection;
   remoteStream: MediaStream;
   pendingCandidates: RTCIceCandidateInit[];
+  senderKinds: Map<RTCRtpSender, string>;
   makingOffer: boolean;
   ignoreOffer: boolean;
   polite: boolean;
@@ -176,6 +177,7 @@ export class PeerMesh {
       pc,
       remoteStream,
       pendingCandidates: [],
+      senderKinds: new Map<RTCRtpSender, string>(),
       makingOffer: false,
       ignoreOffer: false,
       polite: this.localParticipantId.localeCompare(participantId) > 0,
@@ -299,25 +301,29 @@ export class PeerMesh {
 
   private async syncPeerTracks(peer: PeerState): Promise<void> {
     const localStream = this.localStream;
-    const desiredTracks = localStream?.getTracks() ?? [];
+    const desiredTracks = localStream?.getTracks().filter((track) => track.readyState === "live") ?? [];
     const desiredByKind = new Map(desiredTracks.map((track) => [track.kind, track]));
     const boundKinds = new Set<string>();
 
     for (const sender of peer.pc.getSenders()) {
-      const currentTrack = sender.track;
-      if (!currentTrack) {
+      const senderKind = this.resolveSenderKind(peer, sender);
+      if (!senderKind) {
         continue;
       }
 
-      const replacement = desiredByKind.get(currentTrack.kind);
+      const replacement = desiredByKind.get(senderKind);
       if (!replacement) {
-        peer.pc.removeTrack(sender);
+        if (sender.track) {
+          await sender.replaceTrack(null);
+        }
+        peer.senderKinds.set(sender, senderKind);
         continue;
       }
 
-      if (replacement.id !== currentTrack.id) {
+      if (replacement.id !== sender.track?.id) {
         await sender.replaceTrack(replacement);
       }
+      peer.senderKinds.set(sender, replacement.kind);
       boundKinds.add(replacement.kind);
     }
 
@@ -327,9 +333,32 @@ export class PeerMesh {
 
     for (const track of desiredTracks) {
       if (!boundKinds.has(track.kind)) {
-        peer.pc.addTrack(track, localStream);
+        const sender = peer.pc.addTrack(track, localStream);
+        peer.senderKinds.set(sender, track.kind);
+        boundKinds.add(track.kind);
       }
     }
+  }
+
+  private resolveSenderKind(peer: PeerState, sender: RTCRtpSender): string | null {
+    if (sender.track) {
+      peer.senderKinds.set(sender, sender.track.kind);
+      return sender.track.kind;
+    }
+
+    const cachedKind = peer.senderKinds.get(sender);
+    if (cachedKind) {
+      return cachedKind;
+    }
+
+    const transceiver = peer.pc.getTransceivers().find((candidate) => candidate.sender === sender);
+    const transceiverKind = transceiver?.receiver.track.kind;
+    if (transceiverKind === "audio" || transceiverKind === "video") {
+      peer.senderKinds.set(sender, transceiverKind);
+      return transceiverKind;
+    }
+
+    return null;
   }
 
   private async handleNegotiationNeeded(peer: PeerState, iceRestart = false): Promise<void> {
