@@ -824,10 +824,29 @@ button {
   right: 18px;
   top: 18px;
   max-height: calc(100% - 36px);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 10px;
   padding: 14px;
   border-radius: 28px;
   overflow: hidden;
+}
+
+.scan-close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(245, 245, 247, 0.92);
+  font-size: 18px;
+  line-height: 1;
 }
 
 .sheet-badge {
@@ -846,8 +865,8 @@ button {
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 220px;
-  padding: 18px;
+  min-height: 0;
+  padding: 10px;
   border-radius: 24px;
   border: 1px solid var(--line);
   background:
@@ -1078,13 +1097,18 @@ button {
     right: 12px;
     top: 12px;
     max-height: calc(100% - 24px);
+    gap: 8px;
     padding: 14px;
   }
 
   .scan-modal .scanner-card {
-    min-height: 190px;
-    padding: 10px;
+    min-height: 0;
+    padding: 8px;
     border-radius: 18px;
+  }
+
+  .scan-modal .scanner-placeholder {
+    min-height: min(190px, 32dvh);
   }
 
   .scan-modal .scanner-copy {

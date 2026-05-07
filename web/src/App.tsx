@@ -4051,7 +4051,15 @@ function App() {
 
                 {showJoinScanModal ? (
                   <div className="modal-layer">
-                    <div className="modal-card">
+                    <div className="modal-card join-scan-modal-card">
+                      <button
+                        aria-label="关闭扫码窗口"
+                        className="auth-modal-close"
+                        onClick={() => setShowJoinScanModal(false)}
+                        type="button"
+                      >
+                        <span aria-hidden="true">×</span>
+                      </button>
                       <div>
                         <h3>扫码加入会议</h3>
                         <p>将分享二维码放到摄像头前方，识别后会自动回填会议号和密码。</p>
@@ -4079,9 +4087,6 @@ function App() {
                       </div>
                       <button className="secondary-button" onClick={handlePickJoinQRCodeImage} type="button">
                         拍照 / 选图识别二维码
-                      </button>
-                      <button className="ghost-button" onClick={() => setShowJoinScanModal(false)} type="button">
-                        关闭扫码，改为手动输入
                       </button>
                     </div>
                   </div>
@@ -5631,14 +5636,53 @@ function StreamFrame(props: {
   placeholder?: ReactNode;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoTrackKey =
+    props.stream
+      ?.getVideoTracks()
+      .map((track) => `${track.id}:${track.readyState}:${track.muted}`)
+      .join("|") ?? "";
 
   useEffect(() => {
-    if (!videoRef.current) {
+    const video = videoRef.current;
+    if (!video) {
       return;
     }
 
-    videoRef.current.srcObject = props.stream;
-  }, [props.stream]);
+    video.srcObject = props.stream;
+    if (!props.stream) {
+      return;
+    }
+
+    const tryPlay = () => {
+      const playPromise = video.play();
+      if (playPromise) {
+        playPromise.catch((error) => {
+          logger.warn("rtc.stream_video_play_failed", {
+            trackIds: props.stream?.getVideoTracks().map((track) => track.id) ?? [],
+            error
+          });
+        });
+      }
+    };
+
+    const videoTracks = props.stream.getVideoTracks();
+    for (const track of videoTracks) {
+      track.addEventListener("unmute", tryPlay);
+    }
+    video.addEventListener("loadedmetadata", tryPlay);
+    video.addEventListener("canplay", tryPlay);
+    tryPlay();
+
+    return () => {
+      for (const track of videoTracks) {
+        track.removeEventListener("unmute", tryPlay);
+      }
+      video.removeEventListener("loadedmetadata", tryPlay);
+      video.removeEventListener("canplay", tryPlay);
+      video.pause();
+      video.srcObject = null;
+    };
+  }, [props.stream, videoTrackKey]);
 
   if (!props.stream) {
     return <div className={props.className}>{props.placeholder ?? <div className="media-fallback">暂无媒体流</div>}</div>;

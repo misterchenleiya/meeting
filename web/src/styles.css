@@ -1498,6 +1498,7 @@ p {
 
 .modal-card,
 .ready-check-modal {
+  position: relative;
   width: min(520px, 100%);
   display: grid;
   gap: 18px;
@@ -1506,6 +1507,30 @@ p {
   border: 1px solid var(--line-strong);
   background: var(--surface-strong);
   box-shadow: var(--shadow);
+}
+
+.auth-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(245, 245, 247, 0.92);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.auth-modal-close span {
+  display: block;
+  transform: translateY(-1px);
 }
 
 .qr-share-card,
@@ -1975,10 +2000,14 @@ p {
   .auth-frame[data-auth-view="join"] .modal-card {
     width: min(100%, 430px);
     max-height: calc(100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    gap: 10px;
+    gap: 8px;
     padding: 14px;
     border-radius: 20px;
     overflow: hidden;
+  }
+
+  .auth-frame[data-auth-view="join"] .join-scan-modal-card {
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
   }
 
   .auth-frame[data-auth-view="join"] .modal-card h3 {
@@ -1987,21 +2016,22 @@ p {
   }
 
   .auth-frame[data-auth-view="join"] .modal-card p {
-    margin: 4px 0 0;
+    margin: 3px 32px 0 0;
     font-size: 12px;
     line-height: 1.5;
   }
 
   .auth-frame[data-auth-view="join"] .scanner-card {
-    gap: 8px;
-    padding: 10px;
+    min-height: 0;
+    gap: 6px;
+    padding: 8px;
     border-radius: 18px;
   }
 
   .auth-frame[data-auth-view="join"] .scanner-card video,
   .auth-frame[data-auth-view="join"] .scanner-placeholder {
-    width: min(100%, 260px);
-    height: min(260px, 38dvh);
+    width: min(100%, 220px);
+    height: min(220px, 32dvh);
     min-height: 0;
     border-radius: 16px;
   }
