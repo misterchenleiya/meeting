@@ -839,6 +839,7 @@ button {
 }
 
 .scanner-card {
+  position: relative;
   display: grid;
   place-items: center;
   min-height: 220px;
@@ -848,6 +849,22 @@ button {
   background:
     linear-gradient(180deg, rgba(24, 24, 27, 0.96), rgba(18, 18, 20, 0.98)),
     rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.scanner-frame {
+  position: absolute;
+  width: min(64%, 218px);
+  aspect-ratio: 1;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(245, 245, 247, 0.88);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 999px rgba(0, 0, 0, 0.16),
+    0 0 28px rgba(10, 132, 255, 0.22);
+  pointer-events: none;
 }
 
 .scanner-placeholder,

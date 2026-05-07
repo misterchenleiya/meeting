@@ -360,18 +360,19 @@
                   <div class="section-copy compact-copy">
                     <div class="eyebrow">Scan</div>
                     <h3>扫码加入会议</h3>
-                    <p>将分享二维码放到摄像头前方，识别后会自动回填会议号和密码；不支持实时扫码时保留图片识别降级路径。</p>
+                    <p>将二维码放入取景框中央，识别后会立即回填会议号和密码；不支持实时扫码时保留图片识别降级路径。</p>
                   </div>
 
                   <div class="scanner-card">
                     <div class="scanner-placeholder">
                       <strong>实时扫码区域</strong>
-                      <span>当前环境支持摄像头预览时，这里展示实时扫描画面。</span>
+                      <span>优先使用浏览器原生扫码能力，回退到 JS 识别。</span>
                     </div>
+                    <span class="scanner-frame" aria-hidden="true"></span>
                   </div>
 
                   <div class="scanner-copy">
-                    <span>等待二维码进入取景框…</span>
+                    <span>将二维码对准蓝色框，不需要长时间固定</span>
                     <strong>识别成功后会自动回填会议号和密码</strong>
                   </div>
 

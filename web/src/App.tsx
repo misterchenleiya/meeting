@@ -63,6 +63,37 @@ const hostGrantableCapabilities: Capability[] = [
 ];
 
 const logger = createClientLogger("frontend.app");
+const liveQRCodeScanIntervalMs = 80;
+const liveQRCodeScanCanvasMaxSide = 900;
+const liveQRCodeCenterCropRatio = 0.86;
+
+type DetectedBarcodeLike = {
+  rawValue?: string;
+};
+
+type BarcodeDetectorLike = {
+  detect: (source: CanvasImageSource) => Promise<DetectedBarcodeLike[]>;
+};
+
+type BarcodeDetectorConstructorLike = {
+  new (options?: { formats?: string[] }): BarcodeDetectorLike;
+};
+
+type WindowWithBarcodeDetector = Window &
+  typeof globalThis & {
+    BarcodeDetector?: BarcodeDetectorConstructorLike;
+  };
+
+type QRScanRegion = {
+  sourceX: number;
+  sourceY: number;
+  sourceWidth: number;
+  sourceHeight: number;
+};
+
+type ExtendedMediaTrackCapabilities = MediaTrackCapabilities & {
+  focusMode?: string[];
+};
 
 type SessionState = {
   meeting: Meeting;
@@ -340,7 +371,7 @@ function App() {
     initialPersistedState?.returnAfterMeetingView ?? "home"
   );
   const [showJoinScanModal, setShowJoinScanModal] = useState(false);
-  const [joinScanStatus, setJoinScanStatus] = useState("请将二维码对准取景框");
+  const [joinScanStatus, setJoinScanStatus] = useState("将二维码放入取景框中央，识别成功会自动回填");
   const [joinScanError, setJoinScanError] = useState("");
   const [shareQrDataUrl, setShareQrDataUrl] = useState("");
   const [endingMeetingPending, setEndingMeetingPending] = useState(false);
@@ -574,7 +605,7 @@ function App() {
     logger.info("join.scan_modal_opened", {
       entryView
     });
-    setJoinScanStatus("请将二维码对准取景框");
+    setJoinScanStatus("将二维码放入取景框中央，识别成功会自动回填");
     setJoinScanError("");
     setShowJoinScanModal(true);
   }
@@ -674,8 +705,8 @@ function App() {
       margin: 1,
       width: 240,
       color: {
-        dark: "#f5f5f7",
-        light: "#00000000"
+        dark: "#111111",
+        light: "#ffffff"
       }
     })
       .then((dataUrl) => {
@@ -2707,16 +2738,12 @@ function App() {
         setJoinScanError("当前页面无法直接调用摄像头。局域网 HTTP 页面在移动端通常需要 HTTPS，或使用下方拍照/选图识别。");
         return;
       }
-      setJoinScanStatus("请将二维码对准取景框");
+      setJoinScanStatus("将二维码放入取景框中央，识别成功会自动回填");
 
       try {
         logger.info("join.scan_live_requested");
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: {
-              ideal: "environment"
-            }
-          },
+          video: buildJoinScannerVideoConstraints(),
           audio: false
         });
         if (cancelled) {
@@ -2725,6 +2752,14 @@ function App() {
         }
 
         joinScannerStreamRef.current = stream;
+        const scannerTrack = stream.getVideoTracks()[0];
+        if (scannerTrack) {
+          void optimizeJoinScannerTrack(scannerTrack).catch((error: unknown) => {
+            logger.debug("join.scan_track_optimization_failed", {
+              error
+            });
+          });
+        }
         const videoElement = joinScannerVideoRef.current;
         if (!videoElement) {
           throw new Error("扫码视频预览初始化失败");
@@ -2733,7 +2768,13 @@ function App() {
         videoElement.srcObject = stream;
         await videoElement.play();
 
-        const scanFrame = () => {
+        let lastScanAt = 0;
+        let scanInProgress = false;
+        let nativeDetector = createQRCodeBarcodeDetector();
+        let nativeDetectorFailureLogged = false;
+        let frameFailureLogged = false;
+
+        const scanFrame = (timestamp: number) => {
           if (cancelled) {
             return;
           }
@@ -2745,23 +2786,55 @@ function App() {
             return;
           }
 
-          const context = canvas.getContext("2d");
-          if (!context) {
-            setJoinScanError("扫码画布初始化失败");
+          if (scanInProgress || timestamp - lastScanAt < liveQRCodeScanIntervalMs) {
+            joinScannerFrameRef.current = window.requestAnimationFrame(scanFrame);
             return;
           }
 
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-          const result = jsQR(imageData.data, imageData.width, imageData.height);
-          if (result?.data) {
-            handleScannedJoinQRCode(result.data);
-            return;
-          }
+          scanInProgress = true;
+          lastScanAt = timestamp;
+          void (async () => {
+            try {
+              if (nativeDetector) {
+                try {
+                  const nativePayload = await decodeQRCodeWithBarcodeDetector(video, nativeDetector);
+                  if (nativePayload) {
+                    cancelled = true;
+                    handleScannedJoinQRCode(nativePayload);
+                    return;
+                  }
+                } catch (error) {
+                  nativeDetector = null;
+                  if (!nativeDetectorFailureLogged) {
+                    nativeDetectorFailureLogged = true;
+                    logger.warn("join.scan_native_detector_failed", {
+                      error
+                    });
+                  }
+                }
+              }
 
-          joinScannerFrameRef.current = window.requestAnimationFrame(scanFrame);
+              const payload = decodeQRCodeFromVideoFrame(video, canvas);
+              if (payload) {
+                cancelled = true;
+                handleScannedJoinQRCode(payload);
+                return;
+              }
+            } catch (error) {
+              if (!frameFailureLogged) {
+                frameFailureLogged = true;
+                logger.warn("join.scan_frame_failed", {
+                  error
+                });
+                setJoinScanError(asMessage(error));
+              }
+            } finally {
+              scanInProgress = false;
+              if (!cancelled) {
+                joinScannerFrameRef.current = window.requestAnimationFrame(scanFrame);
+              }
+            }
+          })();
         };
 
         joinScannerFrameRef.current = window.requestAnimationFrame(scanFrame);
@@ -3982,6 +4055,7 @@ function App() {
                         ) : (
                           <div className="scanner-placeholder">当前环境不支持直接摄像头扫码</div>
                         )}
+                        {supportsLiveJoinScanner() ? <span className="scanner-frame" aria-hidden="true" /> : null}
                         <canvas className="scanner-canvas" ref={joinScannerCanvasRef} />
                       </div>
                       <div className="scanner-copy">
@@ -6052,6 +6126,144 @@ function supportsLiveJoinScanner() {
   return supportsUserMediaCapture();
 }
 
+function buildJoinScannerVideoConstraints(): MediaTrackConstraints {
+  return {
+    facingMode: {
+      ideal: "environment"
+    },
+    width: {
+      ideal: 1280
+    },
+    height: {
+      ideal: 720
+    },
+    frameRate: {
+      ideal: 30,
+      max: 30
+    }
+  };
+}
+
+async function optimizeJoinScannerTrack(track: MediaStreamTrack) {
+  if (typeof track.getCapabilities !== "function" || typeof track.applyConstraints !== "function") {
+    return;
+  }
+
+  const capabilities = track.getCapabilities() as ExtendedMediaTrackCapabilities;
+  const advancedConstraints: Record<string, string>[] = [];
+  if (capabilities.focusMode?.includes("continuous")) {
+    advancedConstraints.push({ focusMode: "continuous" });
+  }
+  if (advancedConstraints.length === 0) {
+    return;
+  }
+
+  await track.applyConstraints({
+    advanced: advancedConstraints as unknown as MediaTrackConstraintSet[]
+  });
+}
+
+function createQRCodeBarcodeDetector(): BarcodeDetectorLike | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const Detector = (window as WindowWithBarcodeDetector).BarcodeDetector;
+  if (!Detector) {
+    return null;
+  }
+
+  try {
+    return new Detector({
+      formats: ["qr_code"]
+    });
+  } catch {
+    try {
+      return new Detector();
+    } catch {
+      return null;
+    }
+  }
+}
+
+async function decodeQRCodeWithBarcodeDetector(source: CanvasImageSource, detector: BarcodeDetectorLike) {
+  const barcodes = await detector.detect(source);
+  const matchedBarcode = barcodes.find(
+    (barcode) => typeof barcode.rawValue === "string" && barcode.rawValue.trim().length > 0
+  );
+  return matchedBarcode?.rawValue?.trim() ?? null;
+}
+
+function decodeQRCodeFromVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
+  const sourceWidth = video.videoWidth;
+  const sourceHeight = video.videoHeight;
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return null;
+  }
+
+  for (const region of buildQRCodeScanRegions(sourceWidth, sourceHeight)) {
+    const payload = decodeQRCodeFromVideoRegion(video, canvas, region);
+    if (payload) {
+      return payload;
+    }
+  }
+
+  return null;
+}
+
+function buildQRCodeScanRegions(sourceWidth: number, sourceHeight: number): QRScanRegion[] {
+  const centerSize = Math.round(Math.min(sourceWidth, sourceHeight) * liveQRCodeCenterCropRatio);
+  const centerRegion = {
+    sourceX: Math.max(0, Math.round((sourceWidth - centerSize) / 2)),
+    sourceY: Math.max(0, Math.round((sourceHeight - centerSize) / 2)),
+    sourceWidth: centerSize,
+    sourceHeight: centerSize
+  };
+  const fullRegion = {
+    sourceX: 0,
+    sourceY: 0,
+    sourceWidth,
+    sourceHeight
+  };
+
+  return [centerRegion, fullRegion];
+}
+
+function decodeQRCodeFromVideoRegion(video: HTMLVideoElement, canvas: HTMLCanvasElement, region: QRScanRegion) {
+  const context = canvas.getContext("2d", {
+    willReadFrequently: true
+  });
+  if (!context) {
+    throw new Error("扫码画布初始化失败");
+  }
+
+  const scale = Math.min(1, liveQRCodeScanCanvasMaxSide / Math.max(region.sourceWidth, region.sourceHeight));
+  canvas.width = Math.max(1, Math.round(region.sourceWidth * scale));
+  canvas.height = Math.max(1, Math.round(region.sourceHeight * scale));
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(
+    video,
+    region.sourceX,
+    region.sourceY,
+    region.sourceWidth,
+    region.sourceHeight,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  return decodeQRCodeFromCanvas(canvas, context);
+}
+
+function decodeQRCodeFromCanvas(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const result = jsQR(imageData.data, imageData.width, imageData.height, {
+    inversionAttempts: "attemptBoth"
+  });
+  return result?.data ?? null;
+}
+
 async function ensureCaptureDevicesAvailable(preference: CapturePreference) {
   const mediaDevices = getMediaDevices();
   if (!mediaDevices || typeof mediaDevices.enumerateDevices !== "function") {
@@ -6156,15 +6368,32 @@ async function decodeQRCodeFromFile(file: File) {
   const imageUrl = URL.createObjectURL(file);
   try {
     const image = await loadImageElement(imageUrl);
+    const nativeDetector = createQRCodeBarcodeDetector();
+    if (nativeDetector) {
+      try {
+        const nativePayload = await decodeQRCodeWithBarcodeDetector(image, nativeDetector);
+        if (nativePayload) {
+          return nativePayload;
+        }
+      } catch (error) {
+        logger.debug("join.scan_image_native_detector_failed", {
+          error
+        });
+      }
+    }
+
     const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext("2d", {
+      willReadFrequently: true
+    });
     if (!context) {
       throw new Error("图片识别画布初始化失败");
     }
 
     const sourceWidth = image.naturalWidth || image.width;
     const sourceHeight = image.naturalHeight || image.height;
-    const scales = [1, 1600 / Math.max(sourceWidth, sourceHeight), 1200 / Math.max(sourceWidth, sourceHeight), 800 / Math.max(sourceWidth, sourceHeight)]
+    const maxSourceSide = Math.max(sourceWidth, sourceHeight);
+    const scales = [1, 1600 / maxSourceSide, 1200 / maxSourceSide, 800 / maxSourceSide]
       .filter((scale) => Number.isFinite(scale) && scale > 0)
       .map((scale) => Math.min(1, scale));
 
@@ -6173,10 +6402,9 @@ async function decodeQRCodeFromFile(file: File) {
       canvas.height = Math.max(1, Math.round(sourceHeight * scale));
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      const result = jsQR(imageData.data, imageData.width, imageData.height);
-      if (result?.data) {
-        return result.data;
+      const payload = decodeQRCodeFromCanvas(canvas, context);
+      if (payload) {
+        return payload;
       }
     }
 

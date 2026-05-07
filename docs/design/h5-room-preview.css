@@ -741,9 +741,9 @@ svg {
   justify-self: center;
   border-radius: 22px;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.82) 12%, transparent 12%, transparent 18%, rgba(255, 255, 255, 0.82) 18%, rgba(255, 255, 255, 0.82) 24%, transparent 24%, transparent 32%, rgba(255, 255, 255, 0.82) 32%, rgba(255, 255, 255, 0.82) 38%, transparent 38%, transparent 48%, rgba(255, 255, 255, 0.82) 48%, rgba(255, 255, 255, 0.82) 54%, transparent 54%, transparent 66%, rgba(255, 255, 255, 0.82) 66%, rgba(255, 255, 255, 0.82) 72%, transparent 72%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82) 12%, transparent 12%, transparent 18%, rgba(255, 255, 255, 0.82) 18%, rgba(255, 255, 255, 0.82) 24%, transparent 24%, transparent 32%, rgba(255, 255, 255, 0.82) 32%, rgba(255, 255, 255, 0.82) 38%, transparent 38%, transparent 48%, rgba(255, 255, 255, 0.82) 48%, rgba(255, 255, 255, 0.82) 54%, transparent 54%, transparent 66%, rgba(255, 255, 255, 0.82) 66%, rgba(255, 255, 255, 0.82) 72%, transparent 72%),
-    rgba(255, 255, 255, 0.04);
+    linear-gradient(90deg, rgba(17, 17, 17, 0.86) 12%, transparent 12%, transparent 18%, rgba(17, 17, 17, 0.86) 18%, rgba(17, 17, 17, 0.86) 24%, transparent 24%, transparent 32%, rgba(17, 17, 17, 0.86) 32%, rgba(17, 17, 17, 0.86) 38%, transparent 38%, transparent 48%, rgba(17, 17, 17, 0.86) 48%, rgba(17, 17, 17, 0.86) 54%, transparent 54%, transparent 66%, rgba(17, 17, 17, 0.86) 66%, rgba(17, 17, 17, 0.86) 72%, transparent 72%),
+    linear-gradient(180deg, rgba(17, 17, 17, 0.86) 12%, transparent 12%, transparent 18%, rgba(17, 17, 17, 0.86) 18%, rgba(17, 17, 17, 0.86) 24%, transparent 24%, transparent 32%, rgba(17, 17, 17, 0.86) 32%, rgba(17, 17, 17, 0.86) 38%, transparent 38%, transparent 48%, rgba(17, 17, 17, 0.86) 48%, rgba(17, 17, 17, 0.86) 54%, transparent 54%, transparent 66%, rgba(17, 17, 17, 0.86) 66%, rgba(17, 17, 17, 0.86) 72%, transparent 72%),
+    #ffffff;
 }
 
 .h5-room-preview[data-fullscreen="on"] {
