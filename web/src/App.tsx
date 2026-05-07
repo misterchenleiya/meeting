@@ -1082,7 +1082,26 @@ function App() {
         signalClientRef.current?.send(type, payload);
       },
       {
+        onRemoteTrack: (participantId, track, eventStreams, stream) => {
+          logger.info("rtc.remote_track_received", {
+            ...meetingLogFields(session.meeting),
+            participantId,
+            track: summarizeMediaTrack(track),
+            eventStreamIds: eventStreams.map((eventStream) => eventStream.id),
+            eventStreamTrackCounts: eventStreams.map((eventStream) => ({
+              streamId: eventStream.id,
+              audio: eventStream.getAudioTracks().length,
+              video: eventStream.getVideoTracks().length
+            })),
+            remoteStream: summarizeMediaStream(stream)
+          });
+        },
         onRemoteStream: (participantId, stream) => {
+          logger.info("rtc.remote_stream_received", {
+            ...meetingLogFields(session.meeting),
+            participantId,
+            stream: summarizeMediaStream(stream)
+          });
           setRemoteTiles((current) => {
             const existing = current.find((tile) => tile.participantId === participantId);
             const next = current.filter((tile) => tile.participantId !== participantId);
@@ -3621,6 +3640,29 @@ function App() {
   const thumbnailItems = featuredStageItem
     ? stageItems.filter((item) => item.id !== featuredStageItem.id)
     : stageItems;
+  const stageDiagnosticKey = buildStageDiagnosticKey(remoteTiles, stageItems, featuredStageItem);
+
+  useEffect(() => {
+    if (!meetingSession) {
+      return;
+    }
+
+    logger.info("rtc.stage_diagnostics", {
+      ...meetingLogFields(meetingSession.meeting),
+      participantId: meetingSession.participant.id,
+      remoteTileCount: remoteTiles.length,
+      stageItemCount: stageItems.length,
+      featuredStageId: featuredStageItem?.id ?? null,
+      featuredStageItem: featuredStageItem ? summarizeStageItem(featuredStageItem) : null,
+      remoteTiles: remoteTiles.map((tile) => ({
+        participantId: tile.participantId,
+        connectionState: tile.connectionState,
+        stream: summarizeMediaStream(tile.stream)
+      })),
+      stageItems: stageItems.map(summarizeStageItem)
+    });
+  }, [stageDiagnosticKey, meetingSession?.meeting.id, meetingSession?.participant.id]);
+
   const roomClockLabel = meetingSession ? formatElapsedClock(meetingSession.meeting.createdAt) : "00:00";
   const connectionLabel = wsConnected ? "WSS 已连接" : "WSS 已断开";
   const networkStatusLabel = errorMessage ? "异常" : wsConnected ? "正常" : "断开";
@@ -4106,6 +4148,7 @@ function App() {
                       <span className="meeting-badge">本地预览</span>
                       <StreamFrame
                         className="prejoin-stage-media"
+                        diagnosticLabel="prejoin:local"
                         placeholder={<div className="prejoin-stage-placeholder" aria-hidden="true" />}
                         stream={localStream}
                       />
@@ -4492,6 +4535,7 @@ function App() {
                 <div className={`featured-canvas ${featuredStageItem.variant === "screen" ? "is-screen" : ""}`}>
                   <StreamFrame
                     className="featured-stream"
+                    diagnosticLabel={`featured:${featuredStageItem.id}`}
                     placeholder={renderStreamFallback(featuredStageItem.label, featuredStageItem.variant)}
                     stream={featuredStageItem.stream}
                   />
@@ -4516,6 +4560,7 @@ function App() {
                       <div className={`thumbnail-preview ${item.variant === "screen" ? "is-screen" : ""}`}>
                         <StreamFrame
                           className="thumbnail-stream"
+                          diagnosticLabel={`thumbnail:${item.id}`}
                           placeholder={renderStreamFallback(item.label, item.variant)}
                           stream={item.stream}
                         />
@@ -5434,6 +5479,12 @@ function App() {
                       title="重连信令"
                     />
                     <AttachedActionButton
+                      description="复制当前设备的前端调试日志。"
+                      icon="settings"
+                      onClick={() => void handleCopyClientLogs()}
+                      title="复制日志"
+                    />
+                    <AttachedActionButton
                       danger
                       description={isHost ? "打开结束会议确认操作。" : "离开当前会议。"}
                       disabled={isHost && endingMeetingPending}
@@ -5633,9 +5684,11 @@ function AttachedActionButton(props: {
 function StreamFrame(props: {
   stream: MediaStream | null;
   className?: string;
+  diagnosticLabel?: string;
   placeholder?: ReactNode;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playFailureLoggedRef = useRef(false);
   const videoTrackKey =
     props.stream
       ?.getVideoTracks()
@@ -5649,40 +5702,128 @@ function StreamFrame(props: {
     }
 
     video.srcObject = props.stream;
+    playFailureLoggedRef.current = false;
     if (!props.stream) {
       return;
     }
 
-    const tryPlay = () => {
+    const logVideoEvent = (eventName: string, extra?: Record<string, unknown>) => {
+      logger.info("rtc.stream_video_event", {
+        event: eventName,
+        label: props.diagnosticLabel ?? "",
+        video: summarizeVideoElement(video),
+        stream: props.stream ? summarizeMediaStream(props.stream) : null,
+        ...(extra ?? {})
+      });
+    };
+
+    const tryPlay = (reason: string) => {
       const playPromise = video.play();
       if (playPromise) {
-        playPromise.catch((error) => {
-          logger.warn("rtc.stream_video_play_failed", {
-            trackIds: props.stream?.getVideoTracks().map((track) => track.id) ?? [],
-            error
+        playPromise
+          .then(() => {
+            logger.info("rtc.stream_video_play_succeeded", {
+              reason,
+              label: props.diagnosticLabel ?? "",
+              video: summarizeVideoElement(video),
+              stream: props.stream ? summarizeMediaStream(props.stream) : null
+            });
+          })
+          .catch((error) => {
+            if (playFailureLoggedRef.current) {
+              return;
+            }
+
+            playFailureLoggedRef.current = true;
+            logger.warn("rtc.stream_video_play_failed", {
+              reason,
+              label: props.diagnosticLabel ?? "",
+              video: summarizeVideoElement(video),
+              trackIds: props.stream?.getVideoTracks().map((track) => track.id) ?? [],
+              stream: props.stream ? summarizeMediaStream(props.stream) : null,
+              error
+            });
           });
-        });
+        return;
       }
+
+      logVideoEvent("play_without_promise", { reason });
     };
+
+    const handleLoadedMetadata = () => {
+      logVideoEvent("loadedmetadata");
+      tryPlay("loadedmetadata");
+    };
+    const handleCanPlay = () => {
+      logVideoEvent("canplay");
+      tryPlay("canplay");
+    };
+    const handlePlaying = () => {
+      logVideoEvent("playing");
+    };
+    const handleResize = () => {
+      logVideoEvent("resize");
+    };
+    const handleVideoError = () => {
+      logger.warn("rtc.stream_video_error", {
+        label: props.diagnosticLabel ?? "",
+        video: summarizeVideoElement(video),
+        stream: props.stream ? summarizeMediaStream(props.stream) : null,
+        errorCode: video.error?.code ?? null,
+        errorMessage: video.error?.message ?? ""
+      });
+    };
+    const handleTrackUnmute = (event: Event) => {
+      const track = event.currentTarget instanceof MediaStreamTrack ? event.currentTarget : null;
+      logger.info("rtc.stream_track_unmuted", {
+        label: props.diagnosticLabel ?? "",
+        track: track ? summarizeMediaTrack(track) : null,
+        video: summarizeVideoElement(video),
+        stream: props.stream ? summarizeMediaStream(props.stream) : null
+      });
+      tryPlay("track_unmute");
+    };
+
+    logger.info("rtc.stream_video_attached", {
+      label: props.diagnosticLabel ?? "",
+      video: summarizeVideoElement(video),
+      stream: summarizeMediaStream(props.stream)
+    });
 
     const videoTracks = props.stream.getVideoTracks();
     for (const track of videoTracks) {
-      track.addEventListener("unmute", tryPlay);
+      track.addEventListener("unmute", handleTrackUnmute);
     }
-    video.addEventListener("loadedmetadata", tryPlay);
-    video.addEventListener("canplay", tryPlay);
-    tryPlay();
+    video.addEventListener("loadedmetadata", handleLoadedMetadata);
+    video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("playing", handlePlaying);
+    video.addEventListener("resize", handleResize);
+    video.addEventListener("error", handleVideoError);
+
+    const layoutProbe = typeof window === "undefined"
+      ? null
+      : window.requestAnimationFrame(() => {
+          logVideoEvent("layout_probe");
+        });
+
+    tryPlay("attached");
 
     return () => {
-      for (const track of videoTracks) {
-        track.removeEventListener("unmute", tryPlay);
+      if (layoutProbe !== null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(layoutProbe);
       }
-      video.removeEventListener("loadedmetadata", tryPlay);
-      video.removeEventListener("canplay", tryPlay);
+      for (const track of videoTracks) {
+        track.removeEventListener("unmute", handleTrackUnmute);
+      }
+      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("playing", handlePlaying);
+      video.removeEventListener("resize", handleResize);
+      video.removeEventListener("error", handleVideoError);
       video.pause();
       video.srcObject = null;
     };
-  }, [props.stream, videoTrackKey]);
+  }, [props.stream, videoTrackKey, props.diagnosticLabel]);
 
   if (!props.stream) {
     return <div className={props.className}>{props.placeholder ?? <div className="media-fallback">暂无媒体流</div>}</div>;
@@ -5693,6 +5834,83 @@ function StreamFrame(props: {
       <video autoPlay muted playsInline ref={videoRef} />
     </div>
   );
+}
+
+function summarizeMediaTrack(track: MediaStreamTrack) {
+  return {
+    id: track.id,
+    kind: track.kind,
+    label: track.label,
+    enabled: track.enabled,
+    muted: track.muted,
+    readyState: track.readyState,
+    contentHint: track.contentHint
+  };
+}
+
+function summarizeMediaStream(stream: MediaStream) {
+  return {
+    id: stream.id,
+    active: stream.active,
+    audioTrackCount: stream.getAudioTracks().length,
+    videoTrackCount: stream.getVideoTracks().length,
+    tracks: stream.getTracks().map(summarizeMediaTrack)
+  };
+}
+
+function summarizeStageItem(item: StageItem) {
+  return {
+    id: item.id,
+    participantId: item.participantId,
+    role: item.role,
+    variant: item.variant,
+    isLocal: item.isLocal,
+    micEnabled: item.micEnabled,
+    label: item.label,
+    stream: summarizeMediaStream(item.stream)
+  };
+}
+
+function summarizeVideoElement(video: HTMLVideoElement) {
+  const rect = video.getBoundingClientRect();
+  return {
+    readyState: video.readyState,
+    networkState: video.networkState,
+    paused: video.paused,
+    ended: video.ended,
+    muted: video.muted,
+    autoplay: video.autoplay,
+    playsInline: video.playsInline,
+    clientWidth: video.clientWidth,
+    clientHeight: video.clientHeight,
+    offsetWidth: video.offsetWidth,
+    offsetHeight: video.offsetHeight,
+    rectWidth: Math.round(rect.width),
+    rectHeight: Math.round(rect.height),
+    videoWidth: video.videoWidth,
+    videoHeight: video.videoHeight
+  };
+}
+
+function buildStageDiagnosticKey(
+  remoteTiles: RemoteTile[],
+  stageItems: StageItem[],
+  featuredStageItem: StageItem | null
+) {
+  const remoteKey = remoteTiles
+    .map((tile) => `${tile.participantId}:${tile.connectionState}:${buildStreamDiagnosticKey(tile.stream)}`)
+    .join("|");
+  const stageKey = stageItems
+    .map((item) => `${item.id}:${item.variant}:${item.isLocal}:${buildStreamDiagnosticKey(item.stream)}`)
+    .join("|");
+  return `${featuredStageItem?.id ?? "none"}::${remoteKey}::${stageKey}`;
+}
+
+function buildStreamDiagnosticKey(stream: MediaStream) {
+  return stream
+    .getTracks()
+    .map((track) => `${track.kind}:${track.id}:${track.enabled}:${track.muted}:${track.readyState}`)
+    .join(",");
 }
 
 function RemoteAudioSinks(props: {

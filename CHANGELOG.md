@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `H5` 会中“更多”面板新增 `复制日志` 入口，移动端复现问题后可直接复制前端调试日志。
+- 新增 H5 会中视频诊断日志，覆盖远端轨道接收、主舞台选择和 video 元素播放状态，便于通过“复制前端日志”定位移动端看不到画面的断点。
 - 匿名参会者昵称现在会在浏览器本地缓存；下次匿名加入会议时自动回填最近使用的昵称，减少重复手动修改。
 - SMTP 邮件适配器新增 `MEETING_SMTP_TLS_MODE=starttls|implicit|auto`，可在保留 SendCloud API 模式的同时接入阿里云 DirectMail、腾讯 SES 等 `465 SSL` 邮件服务。
 - 新增每日用户流量统计邮件：配置 `MEETING_STATS_REPORT_TO` 后，后端会按 UTC 指定时间发送过去 24 小时的统计结果，在邮件正文展示摘要表格，并在有数据时附带 `users.csv`、`meetings.csv`、`new_users.csv`、`email_code_logins.csv` 和 `meeting_quality.csv`。
