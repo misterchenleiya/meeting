@@ -822,8 +822,12 @@ button {
 .scan-modal {
   left: 18px;
   right: 18px;
-  top: 88px;
+  top: 18px;
+  max-height: calc(100% - 36px);
+  gap: 10px;
+  padding: 14px;
   border-radius: 28px;
+  overflow: hidden;
 }
 
 .sheet-badge {
@@ -1072,6 +1076,24 @@ button {
   .scan-modal {
     left: 12px;
     right: 12px;
-    top: 76px;
+    top: 12px;
+    max-height: calc(100% - 24px);
+    padding: 14px;
+  }
+
+  .scan-modal .scanner-card {
+    min-height: 190px;
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .scan-modal .scanner-copy {
+    gap: 4px;
+  }
+
+  .scan-modal .scanner-copy span,
+  .scan-modal .scanner-copy strong {
+    font-size: 12px;
+    line-height: 1.45;
   }
 }

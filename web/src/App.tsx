@@ -501,6 +501,21 @@ function App() {
       return;
     }
 
+    const authScrollLocked = !meetingSession;
+    document.documentElement.classList.toggle("auth-scroll-lock", authScrollLocked);
+    document.body.classList.toggle("auth-scroll-lock", authScrollLocked);
+
+    return () => {
+      document.documentElement.classList.remove("auth-scroll-lock");
+      document.body.classList.remove("auth-scroll-lock");
+    };
+  }, [meetingSession]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
     const syncFullscreenState = () => {
       const nextFullscreenActive = Boolean(document.fullscreenElement);
       setFullscreenActive(nextFullscreenActive);
@@ -2506,7 +2521,7 @@ function App() {
     }
     setMeetingAccessPassword(password);
     setReturnAfterMeetingView(isAuthenticated ? "home" : "login");
-    openPrejoinSession(response.meeting, response.participant, "join", "已加入会议，请先确认入会预览");
+    enterMeetingSession(response.meeting, response.participant, "已进入会议，正在接入信令");
     appendEvent("meeting.joined", `${response.participant.nickname} 已加入会议`);
     logger.info("meeting.join_succeeded", {
       ...meetingLogFields(response.meeting),
@@ -4024,7 +4039,7 @@ function App() {
                       </label>
                       <div className="button-row">
                         <button className="primary-button" onClick={() => void handleConfirmJoinMeeting()} type="button">
-                          加入并进入预览
+                          加入会议
                         </button>
                         <button className="ghost-button" onClick={() => setShowJoinPasswordModal(false)} type="button">
                           返回
