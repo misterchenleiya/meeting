@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { startTransition, useEffect, useEffectEvent, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import jsQR from "jsqr";
 import QRCode from "qrcode";
 import { createClientLogger, formatClientLogs } from "./logger";
@@ -63,6 +63,46 @@ const hostGrantableCapabilities: Capability[] = [
 ];
 
 const logger = createClientLogger("frontend.app");
+const liveQRCodeScanIntervalMs = 80;
+const liveQRCodeScanCanvasMaxSide = 900;
+const liveQRCodeCenterCropRatio = 0.86;
+const diagnosticsQueryParam = "debug";
+
+type DetectedBarcodeLike = {
+  rawValue?: string;
+};
+
+type BarcodeDetectorLike = {
+  detect: (source: CanvasImageSource) => Promise<DetectedBarcodeLike[]>;
+};
+
+type BarcodeDetectorConstructorLike = {
+  new (options?: { formats?: string[] }): BarcodeDetectorLike;
+};
+
+type WindowWithBarcodeDetector = Window &
+  typeof globalThis & {
+    BarcodeDetector?: BarcodeDetectorConstructorLike;
+  };
+
+type QRScanRegion = {
+  sourceX: number;
+  sourceY: number;
+  sourceWidth: number;
+  sourceHeight: number;
+};
+
+type ExtendedMediaTrackCapabilities = MediaTrackCapabilities & {
+  focusMode?: string[];
+};
+
+function isDiagnosticsEnabled() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return new URLSearchParams(window.location.search).get(diagnosticsQueryParam) === "1";
+}
 
 type SessionState = {
   meeting: Meeting;
@@ -113,7 +153,7 @@ type EntryView = "login" | "register" | "home" | "schedule" | "join" | "preview"
 type PrejoinOriginView = "home" | "schedule" | "join";
 type SidebarView = "none" | "members" | "chat";
 type MenuView = "none" | "host" | "participant";
-type AttachedPanelView = "none" | "settings" | "apps" | "end";
+type AttachedPanelView = "none" | "settings" | "apps" | "more" | "end";
 type ModalView =
   | "none"
   | "invite"
@@ -340,14 +380,18 @@ function App() {
     initialPersistedState?.returnAfterMeetingView ?? "home"
   );
   const [showJoinScanModal, setShowJoinScanModal] = useState(false);
-  const [joinScanStatus, setJoinScanStatus] = useState("请将二维码对准取景框");
+  const [joinScanStatus, setJoinScanStatus] = useState("将二维码放入取景框中央，识别成功会自动回填");
   const [joinScanError, setJoinScanError] = useState("");
   const [shareQrDataUrl, setShareQrDataUrl] = useState("");
   const [endingMeetingPending, setEndingMeetingPending] = useState(false);
   const [fullscreenActive, setFullscreenActive] = useState(false);
+  const [fullscreenFallbackActive, setFullscreenFallbackActive] = useState(false);
+  const [fullscreenControlsVisible, setFullscreenControlsVisible] = useState(false);
   const endingMeetingRef = useRef(false);
   const meetingEndSummaryPreparedRef = useRef(false);
   const runtimeIceStateRef = useRef<RuntimeIceState | null>(null);
+  const fullscreenTapAtRef = useRef(0);
+  const fullscreenTapTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     sessionRef.current = meetingSession;
@@ -466,14 +510,65 @@ function App() {
       return;
     }
 
+    const authScrollLocked = !meetingSession;
+    document.documentElement.classList.toggle("auth-scroll-lock", authScrollLocked);
+    document.body.classList.toggle("auth-scroll-lock", authScrollLocked);
+
+    return () => {
+      document.documentElement.classList.remove("auth-scroll-lock");
+      document.body.classList.remove("auth-scroll-lock");
+    };
+  }, [meetingSession]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
     const syncFullscreenState = () => {
-      setFullscreenActive(Boolean(document.fullscreenElement));
+      const nextFullscreenActive = Boolean(document.fullscreenElement);
+      setFullscreenActive(nextFullscreenActive);
+      if (!nextFullscreenActive) {
+        setFullscreenControlsVisible(false);
+      }
     };
 
     syncFullscreenState();
     document.addEventListener("fullscreenchange", syncFullscreenState);
     return () => {
       document.removeEventListener("fullscreenchange", syncFullscreenState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const fullscreenLocked = fullscreenActive || fullscreenFallbackActive;
+    document.documentElement.classList.toggle("room-fullscreen-lock", fullscreenLocked);
+    document.body.classList.toggle("room-fullscreen-lock", fullscreenLocked);
+
+    if (!fullscreenActive && !fullscreenFallbackActive) {
+      setFullscreenControlsVisible(false);
+    } else {
+      setCurrentSidebar("none");
+      setCurrentMenu("none");
+      setCurrentAttachedPanel("none");
+      setFullscreenControlsVisible(false);
+    }
+
+    return () => {
+      document.documentElement.classList.remove("room-fullscreen-lock");
+      document.body.classList.remove("room-fullscreen-lock");
+    };
+  }, [fullscreenActive, fullscreenFallbackActive]);
+
+  useEffect(() => {
+    return () => {
+      if (fullscreenTapTimerRef.current !== null) {
+        window.clearTimeout(fullscreenTapTimerRef.current);
+      }
     };
   }, []);
 
@@ -534,7 +629,7 @@ function App() {
     logger.info("join.scan_modal_opened", {
       entryView
     });
-    setJoinScanStatus("请将二维码对准取景框");
+    setJoinScanStatus("将二维码放入取景框中央，识别成功会自动回填");
     setJoinScanError("");
     setShowJoinScanModal(true);
   }
@@ -634,8 +729,8 @@ function App() {
       margin: 1,
       width: 240,
       color: {
-        dark: "#f5f5f7",
-        light: "#00000000"
+        dark: "#111111",
+        light: "#ffffff"
       }
     })
       .then((dataUrl) => {
@@ -996,7 +1091,30 @@ function App() {
         signalClientRef.current?.send(type, payload);
       },
       {
+        onRemoteTrack: (participantId, track, eventStreams, stream) => {
+          if (isDiagnosticsEnabled()) {
+            logger.info("rtc.remote_track_received", {
+              ...meetingLogFields(session.meeting),
+              participantId,
+              track: summarizeMediaTrack(track),
+              eventStreamIds: eventStreams.map((eventStream) => eventStream.id),
+              eventStreamTrackCounts: eventStreams.map((eventStream) => ({
+                streamId: eventStream.id,
+                audio: eventStream.getAudioTracks().length,
+                video: eventStream.getVideoTracks().length
+              })),
+              remoteStream: summarizeMediaStream(stream)
+            });
+          }
+        },
         onRemoteStream: (participantId, stream) => {
+          if (isDiagnosticsEnabled()) {
+            logger.info("rtc.remote_stream_received", {
+              ...meetingLogFields(session.meeting),
+              participantId,
+              stream: summarizeMediaStream(stream)
+            });
+          }
           setRemoteTiles((current) => {
             const existing = current.find((tile) => tile.participantId === participantId);
             const next = current.filter((tile) => tile.participantId !== participantId);
@@ -1168,6 +1286,7 @@ function App() {
       ...meetingLogFields(summarySession?.meeting),
       participantId: summarySession?.participant.id ?? ""
     });
+    clearCachedJoinMeetingNumber("meeting_ended_by_host", summarySession?.meeting);
     setEndingMeetingPending(false);
     sessionRef.current = null;
     setPendingSignalSession(null);
@@ -1444,6 +1563,7 @@ function App() {
           preparePostEndSummary();
           return;
         }
+        clearCachedJoinMeetingNumber("meeting_ended_signal", sessionRef.current?.meeting);
         exitMeetingShell("会议已结束");
         return;
       }
@@ -1665,6 +1785,7 @@ function App() {
           participantId: session.participant.id,
           reason: "meeting_status_ended"
         });
+        clearCachedJoinMeetingNumber("meeting_status_ended", response.meeting);
         exitMeetingShell("会议已结束");
         return;
       }
@@ -1687,6 +1808,7 @@ function App() {
           participantId: session.participant.id,
           reason: "meeting_not_found"
         });
+        clearCachedJoinMeetingNumber("meeting_status_not_found", session.meeting);
         exitMeetingShell("会议已结束");
         return;
       }
@@ -1884,6 +2006,69 @@ function App() {
       scrollViewportToTop();
     }
   );
+
+  const clearCachedJoinMeetingNumber = useEffectEvent((
+    reason: string,
+    meeting?: Pick<Meeting, "meetingNumber" | "id">
+  ) => {
+    logger.info("join.cached_meeting_cleared", {
+      ...meetingLogFields(meeting),
+      reason
+    });
+    setJoinLookupMeeting(null);
+    setShowJoinPasswordModal(false);
+    setMeetingAccessPassword("");
+    setJoinForm((current) => ({
+      ...current,
+      meetingNumber: "",
+      password: ""
+    }));
+  });
+
+  const validateCachedJoinMeetingNumber = useEffectEvent(async () => {
+    const cachedMeetingNumber = normalizeMeetingLookupValue(joinForm.meetingNumber);
+    if (!cachedMeetingNumber) {
+      return;
+    }
+
+    try {
+      const response = await getMeeting({ meetingNumber: cachedMeetingNumber });
+      if (response.meeting.status === "ended") {
+        clearCachedJoinMeetingNumber("cached_meeting_ended", response.meeting);
+        setStatusMessage("上一次会议已结束，已清空会议号");
+        setErrorMessage("");
+        return;
+      }
+
+      setJoinForm((current) => ({
+        ...current,
+        meetingNumber: getMeetingPublicNumber(response.meeting)
+      }));
+      setJoinLookupMeeting(response.meeting);
+      setStatusMessage("上一次会议仍在进行中，已保留会议号");
+      setErrorMessage("");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        clearCachedJoinMeetingNumber("cached_meeting_not_found");
+        setStatusMessage("上一次会议不存在或已结束，已清空会议号");
+        setErrorMessage("");
+        return;
+      }
+
+      logger.warn("join.cached_meeting_check_failed", {
+        meetingNumber: cachedMeetingNumber,
+        error
+      });
+      setStatusMessage("暂时无法确认上一次会议状态，已保留会议号");
+      setErrorMessage("");
+    }
+  });
+
+  const handleOpenJoinView = useEffectEvent(async () => {
+    await validateCachedJoinMeetingNumber();
+    setEntryView("join");
+    scrollViewportToTop();
+  });
 
   const syncBaseMediaPreference = useEffectEvent(async (
     nextPreference: CapturePreference,
@@ -2368,7 +2553,7 @@ function App() {
     }
     setMeetingAccessPassword(password);
     setReturnAfterMeetingView(isAuthenticated ? "home" : "login");
-    openPrejoinSession(response.meeting, response.participant, "join", "已加入会议，请先确认入会预览");
+    enterMeetingSession(response.meeting, response.participant, "已进入会议，正在接入信令");
     appendEvent("meeting.joined", `${response.participant.nickname} 已加入会议`);
     logger.info("meeting.join_succeeded", {
       ...meetingLogFields(response.meeting),
@@ -2600,16 +2785,12 @@ function App() {
         setJoinScanError("当前页面无法直接调用摄像头。局域网 HTTP 页面在移动端通常需要 HTTPS，或使用下方拍照/选图识别。");
         return;
       }
-      setJoinScanStatus("请将二维码对准取景框");
+      setJoinScanStatus("将二维码放入取景框中央，识别成功会自动回填");
 
       try {
         logger.info("join.scan_live_requested");
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: {
-              ideal: "environment"
-            }
-          },
+          video: buildJoinScannerVideoConstraints(),
           audio: false
         });
         if (cancelled) {
@@ -2618,6 +2799,14 @@ function App() {
         }
 
         joinScannerStreamRef.current = stream;
+        const scannerTrack = stream.getVideoTracks()[0];
+        if (scannerTrack) {
+          void optimizeJoinScannerTrack(scannerTrack).catch((error: unknown) => {
+            logger.debug("join.scan_track_optimization_failed", {
+              error
+            });
+          });
+        }
         const videoElement = joinScannerVideoRef.current;
         if (!videoElement) {
           throw new Error("扫码视频预览初始化失败");
@@ -2626,7 +2815,13 @@ function App() {
         videoElement.srcObject = stream;
         await videoElement.play();
 
-        const scanFrame = () => {
+        let lastScanAt = 0;
+        let scanInProgress = false;
+        let nativeDetector = createQRCodeBarcodeDetector();
+        let nativeDetectorFailureLogged = false;
+        let frameFailureLogged = false;
+
+        const scanFrame = (timestamp: number) => {
           if (cancelled) {
             return;
           }
@@ -2638,23 +2833,55 @@ function App() {
             return;
           }
 
-          const context = canvas.getContext("2d");
-          if (!context) {
-            setJoinScanError("扫码画布初始化失败");
+          if (scanInProgress || timestamp - lastScanAt < liveQRCodeScanIntervalMs) {
+            joinScannerFrameRef.current = window.requestAnimationFrame(scanFrame);
             return;
           }
 
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-          const result = jsQR(imageData.data, imageData.width, imageData.height);
-          if (result?.data) {
-            handleScannedJoinQRCode(result.data);
-            return;
-          }
+          scanInProgress = true;
+          lastScanAt = timestamp;
+          void (async () => {
+            try {
+              if (nativeDetector) {
+                try {
+                  const nativePayload = await decodeQRCodeWithBarcodeDetector(video, nativeDetector);
+                  if (nativePayload) {
+                    cancelled = true;
+                    handleScannedJoinQRCode(nativePayload);
+                    return;
+                  }
+                } catch (error) {
+                  nativeDetector = null;
+                  if (!nativeDetectorFailureLogged) {
+                    nativeDetectorFailureLogged = true;
+                    logger.warn("join.scan_native_detector_failed", {
+                      error
+                    });
+                  }
+                }
+              }
 
-          joinScannerFrameRef.current = window.requestAnimationFrame(scanFrame);
+              const payload = decodeQRCodeFromVideoFrame(video, canvas);
+              if (payload) {
+                cancelled = true;
+                handleScannedJoinQRCode(payload);
+                return;
+              }
+            } catch (error) {
+              if (!frameFailureLogged) {
+                frameFailureLogged = true;
+                logger.warn("join.scan_frame_failed", {
+                  error
+                });
+                setJoinScanError(asMessage(error));
+              }
+            } finally {
+              scanInProgress = false;
+              if (!cancelled) {
+                joinScannerFrameRef.current = window.requestAnimationFrame(scanFrame);
+              }
+            }
+          })();
         };
 
         joinScannerFrameRef.current = window.requestAnimationFrame(scanFrame);
@@ -3264,6 +3491,24 @@ function App() {
     setCurrentSidebar((current) => (current === nextSidebar ? "none" : nextSidebar));
   }
 
+  function clearFullscreenTapTimer() {
+    if (fullscreenTapTimerRef.current === null || typeof window === "undefined") {
+      return;
+    }
+
+    window.clearTimeout(fullscreenTapTimerRef.current);
+    fullscreenTapTimerRef.current = null;
+  }
+
+  function isMobileRoomViewport() {
+    return typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches;
+  }
+
+  function toggleMobileAttachedWindow(nextPanel: AttachedPanelView) {
+    setCurrentSidebar("none");
+    toggleAttachedWindow(nextPanel);
+  }
+
   async function handleToggleFullscreenMode() {
     if (typeof document === "undefined") {
       return;
@@ -3272,12 +3517,73 @@ function App() {
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
-      } else {
-        await document.documentElement.requestFullscreen();
+        setFullscreenFallbackActive(false);
+        setFullscreenControlsVisible(false);
+        return;
       }
+
+      if (fullscreenFallbackActive) {
+        setFullscreenFallbackActive(false);
+        setFullscreenControlsVisible(false);
+        return;
+      }
+
+      closeAttachedWindows();
+      setCurrentSidebar("none");
+      setFullscreenControlsVisible(false);
+
+      if (typeof document.documentElement.requestFullscreen !== "function") {
+        setFullscreenFallbackActive(true);
+        setStatusMessage("当前浏览器不支持系统全屏，已切换为页面内全屏");
+        return;
+      }
+
+      await document.documentElement.requestFullscreen();
     } catch (error) {
-      setErrorMessage(asMessage(error));
+      logger.warn("fullscreen.request_failed", {
+        ...meetingLogFields(meetingSession?.meeting ?? null),
+        error
+      });
+      setFullscreenFallbackActive(true);
+      setFullscreenControlsVisible(false);
+      setStatusMessage("当前浏览器不支持系统全屏，已切换为页面内全屏");
     }
+  }
+
+  function handleStageShellPointerUp(event: PointerEvent<HTMLElement>) {
+    if (!isMobileRoomViewport()) {
+      return;
+    }
+
+    const target = event.target;
+    if (target instanceof Element && target.closest("button, input, textarea, select, a")) {
+      return;
+    }
+
+    const now = Date.now();
+    const isDoubleTap = now - fullscreenTapAtRef.current < 280;
+    clearFullscreenTapTimer();
+
+    if (isDoubleTap) {
+      fullscreenTapAtRef.current = 0;
+      void handleToggleFullscreenMode();
+      return;
+    }
+
+    fullscreenTapAtRef.current = now;
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    fullscreenTapTimerRef.current = window.setTimeout(() => {
+      fullscreenTapAtRef.current = 0;
+      fullscreenTapTimerRef.current = null;
+      if (fullscreenActive || fullscreenFallbackActive) {
+        setFullscreenControlsVisible((current) => !current);
+      } else {
+        setFullscreenControlsVisible(false);
+      }
+    }, 320);
   }
 
   const isHost = meetingSession?.participant.role === "host";
@@ -3317,6 +3623,7 @@ function App() {
   const localReadyCheckStatus = activeReadyCheck && meetingSession
     ? activeReadyCheck.results[meetingSession.participant.id]?.status
     : undefined;
+  const diagnosticsEnabled = isDiagnosticsEnabled();
 
   const basePreference = captureSelection;
   const localMicEnabled = Boolean(
@@ -3347,34 +3654,31 @@ function App() {
   const thumbnailItems = featuredStageItem
     ? stageItems.filter((item) => item.id !== featuredStageItem.id)
     : stageItems;
-  const stageItemByParticipantId = new Map(stageItems.map((item) => [item.participantId, item]));
-  const participantStripItems = stageParticipants.map((participant) => {
-    const stageItem = stageItemByParticipantId.get(participant.id);
-    const micEnabled = resolveParticipantMicEnabled(
-      participant,
-      meetingSession?.participant.id ?? "",
-      localMicEnabled
-    );
-    const isFeatured = featuredStageItem?.participantId === participant.id;
-    let statusLabel = micEnabled ? "发言中" : "已静音";
+  const stageDiagnosticKey = diagnosticsEnabled
+    ? buildStageDiagnosticKey(remoteTiles, stageItems, featuredStageItem)
+    : "";
 
-    if (stageItem?.variant === "screen") {
-      statusLabel = isFeatured ? "主画面" : "共享屏幕";
-    } else if (stageItem?.variant === "camera") {
-      statusLabel = isFeatured ? "主画面" : micEnabled ? "发言中" : "摄像头开启";
-    } else if (!micEnabled) {
-      statusLabel = "摄像头关闭";
+  useEffect(() => {
+    if (!diagnosticsEnabled || !meetingSession) {
+      return;
     }
 
-    return {
-      id: participant.id,
-      isFeatured,
-      initials: initialsFromName(participant.nickname),
-      nickname: participant.nickname,
-      statusLabel,
-      stageId: stageItem?.id ?? null
-    };
-  });
+    logger.info("rtc.stage_diagnostics", {
+      ...meetingLogFields(meetingSession.meeting),
+      participantId: meetingSession.participant.id,
+      remoteTileCount: remoteTiles.length,
+      stageItemCount: stageItems.length,
+      featuredStageId: featuredStageItem?.id ?? null,
+      featuredStageItem: featuredStageItem ? summarizeStageItem(featuredStageItem) : null,
+      remoteTiles: remoteTiles.map((tile) => ({
+        participantId: tile.participantId,
+        connectionState: tile.connectionState,
+        stream: summarizeMediaStream(tile.stream)
+      })),
+      stageItems: stageItems.map(summarizeStageItem)
+    });
+  }, [diagnosticsEnabled, stageDiagnosticKey, meetingSession?.meeting.id, meetingSession?.participant.id]);
+
   const roomClockLabel = meetingSession ? formatElapsedClock(meetingSession.meeting.createdAt) : "00:00";
   const connectionLabel = wsConnected ? "WSS 已连接" : "WSS 已断开";
   const networkStatusLabel = errorMessage ? "异常" : wsConnected ? "正常" : "断开";
@@ -3391,6 +3695,14 @@ function App() {
     : "";
   const inviteJoinURL = meetingSession ? buildMeetingJoinURL(meetingSession.meeting).toString() : "";
   const inviteMeetingTimeLabel = meetingSession ? formatInviteMeetingTime(meetingSession.meeting.createdAt) : "";
+  const roomFullscreenActive = fullscreenActive || fullscreenFallbackActive;
+  const roomShellClassName = [
+    "room-shell room-shell--immersive",
+    roomFullscreenActive ? "is-room-fullscreen" : "",
+    roomFullscreenActive && fullscreenControlsVisible ? "is-fullscreen-controls-visible" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
   const isLoginEntry = entryView === "login";
   const isRegisterEntry = entryView === "register";
   const showLoginFeedback = isLoginEntry && (errorMessage || statusMessage !== defaultEntryStatusMessage);
@@ -3504,7 +3816,7 @@ function App() {
                     </button>
                   </div>
                   <div className="auth-divider" aria-hidden="true" />
-                  <button className="secondary-button join-button" onClick={() => setEntryView("join")} type="button">
+                  <button className="secondary-button join-button" onClick={() => void handleOpenJoinView()} type="button">
                     加入会议
                   </button>
                 </form>
@@ -3567,7 +3879,7 @@ function App() {
                     </button>
                   </div>
                   <div className="auth-divider" aria-hidden="true" />
-                  <button className="secondary-button join-button" onClick={() => setEntryView("join")} type="button">
+                  <button className="secondary-button join-button" onClick={() => void handleOpenJoinView()} type="button">
                     加入会议
                   </button>
                 </form>
@@ -3601,7 +3913,7 @@ function App() {
                   <strong>821 503 974</strong>
                   <p>全球产品评审会 · 今晚 19:30 · 需要会议密码</p>
                 </div>
-                <button className="ghost-button" onClick={() => setEntryView("join")} type="button">
+                <button className="ghost-button" onClick={() => void handleOpenJoinView()} type="button">
                   已有会议号？加入会议
                 </button>
               </section>
@@ -3785,7 +4097,7 @@ function App() {
                       </label>
                       <div className="button-row">
                         <button className="primary-button" onClick={() => void handleConfirmJoinMeeting()} type="button">
-                          加入并进入预览
+                          加入会议
                         </button>
                         <button className="ghost-button" onClick={() => setShowJoinPasswordModal(false)} type="button">
                           返回
@@ -3797,7 +4109,15 @@ function App() {
 
                 {showJoinScanModal ? (
                   <div className="modal-layer">
-                    <div className="modal-card">
+                    <div className="modal-card join-scan-modal-card">
+                      <button
+                        aria-label="关闭扫码窗口"
+                        className="auth-modal-close"
+                        onClick={() => setShowJoinScanModal(false)}
+                        type="button"
+                      >
+                        <span aria-hidden="true">×</span>
+                      </button>
                       <div>
                         <h3>扫码加入会议</h3>
                         <p>将分享二维码放到摄像头前方，识别后会自动回填会议号和密码。</p>
@@ -3816,6 +4136,7 @@ function App() {
                         ) : (
                           <div className="scanner-placeholder">当前环境不支持直接摄像头扫码</div>
                         )}
+                        {supportsLiveJoinScanner() ? <span className="scanner-frame" aria-hidden="true" /> : null}
                         <canvas className="scanner-canvas" ref={joinScannerCanvasRef} />
                       </div>
                       <div className="scanner-copy">
@@ -3824,9 +4145,6 @@ function App() {
                       </div>
                       <button className="secondary-button" onClick={handlePickJoinQRCodeImage} type="button">
                         拍照 / 选图识别二维码
-                      </button>
-                      <button className="ghost-button" onClick={() => setShowJoinScanModal(false)} type="button">
-                        关闭扫码，改为手动输入
                       </button>
                     </div>
                   </div>
@@ -3846,7 +4164,8 @@ function App() {
                       <span className="meeting-badge">本地预览</span>
                       <StreamFrame
                         className="prejoin-stage-media"
-                        muted
+                        diagnosticLabel="prejoin:local"
+                        diagnosticsEnabled={diagnosticsEnabled}
                         placeholder={<div className="prejoin-stage-placeholder" aria-hidden="true" />}
                         stream={localStream}
                       />
@@ -3965,13 +4284,13 @@ function App() {
         />
       ) : null}
 
-      <section className="room-shell room-shell--immersive">
+      <section className={roomShellClassName}>
         <header className="room-topbar">
           <div className="topbar-left">
             <div className="room-brand">
               <div className="room-meta">
                 <strong>{meetingSession.meeting.title}</strong>
-                <span>{inviteMeetingNumberLabel} · {roomClockLabel}</span>
+                <span>{inviteMeetingNumberLabel} · {roomClockLabel} · {networkStatusLabel}</span>
               </div>
             </div>
 
@@ -4016,6 +4335,22 @@ function App() {
               </button>
             </div>
           </div>
+
+          <button
+            className="mobile-room-end-button"
+            disabled={isHost && endingMeetingPending}
+            onClick={() => {
+              if (isHost) {
+                toggleMobileAttachedWindow("end");
+                return;
+              }
+
+              void handleLeaveMeeting();
+            }}
+            type="button"
+          >
+            {isHost ? "结束" : "离开"}
+          </button>
 
           <div className="topbar-right">
             {canAccessHostTools ? (
@@ -4178,9 +4513,11 @@ function App() {
                     <button className="ghost-button" onClick={handleDisconnectSignal} type="button">
                       断开信令
                     </button>
-                    <button className="ghost-button" onClick={() => void handleCopyClientLogs()} type="button">
-                      复制前端日志
-                    </button>
+                    {diagnosticsEnabled ? (
+                      <button className="ghost-button" onClick={() => void handleCopyClientLogs()} type="button">
+                        复制前端日志
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -4197,7 +4534,10 @@ function App() {
           </div>
         </header>
 
-        <section className={`stage-shell ${currentSidebar !== "none" ? "has-side-drawer" : ""}`}>
+        <section
+          className={`stage-shell ${currentSidebar !== "none" ? "has-side-drawer" : ""}`}
+          onPointerUp={handleStageShellPointerUp}
+        >
           {featuredStageItem ? (
             <div className="active-stage-layout">
               <section className="featured-panel">
@@ -4214,7 +4554,8 @@ function App() {
                 <div className={`featured-canvas ${featuredStageItem.variant === "screen" ? "is-screen" : ""}`}>
                   <StreamFrame
                     className="featured-stream"
-                    muted={featuredStageItem.isLocal}
+                    diagnosticLabel={`featured:${featuredStageItem.id}`}
+                    diagnosticsEnabled={diagnosticsEnabled}
                     placeholder={renderStreamFallback(featuredStageItem.label, featuredStageItem.variant)}
                     stream={featuredStageItem.stream}
                   />
@@ -4239,7 +4580,8 @@ function App() {
                       <div className={`thumbnail-preview ${item.variant === "screen" ? "is-screen" : ""}`}>
                         <StreamFrame
                           className="thumbnail-stream"
-                          muted={item.isLocal}
+                          diagnosticLabel={`thumbnail:${item.id}`}
+                          diagnosticsEnabled={diagnosticsEnabled}
                           placeholder={renderStreamFallback(item.label, item.variant)}
                           stream={item.stream}
                         />
@@ -4295,28 +4637,6 @@ function App() {
               </div>
             </div>
           )}
-
-          <section className="participant-strip" aria-label="参会者缩略条">
-            {participantStripItems.map((item) => (
-              <button
-                className={`participant-chip ${item.isFeatured ? "active" : ""}`}
-                disabled={!item.stageId}
-                key={item.id}
-                onClick={() => {
-                  if (item.stageId) {
-                    setFeaturedStageId(item.stageId);
-                  }
-                }}
-                type="button"
-              >
-                <span className="chip-avatar">{item.initials}</span>
-                <span className="chip-copy">
-                  <strong>{item.nickname}</strong>
-                  <span>{item.statusLabel}</span>
-                </span>
-              </button>
-            ))}
-          </section>
 
           {currentSidebar === "members" ? (
             <aside className="side-drawer">
@@ -4909,7 +5229,8 @@ function App() {
         </section>
 
         <footer className="room-toolbar">
-          <div className="toolbar-center">
+          <div className="desktop-toolbar-content">
+            <div className="toolbar-center">
             <div className="tool-rack">
               <button
                 className={`meeting-tool ${basePreference.microphone ? "is-active" : "is-muted"}`}
@@ -5026,9 +5347,9 @@ function App() {
                 ) : null}
               </div>
             </div>
-          </div>
+            </div>
 
-          <div className="toolbar-end">
+            <div className="toolbar-end">
             {isHost ? (
               <div className="attached-anchor attached-anchor--bottom attached-anchor--danger">
                 <button
@@ -5068,6 +5389,162 @@ function App() {
                 <span className="tool-label">离开会议</span>
               </button>
             )}
+            </div>
+          </div>
+
+          <div className="mobile-toolbar-content">
+            <button
+              className={`meeting-tool ${basePreference.microphone ? "is-active" : "is-muted"}`}
+              disabled={mediaCaptureBusy}
+              onClick={handleToggleMicrophone}
+              type="button"
+            >
+              <span className="tool-icon">
+                <MeetingIcon name={basePreference.microphone ? "mic-on" : "mic-off"} />
+              </span>
+              <span className="tool-label">{basePreference.microphone ? "静音" : "解除静音"}</span>
+            </button>
+            <button
+              className={`meeting-tool ${basePreference.camera ? "is-active" : "is-camera-off"}`}
+              disabled={mediaCaptureBusy}
+              onClick={handleToggleCamera}
+              type="button"
+            >
+              <span className="tool-icon">
+                <MeetingIcon name={basePreference.camera ? "camera-on" : "camera-off"} />
+              </span>
+              <span className="tool-label">{basePreference.camera ? "关闭视频" : "开启视频"}</span>
+            </button>
+            <button
+              className={`meeting-tool ${currentSidebar === "chat" ? "is-active" : ""}`}
+              onClick={() => toggleSidebarDrawer("chat")}
+              type="button"
+            >
+              {unreadChatCount > 0 && currentSidebar !== "chat" ? (
+                <span className="tool-badge">{formatUnreadCount(unreadChatCount)}</span>
+              ) : null}
+              <span className="tool-icon">
+                <MeetingIcon name="chat" />
+              </span>
+              <span className="tool-label">聊天</span>
+            </button>
+            <button
+              className={`meeting-tool ${currentSidebar === "members" ? "is-active" : ""}`}
+              onClick={() => toggleSidebarDrawer("members")}
+              type="button"
+            >
+              <span className="tool-icon">
+                <MeetingIcon name="members" />
+              </span>
+              <span className="tool-label">成员</span>
+            </button>
+            <div className="attached-anchor attached-anchor--bottom mobile-more-anchor">
+              <button
+                className={`meeting-tool ${currentAttachedPanel === "more" ? "is-active" : ""}`}
+                onClick={() => toggleMobileAttachedWindow("more")}
+                type="button"
+              >
+                <span className="tool-icon">
+                  <MeetingIcon name="apps" />
+                </span>
+                <span className="tool-label">更多</span>
+              </button>
+              {currentAttachedPanel === "more" ? (
+                <div className="attached-panel attached-panel--bottom attached-panel--more">
+                  <div className="attached-panel-header">
+                    <strong>更多</strong>
+                    <span>会议工具与低频操作</span>
+                  </div>
+                  <div className="attached-action-list mobile-more-grid">
+                    <AttachedActionButton
+                      description="复制会议号、二维码和邀请信息。"
+                      icon="invite"
+                      onClick={() => openMeetingModal("invite")}
+                      title="邀请"
+                    />
+                    <AttachedActionButton
+                      description={screenSharing ? "停止当前屏幕共享。" : "把当前屏幕共享给参会者。"}
+                      disabled={!screenSharing && !canScreenShare}
+                      icon="share"
+                      onClick={() => void (screenSharing ? handleStopScreenShare() : handleStartScreenShare())}
+                      title={screenSharing ? "停止共享" : "共享屏幕"}
+                    />
+                    <AttachedActionButton
+                      description="打开本地录制和临时纪要面板。"
+                      icon="record"
+                      onClick={() => openMeetingModal("recording_panel")}
+                      title="录制与纪要"
+                    />
+                    <AttachedActionButton
+                      description="打开共享白板。"
+                      icon="apps"
+                      onClick={() => openMeetingModal("whiteboard_panel")}
+                      title="白板"
+                    />
+                    <AttachedActionButton
+                      description={canAccessHostTools ? "管理成员权限和助理角色。" : "向主持人申请摄像头、麦克风等权限。"}
+                      icon="person"
+                      onClick={() => openMeetingModal("permissions")}
+                      title="权限与角色"
+                    />
+                    <AttachedActionButton
+                      description={roomFullscreenActive ? "退出当前全屏状态。" : "进入只显示会议画面的全屏状态。"}
+                      icon={roomFullscreenActive ? "fullscreen-exit" : "fullscreen"}
+                      onClick={() => void handleToggleFullscreenMode()}
+                      title={roomFullscreenActive ? "退出全屏" : "进入全屏"}
+                    />
+                    <AttachedActionButton
+                      description="重新连接当前会议的 WSS 信令。"
+                      icon="signal"
+                      onClick={handleConnectSignal}
+                      title="重连信令"
+                    />
+                    {diagnosticsEnabled ? (
+                      <AttachedActionButton
+                        description="复制当前设备的前端调试日志。"
+                        icon="settings"
+                        onClick={() => void handleCopyClientLogs()}
+                        title="复制日志"
+                      />
+                    ) : null}
+                    <AttachedActionButton
+                      danger
+                      description={isHost ? "打开结束会议确认操作。" : "离开当前会议。"}
+                      disabled={isHost && endingMeetingPending}
+                      icon="end"
+                      onClick={() => {
+                        if (isHost) {
+                          toggleMobileAttachedWindow("end");
+                          return;
+                        }
+
+                        void handleLeaveMeeting();
+                      }}
+                      title={isHost ? "结束会议" : "离开会议"}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {currentAttachedPanel === "end" ? (
+              <div className="attached-panel attached-panel--bottom attached-panel--end mobile-end-panel">
+                <AttachedActionButton
+                  danger
+                  description="结束后所有参会者都会退出当前会议。"
+                  disabled={endingMeetingPending}
+                  icon="end"
+                  onClick={() => void handleConfirmEndMeeting()}
+                  title={endingMeetingPending ? "正在结束会议..." : "全员结束会议"}
+                />
+                <AttachedActionButton
+                  description="保留会议继续进行，仅当前账号退出。"
+                  icon="end"
+                  onClick={() => void handleLeaveMeeting()}
+                  title="离开会议"
+                />
+              </div>
+            ) : null}
           </div>
         </footer>
 
@@ -5229,19 +5706,160 @@ function AttachedActionButton(props: {
 
 function StreamFrame(props: {
   stream: MediaStream | null;
-  muted: boolean;
   className?: string;
+  diagnosticLabel?: string;
+  diagnosticsEnabled?: boolean;
   placeholder?: ReactNode;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playFailureLoggedRef = useRef(false);
+  const videoTrackKey =
+    props.stream
+      ?.getVideoTracks()
+      .map((track) => `${track.id}:${track.readyState}:${track.muted}`)
+      .join("|") ?? "";
 
   useEffect(() => {
-    if (!videoRef.current) {
+    const video = videoRef.current;
+    if (!video) {
       return;
     }
 
-    videoRef.current.srcObject = props.stream;
-  }, [props.stream]);
+    video.srcObject = props.stream;
+    playFailureLoggedRef.current = false;
+    if (!props.stream) {
+      return;
+    }
+
+    const logVideoEvent = (eventName: string, extra?: Record<string, unknown>) => {
+      if (!props.diagnosticsEnabled) {
+        return;
+      }
+
+      logger.info("rtc.stream_video_event", {
+        event: eventName,
+        label: props.diagnosticLabel ?? "",
+        video: summarizeVideoElement(video),
+        stream: props.stream ? summarizeMediaStream(props.stream) : null,
+        ...(extra ?? {})
+      });
+    };
+
+    const tryPlay = (reason: string) => {
+      const playPromise = video.play();
+      if (playPromise) {
+        playPromise
+          .then(() => {
+            if (props.diagnosticsEnabled) {
+              logger.info("rtc.stream_video_play_succeeded", {
+                reason,
+                label: props.diagnosticLabel ?? "",
+                video: summarizeVideoElement(video),
+                stream: props.stream ? summarizeMediaStream(props.stream) : null
+              });
+            }
+          })
+          .catch((error) => {
+            if (!props.diagnosticsEnabled || playFailureLoggedRef.current) {
+              return;
+            }
+
+            playFailureLoggedRef.current = true;
+            logger.warn("rtc.stream_video_play_failed", {
+              reason,
+              label: props.diagnosticLabel ?? "",
+              video: summarizeVideoElement(video),
+              trackIds: props.stream?.getVideoTracks().map((track) => track.id) ?? [],
+              stream: props.stream ? summarizeMediaStream(props.stream) : null,
+              error
+            });
+          });
+        return;
+      }
+
+      logVideoEvent("play_without_promise", { reason });
+    };
+
+    const handleLoadedMetadata = () => {
+      logVideoEvent("loadedmetadata");
+      tryPlay("loadedmetadata");
+    };
+    const handleCanPlay = () => {
+      logVideoEvent("canplay");
+      tryPlay("canplay");
+    };
+    const handlePlaying = () => {
+      logVideoEvent("playing");
+    };
+    const handleResize = () => {
+      logVideoEvent("resize");
+    };
+    const handleVideoError = () => {
+      if (props.diagnosticsEnabled) {
+        logger.warn("rtc.stream_video_error", {
+          label: props.diagnosticLabel ?? "",
+          video: summarizeVideoElement(video),
+          stream: props.stream ? summarizeMediaStream(props.stream) : null,
+          errorCode: video.error?.code ?? null,
+          errorMessage: video.error?.message ?? ""
+        });
+      }
+    };
+    const handleTrackUnmute = (event: Event) => {
+      const track = event.currentTarget instanceof MediaStreamTrack ? event.currentTarget : null;
+      if (props.diagnosticsEnabled) {
+        logger.info("rtc.stream_track_unmuted", {
+          label: props.diagnosticLabel ?? "",
+          track: track ? summarizeMediaTrack(track) : null,
+          video: summarizeVideoElement(video),
+          stream: props.stream ? summarizeMediaStream(props.stream) : null
+        });
+      }
+      tryPlay("track_unmute");
+    };
+
+    if (props.diagnosticsEnabled) {
+      logger.info("rtc.stream_video_attached", {
+        label: props.diagnosticLabel ?? "",
+        video: summarizeVideoElement(video),
+        stream: summarizeMediaStream(props.stream)
+      });
+    }
+
+    const videoTracks = props.stream.getVideoTracks();
+    for (const track of videoTracks) {
+      track.addEventListener("unmute", handleTrackUnmute);
+    }
+    video.addEventListener("loadedmetadata", handleLoadedMetadata);
+    video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("playing", handlePlaying);
+    video.addEventListener("resize", handleResize);
+    video.addEventListener("error", handleVideoError);
+
+    const layoutProbe = !props.diagnosticsEnabled || typeof window === "undefined"
+      ? null
+      : window.requestAnimationFrame(() => {
+          logVideoEvent("layout_probe");
+        });
+
+    tryPlay("attached");
+
+    return () => {
+      if (layoutProbe !== null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(layoutProbe);
+      }
+      for (const track of videoTracks) {
+        track.removeEventListener("unmute", handleTrackUnmute);
+      }
+      video.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("playing", handlePlaying);
+      video.removeEventListener("resize", handleResize);
+      video.removeEventListener("error", handleVideoError);
+      video.pause();
+      video.srcObject = null;
+    };
+  }, [props.stream, videoTrackKey, props.diagnosticLabel, props.diagnosticsEnabled]);
 
   if (!props.stream) {
     return <div className={props.className}>{props.placeholder ?? <div className="media-fallback">暂无媒体流</div>}</div>;
@@ -5249,9 +5867,86 @@ function StreamFrame(props: {
 
   return (
     <div className={props.className}>
-      <video autoPlay muted={props.muted} playsInline ref={videoRef} />
+      <video autoPlay muted playsInline ref={videoRef} />
     </div>
   );
+}
+
+function summarizeMediaTrack(track: MediaStreamTrack) {
+  return {
+    id: track.id,
+    kind: track.kind,
+    label: track.label,
+    enabled: track.enabled,
+    muted: track.muted,
+    readyState: track.readyState,
+    contentHint: track.contentHint
+  };
+}
+
+function summarizeMediaStream(stream: MediaStream) {
+  return {
+    id: stream.id,
+    active: stream.active,
+    audioTrackCount: stream.getAudioTracks().length,
+    videoTrackCount: stream.getVideoTracks().length,
+    tracks: stream.getTracks().map(summarizeMediaTrack)
+  };
+}
+
+function summarizeStageItem(item: StageItem) {
+  return {
+    id: item.id,
+    participantId: item.participantId,
+    role: item.role,
+    variant: item.variant,
+    isLocal: item.isLocal,
+    micEnabled: item.micEnabled,
+    label: item.label,
+    stream: summarizeMediaStream(item.stream)
+  };
+}
+
+function summarizeVideoElement(video: HTMLVideoElement) {
+  const rect = video.getBoundingClientRect();
+  return {
+    readyState: video.readyState,
+    networkState: video.networkState,
+    paused: video.paused,
+    ended: video.ended,
+    muted: video.muted,
+    autoplay: video.autoplay,
+    playsInline: video.playsInline,
+    clientWidth: video.clientWidth,
+    clientHeight: video.clientHeight,
+    offsetWidth: video.offsetWidth,
+    offsetHeight: video.offsetHeight,
+    rectWidth: Math.round(rect.width),
+    rectHeight: Math.round(rect.height),
+    videoWidth: video.videoWidth,
+    videoHeight: video.videoHeight
+  };
+}
+
+function buildStageDiagnosticKey(
+  remoteTiles: RemoteTile[],
+  stageItems: StageItem[],
+  featuredStageItem: StageItem | null
+) {
+  const remoteKey = remoteTiles
+    .map((tile) => `${tile.participantId}:${tile.connectionState}:${buildStreamDiagnosticKey(tile.stream)}`)
+    .join("|");
+  const stageKey = stageItems
+    .map((item) => `${item.id}:${item.variant}:${item.isLocal}:${buildStreamDiagnosticKey(item.stream)}`)
+    .join("|");
+  return `${featuredStageItem?.id ?? "none"}::${remoteKey}::${stageKey}`;
+}
+
+function buildStreamDiagnosticKey(stream: MediaStream) {
+  return stream
+    .getTracks()
+    .map((track) => `${track.kind}:${track.id}:${track.enabled}:${track.muted}:${track.readyState}`)
+    .join(",");
 }
 
 function RemoteAudioSinks(props: {
@@ -5261,7 +5956,7 @@ function RemoteAudioSinks(props: {
   return (
     <>
       {props.tiles
-        .filter((tile) => tile.stream.getAudioTracks().length > 0 && tile.stream.getVideoTracks().length === 0)
+        .filter((tile) => tile.stream.getAudioTracks().length > 0)
         .map((tile) => (
           <RemoteAudioSink
             key={tile.participantId}
@@ -5280,6 +5975,10 @@ function RemoteAudioSink(props: {
   onPlaybackError: (participantId: string, error: unknown) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioTrackKey = props.stream
+    .getAudioTracks()
+    .map((track) => track.id)
+    .join(":");
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -5287,14 +5986,19 @@ function RemoteAudioSink(props: {
       return;
     }
 
-    audio.srcObject = props.stream;
+    audio.srcObject = new MediaStream(props.stream.getAudioTracks());
     const playPromise = audio.play();
     if (playPromise) {
       playPromise.catch((error) => {
         props.onPlaybackError(props.participantId, error);
       });
     }
-  }, [props.participantId, props.stream]);
+
+    return () => {
+      audio.pause();
+      audio.srcObject = null;
+    };
+  }, [audioTrackKey, props.participantId, props.stream]);
 
   return <audio autoPlay className="remote-audio-sink" playsInline ref={audioRef} />;
 }
@@ -5735,6 +6439,144 @@ function supportsLiveJoinScanner() {
   return supportsUserMediaCapture();
 }
 
+function buildJoinScannerVideoConstraints(): MediaTrackConstraints {
+  return {
+    facingMode: {
+      ideal: "environment"
+    },
+    width: {
+      ideal: 1280
+    },
+    height: {
+      ideal: 720
+    },
+    frameRate: {
+      ideal: 30,
+      max: 30
+    }
+  };
+}
+
+async function optimizeJoinScannerTrack(track: MediaStreamTrack) {
+  if (typeof track.getCapabilities !== "function" || typeof track.applyConstraints !== "function") {
+    return;
+  }
+
+  const capabilities = track.getCapabilities() as ExtendedMediaTrackCapabilities;
+  const advancedConstraints: Record<string, string>[] = [];
+  if (capabilities.focusMode?.includes("continuous")) {
+    advancedConstraints.push({ focusMode: "continuous" });
+  }
+  if (advancedConstraints.length === 0) {
+    return;
+  }
+
+  await track.applyConstraints({
+    advanced: advancedConstraints as unknown as MediaTrackConstraintSet[]
+  });
+}
+
+function createQRCodeBarcodeDetector(): BarcodeDetectorLike | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const Detector = (window as WindowWithBarcodeDetector).BarcodeDetector;
+  if (!Detector) {
+    return null;
+  }
+
+  try {
+    return new Detector({
+      formats: ["qr_code"]
+    });
+  } catch {
+    try {
+      return new Detector();
+    } catch {
+      return null;
+    }
+  }
+}
+
+async function decodeQRCodeWithBarcodeDetector(source: CanvasImageSource, detector: BarcodeDetectorLike) {
+  const barcodes = await detector.detect(source);
+  const matchedBarcode = barcodes.find(
+    (barcode) => typeof barcode.rawValue === "string" && barcode.rawValue.trim().length > 0
+  );
+  return matchedBarcode?.rawValue?.trim() ?? null;
+}
+
+function decodeQRCodeFromVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
+  const sourceWidth = video.videoWidth;
+  const sourceHeight = video.videoHeight;
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return null;
+  }
+
+  for (const region of buildQRCodeScanRegions(sourceWidth, sourceHeight)) {
+    const payload = decodeQRCodeFromVideoRegion(video, canvas, region);
+    if (payload) {
+      return payload;
+    }
+  }
+
+  return null;
+}
+
+function buildQRCodeScanRegions(sourceWidth: number, sourceHeight: number): QRScanRegion[] {
+  const centerSize = Math.round(Math.min(sourceWidth, sourceHeight) * liveQRCodeCenterCropRatio);
+  const centerRegion = {
+    sourceX: Math.max(0, Math.round((sourceWidth - centerSize) / 2)),
+    sourceY: Math.max(0, Math.round((sourceHeight - centerSize) / 2)),
+    sourceWidth: centerSize,
+    sourceHeight: centerSize
+  };
+  const fullRegion = {
+    sourceX: 0,
+    sourceY: 0,
+    sourceWidth,
+    sourceHeight
+  };
+
+  return [centerRegion, fullRegion];
+}
+
+function decodeQRCodeFromVideoRegion(video: HTMLVideoElement, canvas: HTMLCanvasElement, region: QRScanRegion) {
+  const context = canvas.getContext("2d", {
+    willReadFrequently: true
+  });
+  if (!context) {
+    throw new Error("扫码画布初始化失败");
+  }
+
+  const scale = Math.min(1, liveQRCodeScanCanvasMaxSide / Math.max(region.sourceWidth, region.sourceHeight));
+  canvas.width = Math.max(1, Math.round(region.sourceWidth * scale));
+  canvas.height = Math.max(1, Math.round(region.sourceHeight * scale));
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(
+    video,
+    region.sourceX,
+    region.sourceY,
+    region.sourceWidth,
+    region.sourceHeight,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  return decodeQRCodeFromCanvas(canvas, context);
+}
+
+function decodeQRCodeFromCanvas(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const result = jsQR(imageData.data, imageData.width, imageData.height, {
+    inversionAttempts: "attemptBoth"
+  });
+  return result?.data ?? null;
+}
+
 async function ensureCaptureDevicesAvailable(preference: CapturePreference) {
   const mediaDevices = getMediaDevices();
   if (!mediaDevices || typeof mediaDevices.enumerateDevices !== "function") {
@@ -5839,15 +6681,32 @@ async function decodeQRCodeFromFile(file: File) {
   const imageUrl = URL.createObjectURL(file);
   try {
     const image = await loadImageElement(imageUrl);
+    const nativeDetector = createQRCodeBarcodeDetector();
+    if (nativeDetector) {
+      try {
+        const nativePayload = await decodeQRCodeWithBarcodeDetector(image, nativeDetector);
+        if (nativePayload) {
+          return nativePayload;
+        }
+      } catch (error) {
+        logger.debug("join.scan_image_native_detector_failed", {
+          error
+        });
+      }
+    }
+
     const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
+    const context = canvas.getContext("2d", {
+      willReadFrequently: true
+    });
     if (!context) {
       throw new Error("图片识别画布初始化失败");
     }
 
     const sourceWidth = image.naturalWidth || image.width;
     const sourceHeight = image.naturalHeight || image.height;
-    const scales = [1, 1600 / Math.max(sourceWidth, sourceHeight), 1200 / Math.max(sourceWidth, sourceHeight), 800 / Math.max(sourceWidth, sourceHeight)]
+    const maxSourceSide = Math.max(sourceWidth, sourceHeight);
+    const scales = [1, 1600 / maxSourceSide, 1200 / maxSourceSide, 800 / maxSourceSide]
       .filter((scale) => Number.isFinite(scale) && scale > 0)
       .map((scale) => Math.min(1, scale));
 
@@ -5856,10 +6715,9 @@ async function decodeQRCodeFromFile(file: File) {
       canvas.height = Math.max(1, Math.round(sourceHeight * scale));
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      const result = jsQR(imageData.data, imageData.width, imageData.height);
-      if (result?.data) {
-        return result.data;
+      const payload = decodeQRCodeFromCanvas(canvas, context);
+      if (payload) {
+        return payload;
       }
     }
 

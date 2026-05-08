@@ -51,10 +51,18 @@ build-frontend:
 build-backend-linux:
 	@mkdir -p "$(BACKEND_BUILD_DIR)" "$(GO_CACHE_DIR)" "$(GO_TMP_DIR)"
 	@command -v docker >/dev/null 2>&1 || { echo "docker is required for make linux" >&2; exit 1; }
+	@set -euo pipefail; \
+	go_env_flags=(); \
+	for name in GOPROXY GOPRIVATE GONOPROXY GONOSUMDB GOSUMDB; do \
+		if printenv "$$name" >/dev/null 2>&1; then \
+			go_env_flags+=("-e" "$$name"); \
+		fi; \
+	done; \
 	docker run --rm --platform linux/amd64 \
 		--user "$$(id -u):$$(id -g)" \
 		-v "$(CURDIR):/workspace" \
 		-w /workspace \
+		"$${go_env_flags[@]}" \
 		-e GOCACHE=/workspace/$(GO_CACHE_DIR) \
 		-e GOTMPDIR=/workspace/$(GO_TMP_DIR) \
 		-e CGO_ENABLED=1 \

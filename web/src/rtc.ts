@@ -1,6 +1,12 @@
 import { resolveIceServers } from "./runtime-config";
 
 type MeshCallbacks = {
+  onRemoteTrack?: (
+    participantId: string,
+    track: MediaStreamTrack,
+    eventStreams: readonly MediaStream[],
+    remoteStream: MediaStream
+  ) => void;
   onRemoteStream: (participantId: string, stream: MediaStream) => void;
   onRemoteStreamRemoved: (participantId: string) => void;
   onPeerStateChange: (participantId: string, state: RTCPeerConnectionState) => void;
@@ -205,6 +211,7 @@ export class PeerMesh {
           remoteStream.addTrack(track);
         }
       }
+      this.callbacks.onRemoteTrack?.(participantId, event.track, event.streams, remoteStream);
       this.callbacks.onRemoteStream(participantId, remoteStream);
     };
 
