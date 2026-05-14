@@ -88,6 +88,77 @@ func TestUsageRecordsPersistAndQueryByWindow(t *testing.T) {
 	}
 }
 
+func TestUsageWindowExcludesStaleOpenRecordsWithoutActivity(t *testing.T) {
+	t.Parallel()
+
+	store, err := Open(context.Background(), t.TempDir()+"/meeting.db")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	ctx := context.Background()
+	start := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	oldTime := start.Add(-48 * time.Hour)
+	for _, meetingID := range []string{"mtg_stale", "mtg_active"} {
+		if err := store.UpsertMeetingUsage(ctx, MeetingUsageRecord{
+			ID:                meetingID,
+			MeetingNumber:     "123456789",
+			Title:             meetingID,
+			MeetingType:       "quick",
+			HostParticipantID: meetingID + "_host",
+			HostNickname:      "主持人",
+			HostIPAddress:     "203.0.113.10",
+			CreatedAt:         oldTime,
+			UpdatedAt:         oldTime,
+		}); err != nil {
+			t.Fatalf("UpsertMeetingUsage(%s) error = %v", meetingID, err)
+		}
+		if err := store.UpsertMeetingParticipantUsage(ctx, MeetingParticipantUsageRecord{
+			MeetingID:       meetingID,
+			ParticipantID:   meetingID + "_host",
+			Nickname:        "主持人",
+			IPAddress:       "203.0.113.10",
+			ParticipantRole: "host",
+			JoinedAt:        oldTime,
+			UpdatedAt:       oldTime,
+		}); err != nil {
+			t.Fatalf("UpsertMeetingParticipantUsage(%s) error = %v", meetingID, err)
+		}
+	}
+	if err := store.InsertAuditEvent(ctx, AuditEvent{
+		MeetingID:       "mtg_active",
+		ParticipantID:   "mtg_active_host",
+		ParticipantRole: "host",
+		EventType:       "media_report",
+		DeviceType:      "browser",
+		DetailsJSON:     "{}",
+		CreatedAt:       start.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("InsertAuditEvent() error = %v", err)
+	}
+
+	meetings, err := store.ListMeetingUsageWindow(ctx, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("ListMeetingUsageWindow() error = %v", err)
+	}
+	if len(meetings) != 1 || meetings[0].ID != "mtg_active" {
+		t.Fatalf("meetings = %+v, want only active meeting", meetings)
+	}
+
+	participants, err := store.ListParticipantUsageWindow(ctx, start, start.Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("ListParticipantUsageWindow() error = %v", err)
+	}
+	if len(participants) != 1 || participants[0].ParticipantID != "mtg_active_host" {
+		t.Fatalf("participants = %+v, want only active participant", participants)
+	}
+}
+
 func TestAuthReportQueries(t *testing.T) {
 	t.Parallel()
 
@@ -150,6 +221,20 @@ func TestAuthReportQueries(t *testing.T) {
 	if err := store.ConsumeVerificationCode(ctx, "verify_001", loginAt, loginAt); err != nil {
 		t.Fatalf("ConsumeVerificationCode() error = %v", err)
 	}
+	unusedSentAt := start.Add(3 * time.Hour)
+	if err := store.UpsertVerificationCode(ctx, VerificationCodeRecord{
+		ID:        "verify_unused_001",
+		Email:     "new-user@example.com",
+		Purpose:   "login",
+		IPAddress: "203.0.113.11",
+		CodeHash:  "hash",
+		SentAt:    unusedSentAt,
+		ExpiresAt: unusedSentAt.Add(10 * time.Minute),
+		CreatedAt: unusedSentAt,
+		UpdatedAt: unusedSentAt,
+	}); err != nil {
+		t.Fatalf("UpsertVerificationCode(unused) error = %v", err)
+	}
 
 	users, err := store.ListUsersCreatedWindow(ctx, start, start.Add(24*time.Hour))
 	if err != nil {
@@ -165,15 +250,21 @@ func TestAuthReportQueries(t *testing.T) {
 		t.Fatalf("created user ip = %q, want 203.0.113.55", users[0].IPAddress)
 	}
 
-	logins, err := store.ListEmailCodeLoginsWindow(ctx, start, start.Add(24*time.Hour))
+	codes, err := store.ListEmailCodeSendsWindow(ctx, start, start.Add(24*time.Hour))
 	if err != nil {
-		t.Fatalf("ListEmailCodeLoginsWindow() error = %v", err)
+		t.Fatalf("ListEmailCodeSendsWindow() error = %v", err)
 	}
-	if len(logins) != 1 {
-		t.Fatalf("email code login count = %d, want 1", len(logins))
+	if len(codes) != 3 {
+		t.Fatalf("email code send count = %d, want 3", len(codes))
 	}
-	if logins[0].Email != "new-user@example.com" || logins[0].IPAddress != "203.0.113.10" || !logins[0].LoginAt.Equal(loginAt) {
-		t.Fatalf("email code login = %+v", logins[0])
+	if codes[0].Purpose != "register" || !codes[0].SentAt.Equal(registerSentAt) {
+		t.Fatalf("first email code send = %+v", codes[0])
+	}
+	if codes[1].Purpose != "login" || codes[1].IPAddress != "203.0.113.10" || codes[1].ConsumedAt == nil || !codes[1].ConsumedAt.Equal(loginAt) {
+		t.Fatalf("second email code send = %+v", codes[1])
+	}
+	if codes[2].Purpose != "login" || codes[2].IPAddress != "203.0.113.11" || codes[2].ConsumedAt != nil {
+		t.Fatalf("third email code send = %+v", codes[2])
 	}
 }
 

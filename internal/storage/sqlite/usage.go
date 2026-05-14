@@ -219,10 +219,54 @@ func (s *Store) ListMeetingUsageWindow(ctx context.Context, start time.Time, end
 SELECT id, meeting_number, join_code, title, meeting_type, host_participant_id,
        host_user_id, host_email, host_nickname, host_ip_address, created_at, ended_at, updated_at
 FROM meeting_usage_meetings
-WHERE created_at < ? AND (ended_at IS NULL OR ended_at >= ?)
+WHERE (created_at >= ? AND created_at < ?)
+   OR (ended_at IS NOT NULL AND ended_at >= ? AND ended_at < ?)
+   OR (updated_at >= ? AND updated_at < ?)
+   OR (
+       ended_at IS NULL
+       AND EXISTS (
+           SELECT 1
+           FROM audit_events ae
+           WHERE ae.meeting_id = meeting_usage_meetings.id
+             AND ae.created_at >= ?
+             AND ae.created_at < ?
+       )
+   )
+   OR (
+       ended_at IS NULL
+       AND EXISTS (
+           SELECT 1
+           FROM meeting_usage_participants mp
+           WHERE mp.meeting_id = meeting_usage_meetings.id
+             AND (
+                 (mp.joined_at >= ? AND mp.joined_at < ?)
+                 OR (mp.left_at IS NOT NULL AND mp.left_at >= ? AND mp.left_at < ?)
+                 OR (mp.updated_at >= ? AND mp.updated_at < ?)
+             )
+       )
+   )
 ORDER BY created_at ASC`
 
-	rows, err := s.db.QueryContext(ctx, query, end.UTC().Format(time.RFC3339Nano), start.UTC().Format(time.RFC3339Nano))
+	startRaw := start.UTC().Format(time.RFC3339Nano)
+	endRaw := end.UTC().Format(time.RFC3339Nano)
+	rows, err := s.db.QueryContext(
+		ctx,
+		query,
+		startRaw,
+		endRaw,
+		startRaw,
+		endRaw,
+		startRaw,
+		endRaw,
+		startRaw,
+		endRaw,
+		startRaw,
+		endRaw,
+		startRaw,
+		endRaw,
+		startRaw,
+		endRaw,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("list meeting usage window: %w", err)
 	}
@@ -241,10 +285,25 @@ func (s *Store) ListParticipantUsageWindow(ctx context.Context, start time.Time,
 SELECT meeting_id, participant_id, user_id, email, nickname, is_anonymous, ip_address,
        device_type, client_profile_json, participant_role, joined_at, left_at, updated_at
 FROM meeting_usage_participants
-WHERE joined_at < ? AND (left_at IS NULL OR left_at >= ?)
+WHERE (joined_at >= ? AND joined_at < ?)
+   OR (left_at IS NOT NULL AND left_at >= ? AND left_at < ?)
+   OR (updated_at >= ? AND updated_at < ?)
+   OR (
+       left_at IS NULL
+       AND EXISTS (
+           SELECT 1
+           FROM audit_events ae
+           WHERE ae.meeting_id = meeting_usage_participants.meeting_id
+             AND ae.participant_id = meeting_usage_participants.participant_id
+             AND ae.created_at >= ?
+             AND ae.created_at < ?
+       )
+   )
 ORDER BY joined_at ASC`
 
-	rows, err := s.db.QueryContext(ctx, query, end.UTC().Format(time.RFC3339Nano), start.UTC().Format(time.RFC3339Nano))
+	startRaw := start.UTC().Format(time.RFC3339Nano)
+	endRaw := end.UTC().Format(time.RFC3339Nano)
+	rows, err := s.db.QueryContext(ctx, query, startRaw, endRaw, startRaw, endRaw, startRaw, endRaw, startRaw, endRaw)
 	if err != nil {
 		return nil, fmt.Errorf("list participant usage window: %w", err)
 	}

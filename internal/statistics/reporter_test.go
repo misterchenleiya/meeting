@@ -2,6 +2,7 @@ package statistics
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -12,12 +13,11 @@ import (
 )
 
 type fakeReportStore struct {
-	meetings                []sqlite.MeetingUsageRecord
-	participantsInWindow    []sqlite.MeetingParticipantUsageRecord
-	participantsForMeetings []sqlite.MeetingParticipantUsageRecord
-	newUsers                []sqlite.UserRegistrationRecord
-	emailCodeLogins         []sqlite.EmailCodeLoginRecord
-	auditEvents             []sqlite.AuditEvent
+	meetings             []sqlite.MeetingUsageRecord
+	participantsInWindow []sqlite.MeetingParticipantUsageRecord
+	newUsers             []sqlite.UserRegistrationRecord
+	emailCodeSends       []sqlite.EmailCodeRecord
+	auditEvents          []sqlite.AuditEvent
 }
 
 func (s fakeReportStore) ListMeetingUsageWindow(_ context.Context, _ time.Time, _ time.Time) ([]sqlite.MeetingUsageRecord, error) {
@@ -28,16 +28,12 @@ func (s fakeReportStore) ListParticipantUsageWindow(_ context.Context, _ time.Ti
 	return s.participantsInWindow, nil
 }
 
-func (s fakeReportStore) ListParticipantsForMeetings(_ context.Context, _ []string) ([]sqlite.MeetingParticipantUsageRecord, error) {
-	return s.participantsForMeetings, nil
-}
-
 func (s fakeReportStore) ListUsersCreatedWindow(_ context.Context, _ time.Time, _ time.Time) ([]sqlite.UserRegistrationRecord, error) {
 	return s.newUsers, nil
 }
 
-func (s fakeReportStore) ListEmailCodeLoginsWindow(_ context.Context, _ time.Time, _ time.Time) ([]sqlite.EmailCodeLoginRecord, error) {
-	return s.emailCodeLogins, nil
+func (s fakeReportStore) ListEmailCodeSendsWindow(_ context.Context, _ time.Time, _ time.Time) ([]sqlite.EmailCodeRecord, error) {
+	return s.emailCodeSends, nil
 }
 
 func (s fakeReportStore) ListAuditEventsWindow(_ context.Context, _ time.Time, _ time.Time) ([]sqlite.AuditEvent, error) {
@@ -108,16 +104,18 @@ func TestReporterSendsSummaryTableAndDetailCSVAttachmentsWhenUsageExists(t *test
 			IPAddress: "203.0.113.30",
 			CreatedAt: windowStart.Add(30 * time.Minute),
 		}},
-		emailCodeLogins: []sqlite.EmailCodeLoginRecord{
+		emailCodeSends: []sqlite.EmailCodeRecord{
 			{
 				Email:     "host@example.com",
+				Purpose:   "login",
 				IPAddress: "203.0.113.10",
-				LoginAt:   windowStart.Add(10 * time.Minute),
+				SentAt:    windowStart.Add(10 * time.Minute),
 			},
 			{
 				Email:     "new-user@example.com",
+				Purpose:   "register",
 				IPAddress: "203.0.113.30",
-				LoginAt:   windowStart.Add(40 * time.Minute),
+				SentAt:    windowStart.Add(40 * time.Minute),
 			},
 		},
 		auditEvents: []sqlite.AuditEvent{
@@ -147,7 +145,6 @@ func TestReporterSendsSummaryTableAndDetailCSVAttachmentsWhenUsageExists(t *test
 			},
 		},
 	}
-	store.participantsForMeetings = store.participantsInWindow
 	mailer := &fakeReportMailer{}
 	reporter, err := NewReporter(nil, store, mailer, Config{
 		Recipients: []string{"ops@example.com"},
@@ -175,7 +172,7 @@ func TestReporterSendsSummaryTableAndDetailCSVAttachmentsWhenUsageExists(t *test
 	if !strings.Contains(mailer.message.TextBody, "用户访问数量 | 2") {
 		t.Fatalf("email text body missing summary table: %s", mailer.message.TextBody)
 	}
-	if !strings.Contains(mailer.message.TextBody, "新增用户数 | 1") || !strings.Contains(mailer.message.TextBody, "邮件验证码登录次数 | 2") {
+	if !strings.Contains(mailer.message.TextBody, "新增用户数 | 1") || !strings.Contains(mailer.message.TextBody, "邮件验证码发送次数 | 2") {
 		t.Fatalf("email text body missing auth summary: %s", mailer.message.TextBody)
 	}
 	if !strings.Contains(mailer.message.TextBody, "会议质量样本数 | 2") || !strings.Contains(mailer.message.TextBody, "客户端设备分布 | desktop: 1；mobile: 1") {
@@ -184,7 +181,7 @@ func TestReporterSendsSummaryTableAndDetailCSVAttachmentsWhenUsageExists(t *test
 	if !strings.Contains(mailer.message.TextBody, "时间最长的会议 | 01:30:00 | 123456789") {
 		t.Fatalf("email text body missing public meeting number: %s", mailer.message.TextBody)
 	}
-	if !strings.Contains(mailer.message.HTMLBody, "<table") || !strings.Contains(mailer.message.HTMLBody, "用户访问数量") {
+	if !strings.Contains(mailer.message.HTMLBody, "<table") || !strings.Contains(mailer.message.HTMLBody, "用户访问数量") || !strings.Contains(mailer.message.HTMLBody, "用户访问明细") {
 		t.Fatalf("email html body missing summary table: %s", mailer.message.HTMLBody)
 	}
 	if mailer.message.Attachments[0].Filename != "users.csv" {
@@ -194,8 +191,8 @@ func TestReporterSendsSummaryTableAndDetailCSVAttachmentsWhenUsageExists(t *test
 	if !strings.Contains(users, "host@example.com") || !strings.Contains(users, "匿名用户") || !strings.Contains(users, "123456789") {
 		t.Fatalf("users csv = %s", users)
 	}
-	if mailer.message.Attachments[1].Filename != "meetings.csv" {
-		t.Fatalf("second attachment filename = %q, want meetings.csv", mailer.message.Attachments[1].Filename)
+	if mailer.message.Attachments[1].Filename != "meeting.csv" {
+		t.Fatalf("second attachment filename = %q, want meeting.csv", mailer.message.Attachments[1].Filename)
 	}
 	meetings := string(mailer.message.Attachments[1].Data)
 	if !strings.Contains(meetings, "123456789") || !strings.Contains(meetings, "scheduled") {
@@ -208,12 +205,12 @@ func TestReporterSendsSummaryTableAndDetailCSVAttachmentsWhenUsageExists(t *test
 	if !strings.Contains(newUsers, "new-user@example.com") || !strings.Contains(newUsers, "203.0.113.30") || !strings.Contains(newUsers, "新用户") {
 		t.Fatalf("new users csv = %s", newUsers)
 	}
-	if mailer.message.Attachments[3].Filename != "email_code_logins.csv" {
-		t.Fatalf("fourth attachment filename = %q, want email_code_logins.csv", mailer.message.Attachments[3].Filename)
+	if mailer.message.Attachments[3].Filename != "email_code_login.csv" {
+		t.Fatalf("fourth attachment filename = %q, want email_code_login.csv", mailer.message.Attachments[3].Filename)
 	}
-	logins := string(mailer.message.Attachments[3].Data)
-	if !strings.Contains(logins, "host@example.com") || !strings.Contains(logins, "203.0.113.30") {
-		t.Fatalf("email code logins csv = %s", logins)
+	codes := string(mailer.message.Attachments[3].Data)
+	if !strings.Contains(codes, "host@example.com") || !strings.Contains(codes, "203.0.113.30") || !strings.Contains(codes, "注册") {
+		t.Fatalf("email code csv = %s", codes)
 	}
 	if mailer.message.Attachments[4].Filename != "meeting_quality.csv" {
 		t.Fatalf("fifth attachment filename = %q, want meeting_quality.csv", mailer.message.Attachments[4].Filename)
@@ -265,10 +262,11 @@ func TestReporterTreatsAuthActivityAsUsage(t *testing.T) {
 			IPAddress: "203.0.113.10",
 			CreatedAt: start.Add(time.Hour),
 		}},
-		emailCodeLogins: []sqlite.EmailCodeLoginRecord{{
+		emailCodeSends: []sqlite.EmailCodeRecord{{
 			Email:     "new-user@example.com",
+			Purpose:   "login",
 			IPAddress: "203.0.113.10",
-			LoginAt:   start.Add(2 * time.Hour),
+			SentAt:    start.Add(2 * time.Hour),
 		}},
 	}, mailer, Config{
 		Recipients: []string{"ops@example.com"},
@@ -289,6 +287,38 @@ func TestReporterTreatsAuthActivityAsUsage(t *testing.T) {
 	}
 }
 
+func TestDetailTablePreviewKeepsLatestTenUserVisits(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	participants := make([]sqlite.MeetingParticipantUsageRecord, 0, 12)
+	for index := range 12 {
+		participants = append(participants, sqlite.MeetingParticipantUsageRecord{
+			ParticipantID: indexID("p", index),
+			Nickname:      indexID("visitor", index),
+			IsAnonymous:   true,
+			IPAddress:     "203.0.113.20",
+			JoinedAt:      start.Add(time.Duration(index) * time.Minute),
+		})
+	}
+	table := buildDetailTable("用户访问明细（users.csv）", buildUserRows(nil, participants))
+	if table.TotalRows != 12 {
+		t.Fatalf("total rows = %d, want 12", table.TotalRows)
+	}
+	if dataRowCount(table.Rows) != reportDetailPreviewLimit {
+		t.Fatalf("preview rows = %d, want %d", dataRowCount(table.Rows), reportDetailPreviewLimit)
+	}
+	text := formatSummaryTextTable(table.Rows)
+	if !strings.Contains(text, "visitor11") || !strings.Contains(text, "visitor2") {
+		t.Fatalf("preview should contain latest 10 rows: %s", text)
+	}
+	for _, row := range table.Rows[1:] {
+		if row[2] == "visitor1" || row[2] == "visitor0" {
+			t.Fatalf("preview should exclude older rows: %v", table.Rows)
+		}
+	}
+}
+
 func TestNextDailyRunUsesConfiguredUTCTime(t *testing.T) {
 	t.Parallel()
 
@@ -302,4 +332,8 @@ func TestNextDailyRunUsesConfiguredUTCTime(t *testing.T) {
 	if !next.Equal(want) {
 		t.Fatalf("nextDailyRun() = %s, want %s", next, want)
 	}
+}
+
+func indexID(prefix string, index int) string {
+	return fmt.Sprintf("%s%d", prefix, index)
 }
