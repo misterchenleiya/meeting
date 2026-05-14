@@ -218,7 +218,7 @@ The repository also ships a production template at [scripts/env.example](scripts
 
 When `MEETING_STATS_REPORT_TO` is configured, the backend sends one traffic statistics email every day at `MEETING_STATS_REPORT_SEND_AT_UTC` and reports the previous 24 hours. The default send time is `12:00` UTC. Usage details are persisted in SQLite and are not automatically deleted.
 
-Reports with usage data show the summary directly in the email body as an HTML table, including visits, new users, email code logins, meeting duration, meeting quality, and client profile distributions. The email includes five detail CSV attachments: `users.csv`, `meetings.csv`, `new_users.csv`, `email_code_logins.csv`, and `meeting_quality.csv`. If the previous 24 hours had no meeting, participant, new user, email code login, or meeting quality data, the backend still sends a short email without attachments. Every report footer includes backend `tag`, `commit`, and `build time`.
+Reports with usage data show the summary directly in the email body as an HTML table and preview the latest 10 rows for each detail table: `users.csv`, `meeting.csv`, `new_users.csv`, `email_code_login.csv`, and `meeting_quality.csv`. Attachments still include the full detail CSV data for the previous 24 hours. `users.csv` writes one row per participant visit, and `email_code_login.csv` writes one row per login or registration verification-code send, including send time, code type, and consumed time. If the previous 24 hours had no meeting, participant, new user, email code send, or meeting quality data, the backend still sends a short email without attachments. Every report footer includes backend `tag`, `commit`, and `build time`.
 
 ### WeChat Mini Program
 

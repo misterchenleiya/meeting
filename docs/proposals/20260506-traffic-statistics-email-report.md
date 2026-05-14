@@ -17,7 +17,7 @@ The system needs a daily traffic statistics email with an in-body summary table 
 - Send at `MEETING_STATS_REPORT_SEND_AT_UTC`, defaulting to `12:00` UTC.
 - Report the previous 24 hours on every run.
 - Persist meeting and participant statistics in SQLite by default and do not automatically delete them.
-- Render summary metrics directly in the email body and attach CSV files for user details, meeting details, new users, email code logins, and meeting quality when the window contains usage data.
+- Render summary metrics and latest-row previews directly in the email body, and attach CSV files for user visits, meeting details, new users, email code sends, and meeting quality when the window contains usage data.
 - Include backend version information in the email footer: tag, commit, and build time.
 
 ## Non-goals
@@ -31,11 +31,11 @@ The system needs a daily traffic statistics email with an in-body summary table 
 
 - Detail attachments use CSV. Files use UTF-8 with BOM so common spreadsheet tools can open Chinese text consistently.
 - Statistics are stored in dedicated tables instead of reconstructing from transient in-memory meetings.
-- A meeting is counted in a report window when it was created, active, or ended within the window.
+- A meeting is counted in a report window when it was created, ended, updated, or had participant/audit activity within the window. Stale open records without recent activity are not carried into every later daily report.
 - Meeting duration is calculated as the overlap between the meeting lifetime and the report window; active meetings use the report window end as the temporary end time.
-- User visit count is counted by distinct registered `user_id` and distinct anonymous `IP + nickname` visitor keys within the window.
+- User visit count is counted by participant visit rows within the window. Repeated visits by the same registered or anonymous user are kept as separate rows in `users.csv`.
 - New registered users are counted from `users.created_at` within the report window.
-- Email verification code logins are counted from consumed `auth_verification_codes` rows where `purpose = login`; `consumed_at` is treated as the login time for reporting.
+- Email verification code activity is counted from sent `auth_verification_codes` rows where `purpose` is `login` or `register`; every send is kept as a separate row in `email_code_login.csv`.
 - Quick and scheduled meetings share the same create-meeting API, with a new `meetingType` field identifying the source flow.
 
 ## Configuration
@@ -57,23 +57,23 @@ These tables are append/update-only for normal service operation. They are not c
 The report also reads existing authentication tables:
 
 - `users`: email, current nickname, and registration time for newly created email users.
-- `auth_verification_codes`: consumed login-purpose codes for email verification code login details.
+- `auth_verification_codes`: login and registration verification-code sends, including send time, purpose, IP, and optional consumed time.
 
 ## Email and attachments
 
 When the report window contains usage data, the email includes a summary table in the email body:
 
-- user visit count, new user count, email code login count, distinct login IP count, meeting count, total meeting duration, longest meeting and ID, shortest meeting and ID, meeting quality summary, and client profile distributions.
+- user visit count, distinct visitor count, new user count, email code send count, distinct email-code IP count, meeting count, total meeting duration, longest meeting and public meeting number, shortest meeting and public meeting number, meeting quality summary, and client profile distributions.
 
-The email also includes five detail attachments:
+The email body also previews the latest 10 rows for each detail table. Full detail data for the previous 24 hours is attached as CSV:
 
-- `users.csv`: registered user email, anonymous nickname, IP address, created meeting count, created meeting numbers.
-- `meetings.csv`: public meeting number, host, meeting type, participant count, participant list.
+- `users.csv`: access time, registered user email, anonymous nickname, IP address, created meeting count, created meeting numbers.
+- `meeting.csv`: public meeting number, start time, end time, host, meeting type, participant count, participant list.
 - `new_users.csv`: email address, IP address, registration time, current nickname.
-- `email_code_logins.csv`: email address, IP address, login time.
-- `meeting_quality.csv`: public meeting number, participant ID, role, device type, sample count, average/max latency, average/max packet loss, average FPS, average bitrate, weak-network sample count.
+- `email_code_login.csv`: send time, verification-code type, email address, IP address, consumed time.
+- `meeting_quality.csv`: latest sample time, public meeting number, participant ID, role, device type, sample count, average/max latency, average/max packet loss, average FPS, average bitrate, weak-network sample count.
 
-When the report window has no meeting, participant, new user, email code login, or meeting quality data, the email has no attachments and only states that there was no usage data in the past 24 hours.
+When the report window has no meeting, participant, new user, email code send, or meeting quality data, the email has no attachments and only states that there was no usage data in the past 24 hours.
 
 ## Compatibility and migration
 

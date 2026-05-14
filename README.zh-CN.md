@@ -216,7 +216,7 @@ MEETING_STATS_REPORT_SEND_AT_UTC=12:00
 
 配置 `MEETING_STATS_REPORT_TO` 后，后端会每天在 `MEETING_STATS_REPORT_SEND_AT_UTC` 指定的 UTC 时间发送一次流量统计邮件，并统计过去 24 小时的数据。发送时间未配置时默认为 UTC `12:00`。统计明细会持久化写入 SQLite，默认不自动清理，便于后续审计。
 
-有使用数据时，邮件正文会以 HTML 表格直接展示摘要，包含用户访问、新增用户、邮件验证码登录、会议时长、会议质量和客户端画像分布，并附带 `users.csv`、`meetings.csv`、`new_users.csv`、`email_code_logins.csv` 和 `meeting_quality.csv` 五个明细 CSV；过去 24 小时没有会议、参会、新增用户、邮件验证码登录或会议质量数据时，仍会发送一封简短邮件，但不带附件。每封邮件末尾都会包含后端 `tag`、`commit` 和 `build time`。
+有使用数据时，邮件正文会以 HTML 表格直接展示摘要，并按 `users.csv`、`meeting.csv`、`new_users.csv`、`email_code_login.csv` 和 `meeting_quality.csv` 五类明细各预览最近 10 条；附件仍包含过去 24 小时的全量明细 CSV。`users.csv` 会按每次参会访问单独成行，`email_code_login.csv` 会按每次登录或注册验证码发送单独成行，并包含发送时间、验证码类型和使用时间。过去 24 小时没有会议、参会、新增用户、邮件验证码发送或会议质量数据时，仍会发送一封简短邮件，但不带附件。每封邮件末尾都会包含后端 `tag`、`commit` 和 `build time`。
 
 ### 微信小程序
 

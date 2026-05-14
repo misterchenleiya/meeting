@@ -44,10 +44,12 @@ type SessionRecord struct {
 	IPAddress string
 }
 
-type EmailCodeLoginRecord struct {
-	Email     string
-	IPAddress string
-	LoginAt   time.Time
+type EmailCodeRecord struct {
+	Email      string
+	Purpose    string
+	IPAddress  string
+	SentAt     time.Time
+	ConsumedAt *time.Time
 }
 
 type UserRegistrationRecord struct {

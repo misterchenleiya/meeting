@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 新增受诊断模式控制的 H5 会中视频日志，覆盖远端轨道接收、主舞台选择和 video 元素播放状态，便于定位移动端看不到画面的断点，默认不产生日志噪声。
 - 匿名参会者昵称现在会在浏览器本地缓存；下次匿名加入会议时自动回填最近使用的昵称，减少重复手动修改。
 - SMTP 邮件适配器新增 `MEETING_SMTP_TLS_MODE=starttls|implicit|auto`，可在保留 SendCloud API 模式的同时接入阿里云 DirectMail、腾讯 SES 等 `465 SSL` 邮件服务。
-- 新增每日用户流量统计邮件：配置 `MEETING_STATS_REPORT_TO` 后，后端会按 UTC 指定时间发送过去 24 小时的统计结果，在邮件正文展示摘要表格，并在有数据时附带 `users.csv`、`meetings.csv`、`new_users.csv`、`email_code_logins.csv` 和 `meeting_quality.csv`。
+- 新增每日用户流量统计邮件：配置 `MEETING_STATS_REPORT_TO` 后，后端会按 UTC 指定时间发送过去 24 小时的统计结果，在邮件正文展示摘要表格和明细预览，并在有数据时附带 `users.csv`、`meeting.csv`、`new_users.csv`、`email_code_login.csv` 和 `meeting_quality.csv`。
 - 新增会议与参会者统计持久化表，记录会议类型、主持人、注册用户邮箱、匿名昵称、IP、参会时间和离会时间，默认不自动清理，便于后续审计。
 - 流量统计邮件新增会议质量摘要、客户端画像分布、新增用户 IP 统计和 `meeting_quality.csv` 明细，便于运营识别设备、浏览器、网络与会议体验问题。
 - 后端构建产物新增 `tag / commit / build time` 版本信息注入，统计邮件会在末尾展示当前后端版本。
@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 流量统计邮件正文现在会按用户访问、会议统计、新注册用户、邮件验证码和会议质量五类明细表各展示最近 10 条；CSV 附件仍保留过去 24 小时窗口内的全量明细。
 - `make publish` 的 Docker 后端构建现在会透传宿主机已设置的 `GOPROXY`、`GOPRIVATE`、`GONOPROXY`、`GONOSUMDB` 和 `GOSUMDB`，便于发布时复用本地 Go 模块代理与私有仓库配置。
 - 加入会议流程改为验证会议号后直接进入会议；需要密码的会议在密码确认成功后也直接进入会议，不再进入入会预览页。
 - `H5` 会中页按移动端设计稿重排为 5 个底部主入口和“更多”抽屉，并支持按钮进入全屏、双击画面进入/退出全屏、全屏后单击显示或隐藏底部工具栏。
@@ -122,6 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复流量统计日报把历史未结束但已无活动的会议和参会记录持续计入后续 24 小时窗口的问题；无近期活动的悬挂记录不再造成日报累计化。
 - 修复 `H5` 移动端远端视频已播放但画面区域高度为 `0` 的问题；移动端主舞台现在使用明确的可用区域填充布局。
 - 进一步修复 `Web` 桌面端与 `H5` 移动端登录、加入会议等入口页在移动浏览器中仍可上下拖动的问题；认证页现在会锁定整个文档滚动。
 - 修复 `H5` 移动端加入会议扫码弹窗底部按钮被浏览器视口裁切的问题；扫码弹窗在小屏上会靠上显示、右上角提供关闭入口，并只保留一个底部选图按钮。
