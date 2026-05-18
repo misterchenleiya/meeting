@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 助理会议记录预览</title>
+    <link rel="stylesheet" href="./20260518-ai-assistant-preview.css" />
+  </head>
+  <body>
+    <main class="room-shell" data-role="host" data-recording="off" data-panel="none">
+      <header class="topbar">
+        <div>
+          <strong>产品评审会议</strong>
+          <span>会议号 482 173 906 · 42:18</span>
+        </div>
+        <div class="role-switch" aria-label="视角切换">
+          <button class="is-active" data-role-button="host" type="button">主持人</button>
+          <button data-role-button="participant" type="button">参会者</button>
+        </div>
+      </header>
+
+      <section class="stage">
+        <div class="speaker-grid">
+          <article class="speaker-tile is-speaking">
+            <div class="avatar">陈</div>
+            <span>陈磊 · 主持人</span>
+          </article>
+          <article class="speaker-tile">
+            <div class="avatar">李</div>
+            <span>李明</span>
+          </article>
+          <article class="speaker-tile">
+            <div class="avatar">王</div>
+            <span>王雨</span>
+          </article>
+          <article class="speaker-tile">
+            <div class="avatar">赵</div>
+            <span>赵宁</span>
+          </article>
+        </div>
+
+        <aside class="transcript-panel">
+          <div class="panel-head">
+            <div>
+              <strong>会议记录</strong>
+              <span class="recording-state">未开启</span>
+            </div>
+            <button class="icon-button" data-action="close-panel" type="button" aria-label="关闭">×</button>
+          </div>
+          <div class="transcript-stream">
+            <p class="empty-copy">主持人开启 AI 助理后，会在这里实时显示转写内容。</p>
+          </div>
+        </aside>
+      </section>
+
+      <div class="toast" role="status" aria-live="polite"></div>
+
+      <footer class="dock">
+        <button class="dock-button" type="button">
+          <span>🎙</span>
+          <b>静音</b>
+        </button>
+        <button class="dock-button" type="button">
+          <span>📹</span>
+          <b>关闭视频</b>
+        </button>
+        <button class="dock-button" type="button">
+          <span>💬</span>
+          <b>聊天</b>
+        </button>
+        <button class="dock-button ai-button" data-action="ai-assistant" type="button">
+          <span>✦</span>
+          <b>AI 助理</b>
+        </button>
+        <button class="dock-button" data-action="history" type="button">
+          <span>☷</span>
+          <b>参会记录</b>
+        </button>
+        <button class="dock-button end-button" data-action="end" type="button">
+          <span>⏻</span>
+          <b>结束会议</b>
+        </button>
+      </footer>
+
+      <section class="assistant-popover">
+        <div class="panel-head">
+          <div>
+            <strong>AI 助理</strong>
+            <span>实时记录默认关闭</span>
+          </div>
+        </div>
+        <p>开启后，参会端仅上传自己的麦克风音频片段；音频转写成功后立即删除。</p>
+        <button class="primary-button" data-action="start-recording" type="button">开启实时记录</button>
+      </section>
+
+      <section class="modal" data-modal="end">
+        <div class="dialog">
+          <div class="dialog-head">
+            <strong>结束会议</strong>
+            <button class="icon-button" data-action="close-modal" type="button" aria-label="关闭">×</button>
+          </div>
+          <p>可以立即结束会议。若需要 AI 整理会议纪要，必须由主持人主动确认。</p>
+          <label class="check-row">
+            <input checked type="checkbox" />
+            <span>交由 AI 整理会议纪要，完成后邮件发送给主持人</span>
+          </label>
+          <div class="dialog-actions">
+            <button data-action="close-modal" type="button">取消</button>
+            <button class="danger-button" data-action="confirm-end" type="button">确认结束</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="modal" data-modal="history">
+        <div class="dialog wide-dialog">
+          <div class="dialog-head">
+            <strong>我的参会记录</strong>
+            <button class="icon-button" data-action="close-modal" type="button" aria-label="关闭">×</button>
+          </div>
+          <div class="history-layout">
+            <nav class="history-list" aria-label="会议列表">
+              <button class="is-active" type="button">
+                <b>产品评审会议</b>
+                <span>纪要已生成 · 我主持</span>
+              </button>
+              <button type="button">
+                <b>周例会</b>
+                <span>无会议纪要 · 我参会</span>
+              </button>
+            </nav>
+            <article class="minutes-preview">
+              <h1>会议纪要：产品评审会议</h1>
+              <h2>目录</h2>
+              <ol>
+                <li>开场白</li>
+                <li>会议主要议题</li>
+                <li>各议题的讨论</li>
+                <li>会议流程</li>
+              </ol>
+              <h2>一、开场白</h2>
+              <p>主持人说明本次会议目标是确认 AI 助理的第一阶段边界和成本控制方式。</p>
+              <div class="share-row">
+                <select aria-label="选择分享对象">
+                  <option>李明</option>
+                  <option>王雨</option>
+                </select>
+                <button class="primary-button" type="button">分享纪要</button>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const shell = document.querySelector(".room-shell");
+      const toast = document.querySelector(".toast");
+      const stream = document.querySelector(".transcript-stream");
+      const state = document.querySelector(".recording-state");
+      const showToast = (text) => {
+        toast.textContent = text;
+        toast.classList.add("is-visible");
+        window.setTimeout(() => toast.classList.remove("is-visible"), 1800);
+      };
+
+      document.querySelectorAll("[data-role-button]").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll("[data-role-button]").forEach((item) => item.classList.remove("is-active"));
+          button.classList.add("is-active");
+          shell.dataset.role = button.dataset.roleButton;
+          shell.dataset.panel = "none";
+          showToast(button.dataset.roleButton === "host" ? "已切换到主持人视角" : "已切换到参会者视角");
+        });
+      });
+
+      document.querySelector('[data-action="ai-assistant"]').addEventListener("click", () => {
+        if (shell.dataset.role !== "host") {
+          showToast("该功能只能主持人开启");
+          return;
+        }
+        shell.dataset.panel = shell.dataset.panel === "assistant" ? "none" : "assistant";
+      });
+
+      document.querySelector('[data-action="start-recording"]').addEventListener("click", () => {
+        shell.dataset.recording = "on";
+        shell.dataset.panel = "transcript";
+        state.textContent = "记录中";
+        stream.innerHTML = `
+          <article><time>09:01</time><strong>陈磊</strong><p>今天先确认 AI 助理的边界，实时记录默认关闭，只由主持人开启。</p></article>
+          <article><time>09:03</time><strong>李明</strong><p>成本上建议先用腾讯云预付费资源包，资源包用完后服务停止。</p></article>
+          <article><time>09:08</time><strong>王雨</strong><p>会议纪要按 Markdown 保存，默认只邮件给主持人。</p></article>
+        `;
+        showToast("AI 助理已开启");
+      });
+
+      document.querySelector('[data-action="close-panel"]').addEventListener("click", () => {
+        shell.dataset.panel = "none";
+      });
+
+      document.querySelector('[data-action="end"]').addEventListener("click", () => {
+        document.querySelector('[data-modal="end"]').classList.add("is-open");
+      });
+
+      document.querySelector('[data-action="history"]').addEventListener("click", () => {
+        document.querySelector('[data-modal="history"]').classList.add("is-open");
+      });
+
+      document.querySelectorAll('[data-action="close-modal"]').forEach((button) => {
+        button.addEventListener("click", () => button.closest(".modal").classList.remove("is-open"));
+      });
+
+      document.querySelector('[data-action="confirm-end"]').addEventListener("click", () => {
+        document.querySelector('[data-modal="end"]').classList.remove("is-open");
+        showToast("会议已结束，纪要将在后台生成");
+      });
+    </script>
+  </body>
+</html>

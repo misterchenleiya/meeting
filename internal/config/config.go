@@ -31,6 +31,26 @@ type Config struct {
 	SendCloudFromName           string
 	StatsReportRecipients       []string
 	StatsReportSendAtUTC        string
+	TranscriptionEnabled        bool
+	ASRProvider                 string
+	ASRAPIBaseURL               string
+	TencentASRAppID             string
+	TencentASRSecretID          string
+	TencentASRSecretKey         string
+	TencentASRRegion            string
+	TencentASREngineModelType   string
+	TencentASRVoiceFormat       string
+	ASRLanguageDefault          string
+	ASRChunkMaxBytes            int
+	TranscriptionMeetingLimit   int
+	TranscriptionDailyLimit     int
+	TranscriptionConcurrentMax  int
+	LLMProvider                 string
+	LLMAPIBaseURL               string
+	LLMAPIKey                   string
+	LLMModel                    string
+	MinutesJobTimeoutSeconds    int
+	MinutesEmailFrom            string
 	WechatMiniProgramAppID      string
 	WechatMiniProgramAppSecret  string
 	WechatMiniProgramAPIBaseURL string
@@ -49,6 +69,36 @@ func Load() (Config, error) {
 	}
 
 	turnTTLSeconds, err := envIntOrDefault("MEETING_TURN_TTL_SECONDS", 43200)
+	if err != nil {
+		return Config{}, err
+	}
+
+	transcriptionEnabled, err := envBoolOrDefault("MEETING_TRANSCRIPTION_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+
+	asrChunkMaxBytes, err := envIntOrDefault("MEETING_ASR_CHUNK_MAX_BYTES", 1<<20)
+	if err != nil {
+		return Config{}, err
+	}
+
+	transcriptionMeetingLimit, err := envIntOrDefault("MEETING_TRANSCRIPTION_MEETING_LIMIT_SECONDS", 3600)
+	if err != nil {
+		return Config{}, err
+	}
+
+	transcriptionDailyLimit, err := envIntOrDefault("MEETING_TRANSCRIPTION_DAILY_LIMIT_SECONDS", 7200)
+	if err != nil {
+		return Config{}, err
+	}
+
+	transcriptionConcurrentMax, err := envIntOrDefault("MEETING_TRANSCRIPTION_CONCURRENT_PARTICIPANTS", 3)
+	if err != nil {
+		return Config{}, err
+	}
+
+	minutesJobTimeoutSeconds, err := envIntOrDefault("MEETING_MINUTES_JOB_TIMEOUT_SECONDS", 600)
 	if err != nil {
 		return Config{}, err
 	}
@@ -77,6 +127,26 @@ func Load() (Config, error) {
 		SendCloudFromName:           envOrDefault("MEETING_SENDCLOUD_FROM_NAME", "meeting"),
 		StatsReportRecipients:       envList("MEETING_STATS_REPORT_TO"),
 		StatsReportSendAtUTC:        envOrDefault("MEETING_STATS_REPORT_SEND_AT_UTC", "12:00"),
+		TranscriptionEnabled:        transcriptionEnabled,
+		ASRProvider:                 strings.ToLower(envOrDefault("MEETING_ASR_PROVIDER", "tencent")),
+		ASRAPIBaseURL:               envOrDefault("MEETING_ASR_API_BASE_URL", "https://asr.tencentcloudapi.com"),
+		TencentASRAppID:             envOrDefault("MEETING_TENCENT_ASR_APP_ID", ""),
+		TencentASRSecretID:          envOrDefault("MEETING_TENCENT_ASR_SECRET_ID", ""),
+		TencentASRSecretKey:         envOrDefault("MEETING_TENCENT_ASR_SECRET_KEY", ""),
+		TencentASRRegion:            envOrDefault("MEETING_TENCENT_ASR_REGION", "ap-shanghai"),
+		TencentASREngineModelType:   envOrDefault("MEETING_TENCENT_ASR_ENGINE_MODEL_TYPE", "16k_zh"),
+		TencentASRVoiceFormat:       envOrDefault("MEETING_TENCENT_ASR_VOICE_FORMAT", "wav"),
+		ASRLanguageDefault:          envOrDefault("MEETING_ASR_LANGUAGE_DEFAULT", "zh-CN"),
+		ASRChunkMaxBytes:            asrChunkMaxBytes,
+		TranscriptionMeetingLimit:   transcriptionMeetingLimit,
+		TranscriptionDailyLimit:     transcriptionDailyLimit,
+		TranscriptionConcurrentMax:  transcriptionConcurrentMax,
+		LLMProvider:                 strings.ToLower(envOrDefault("MEETING_LLM_PROVIDER", "deepseek")),
+		LLMAPIBaseURL:               envOrDefault("MEETING_LLM_API_BASE_URL", "https://api.deepseek.com"),
+		LLMAPIKey:                   envOrDefault("MEETING_LLM_API_KEY", ""),
+		LLMModel:                    envOrDefault("MEETING_LLM_MODEL", "deepseek-v4-flash"),
+		MinutesJobTimeoutSeconds:    minutesJobTimeoutSeconds,
+		MinutesEmailFrom:            envOrDefault("MEETING_MINUTES_EMAIL_FROM", ""),
 		WechatMiniProgramAppID:      envOrDefault("MEETING_WECHAT_MINIPROGRAM_APP_ID", ""),
 		WechatMiniProgramAppSecret:  envOrDefault("MEETING_WECHAT_MINIPROGRAM_APP_SECRET", ""),
 		WechatMiniProgramAPIBaseURL: envOrDefault("MEETING_WECHAT_MINIPROGRAM_API_BASE_URL", "https://api.weixin.qq.com"),

@@ -10,6 +10,7 @@ tags:
   - name: Logs
   - name: Auth
   - name: Meetings
+  - name: Minutes
   - name: Preferences
 paths:
   /healthz:
@@ -290,6 +291,151 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingNumber}/transcription/start:
+    post:
+      tags: [Minutes]
+      summary: Start realtime transcription as the host
+      parameters:
+        - $ref: "#/components/parameters/MeetingNumber"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostParticipantId]
+              properties:
+                hostParticipantId:
+                  type: string
+      responses:
+        "200":
+          description: Transcription started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  transcription:
+                    $ref: "#/components/schemas/TranscriptionState"
+        "403":
+          description: Only the host can start transcription
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/meetings/{meetingNumber}/transcript:
+    get:
+      tags: [Minutes]
+      summary: List realtime transcript segments
+      parameters:
+        - $ref: "#/components/parameters/MeetingNumber"
+        - $ref: "#/components/parameters/ParticipantIDQuery"
+      responses:
+        "200":
+          description: Transcript snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  meetingNumber:
+                    type: string
+                  segments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TranscriptSegment"
+  /api/meetings/{meetingNumber}/participants/{participantID}/transcription/chunks:
+    post:
+      tags: [Minutes]
+      summary: Upload one microphone audio chunk for ASR
+      description: The backend transcribes the chunk and does not persist the raw audio after successful transcription.
+      parameters:
+        - $ref: "#/components/parameters/MeetingNumber"
+        - $ref: "#/components/parameters/ParticipantID"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                sequence:
+                  type: integer
+                startedAt:
+                  type: string
+                  format: date-time
+                endedAt:
+                  type: string
+                  format: date-time
+                language:
+                  type: string
+                sampleRate:
+                  type: integer
+      responses:
+        "202":
+          description: Chunk accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  segment:
+                    $ref: "#/components/schemas/TranscriptSegment"
+  /api/meetings/{meetingNumber}/minutes/jobs:
+    post:
+      tags: [Minutes]
+      summary: Create a background AI minutes job
+      parameters:
+        - $ref: "#/components/parameters/MeetingNumber"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostParticipantId]
+              properties:
+                hostParticipantId:
+                  type: string
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinutesJobResponse"
+        "200":
+          description: Existing active or succeeded job returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinutesJobResponse"
+  /api/meetings/{meetingNumber}/minutes/jobs/{jobID}:
+    get:
+      tags: [Minutes]
+      summary: Get a minutes job
+      parameters:
+        - $ref: "#/components/parameters/MeetingNumber"
+        - name: jobID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinutesJobResponse"
   /api/meetings/{meetingNumber}/join:
     post:
       tags: [Meetings]
@@ -532,6 +678,69 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/users/me/meeting-history:
+    get:
+      tags: [Minutes]
+      summary: List meetings visible to the current registered user
+      responses:
+        "200":
+          description: Meeting history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  records:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MeetingHistoryRecord"
+  /api/meeting-minutes/{minutesID}:
+    get:
+      tags: [Minutes]
+      summary: Get a persistent AI minutes document
+      parameters:
+        - name: minutesID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Minutes document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  minutes:
+                    $ref: "#/components/schemas/PersistentMeetingMinutes"
+  /api/meeting-minutes/{minutesID}/shares:
+    post:
+      tags: [Minutes]
+      summary: Share minutes with a registered meeting participant
+      parameters:
+        - name: minutesID
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+      responses:
+        "200":
+          description: Shared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
   /api/users/{userID}/preferences:
     put:
       tags: [Preferences]
@@ -1037,6 +1246,158 @@ components:
           type: array
           items:
             type: string
+        transcription:
+          $ref: "#/components/schemas/TranscriptionState"
+    TranscriptionState:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        enabledByParticipantId:
+          type: string
+        enabledAt:
+          type: string
+          format: date-time
+    TranscriptSegment:
+      type: object
+      required: [id, meetingNumber, participantId, nickname, sequence, startedAt, endedAt, text, isFinal]
+      properties:
+        id:
+          type: string
+        meetingNumber:
+          type: string
+        participantId:
+          type: string
+        userId:
+          type: string
+        nickname:
+          type: string
+        language:
+          type: string
+        sequence:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        text:
+          type: string
+        isFinal:
+          type: boolean
+        asrProvider:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    MinutesJob:
+      type: object
+      required: [id, meetingNumber, requestedByUserId, requestedByParticipantId, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        meetingNumber:
+          type: string
+        requestedByUserId:
+          type: string
+        requestedByParticipantId:
+          type: string
+        status:
+          type: string
+          enum: [pending, waiting_transcript, running, succeeded, failed]
+        errorMessage:
+          type: string
+        emailError:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        minutesId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    MinutesJobResponse:
+      type: object
+      properties:
+        job:
+          $ref: "#/components/schemas/MinutesJob"
+        created:
+          type: boolean
+        minutes:
+          $ref: "#/components/schemas/PersistentMeetingMinutes"
+    PersistentMeetingMinutes:
+      type: object
+      required: [id, jobId, meetingNumber, hostUserId, markdownContent, llmProvider, llmModel, generatedAt]
+      properties:
+        id:
+          type: string
+        jobId:
+          type: string
+        meetingNumber:
+          type: string
+        hostUserId:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        markdownContent:
+          type: string
+        outlineJson:
+          type: string
+        llmProvider:
+          type: string
+        llmModel:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+    MeetingHistoryRecord:
+      type: object
+      required: [meetingId, meetingNumber, title, userRole, joinedAt, minutesId, minutesStatus]
+      properties:
+        meetingId:
+          type: string
+        meetingNumber:
+          type: string
+        title:
+          type: string
+        meetingType:
+          type: string
+        hostUserId:
+          type: string
+        hostNickname:
+          type: string
+        userRole:
+          type: string
+          enum: [host, participant]
+        joinedAt:
+          type: string
+          format: date-time
+        leftAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        minutesId:
+          type: string
+        minutesStatus:
+          type: string
+        minutesShared:
+          type: boolean
+        generatedAt:
+          type: string
+          format: date-time
     Participant:
       type: object
       required:

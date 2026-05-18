@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 新增 Web 端 AI 助理会议记录与持久化会议纪要第一阶段：主持人可手动开启实时转写、结束会议前主动创建 AI 纪要任务，后端后台生成 Markdown 纪要并仅邮件发送给主持人。
+- 新增持久化会议纪要、纪要任务、转写段落和纪要分享存储表，注册用户可查看自己的参会记录，主持人可分享纪要给该会议的注册参会用户。
+- 新增腾讯云 ASR 与 DeepSeek V4 provider 配置，DeepSeek 默认模型为 `deepseek-v4-flash`，可通过 `MEETING_LLM_MODEL` 切换为 `deepseek-v4-pro` 或其他兼容模型。
+- 新增 `docs/design/20260518-ai-assistant-preview.*` 和 `docs/design/20260518-ai-assistant-ui-spec.md`，约束 AI 助理、实时记录、参会记录和纪要分享交互。
 - `H5` 会中支持通过 URL 参数 `debug=1` 开启诊断模式；开启后“更多”面板会显示 `复制日志` 入口，移动端复现问题后可直接复制前端调试日志。
 - 新增受诊断模式控制的 H5 会中视频日志，覆盖远端轨道接收、主舞台选择和 video 元素播放状态，便于定位移动端看不到画面的断点，默认不产生日志噪声。
 - 匿名参会者昵称现在会在浏览器本地缓存；下次匿名加入会议时自动回填最近使用的昵称，减少重复手动修改。

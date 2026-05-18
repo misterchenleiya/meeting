@@ -41,6 +41,12 @@ type MediaPreference struct {
 	MicrophoneEnabled bool `json:"microphoneEnabled"`
 }
 
+type TranscriptionState struct {
+	Enabled                bool       `json:"enabled"`
+	EnabledByParticipantID string     `json:"enabledByParticipantId,omitempty"`
+	EnabledAt              *time.Time `json:"enabledAt,omitempty"`
+}
+
 type ChatMessageKind string
 
 const (
@@ -143,6 +149,7 @@ type Meeting struct {
 	WhiteboardActions []WhiteboardAction      `json:"whiteboardActions,omitempty"`
 	ActiveReadyCheck  *ReadyCheckRound        `json:"activeReadyCheck,omitempty"`
 	TemporaryMinutes  []string                `json:"temporaryMinutes,omitempty"`
+	Transcription     TranscriptionState      `json:"transcription"`
 }
 
 func allCapabilities() []Capability {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 	"github.com/misterchenleiya/meeting/internal/httpapi"
 	"github.com/misterchenleiya/meeting/internal/logging"
 	"github.com/misterchenleiya/meeting/internal/meeting"
+	"github.com/misterchenleiya/meeting/internal/minutes"
 	"github.com/misterchenleiya/meeting/internal/signaling"
 	"github.com/misterchenleiya/meeting/internal/statistics"
 	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
@@ -89,6 +91,39 @@ func main() {
 	authService := auth.NewService(store, mailer, authOptions...)
 	meetingService := meeting.NewService(logger, store)
 	signalingHub := signaling.NewHub(logger, meetingService)
+	asrProvider, err := buildASRProvider(cfg)
+	if err != nil {
+		logger.Error("failed to initialize asr provider", "error", err)
+		os.Exit(1)
+	}
+	llmProvider, err := buildLLMProvider(cfg)
+	if err != nil {
+		logger.Error("failed to initialize llm provider", "error", err)
+		os.Exit(1)
+	}
+	minutesService, err := minutes.NewService(logger, minutes.Config{
+		Enabled:                    cfg.TranscriptionEnabled,
+		ASRProvider:                cfg.ASRProvider,
+		ASRChunkMaxBytes:           cfg.ASRChunkMaxBytes,
+		DefaultLanguage:            cfg.ASRLanguageDefault,
+		MeetingLimitSeconds:        cfg.TranscriptionMeetingLimit,
+		DailyLimitSeconds:          cfg.TranscriptionDailyLimit,
+		ConcurrentParticipantLimit: cfg.TranscriptionConcurrentMax,
+		MinutesJobTimeout:          time.Duration(cfg.MinutesJobTimeoutSeconds) * time.Second,
+	}, minutes.Dependencies{
+		Store:  store,
+		Mailer: mailer,
+		ASR:    asrProvider,
+		LLM:    llmProvider,
+		OnJobCompleted: func(job sqlite.MinutesJobRecord, record sqlite.MeetingMinutesRecord) {
+			signalingHub.NotifyMinutesJobCompleted(record.MeetingID, job, record)
+		},
+	})
+	if err != nil {
+		logger.Error("failed to initialize minutes service", "error", err)
+		os.Exit(1)
+	}
+	minutesService.Start(signalContext)
 	turnService, err := turnauth.NewService(turnauth.Config{
 		StunURLs:     turnauth.ParseURLList(cfg.MeetingSTUNURLs),
 		TurnURLs:     turnauth.ParseURLList(cfg.MeetingTURNURLs),
@@ -115,7 +150,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewServer(logger, authService, meetingService, store, signalingHub, turnService).Routes(),
+		Handler:           httpapi.NewServer(logger, authService, meetingService, minutesService, store, signalingHub, turnService).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -138,4 +173,43 @@ func main() {
 	}
 
 	logger.Info("http server stopped")
+}
+
+func buildASRProvider(cfg config.Config) (minutes.ASRProvider, error) {
+	if !cfg.TranscriptionEnabled && cfg.TencentASRSecretID == "" && cfg.TencentASRSecretKey == "" && cfg.ASRProvider == minutes.ProviderTencent {
+		return minutes.FakeASRProvider{}, nil
+	}
+	switch cfg.ASRProvider {
+	case "", minutes.ProviderFake:
+		return minutes.FakeASRProvider{}, nil
+	case minutes.ProviderTencent:
+		return minutes.NewTencentSentenceASRProvider(minutes.TencentSentenceASRConfig{
+			Endpoint:        cfg.ASRAPIBaseURL,
+			SecretID:        cfg.TencentASRSecretID,
+			SecretKey:       cfg.TencentASRSecretKey,
+			Region:          cfg.TencentASRRegion,
+			EngineModelType: cfg.TencentASREngineModelType,
+			VoiceFormat:     cfg.TencentASRVoiceFormat,
+		})
+	default:
+		return nil, fmt.Errorf("unsupported ASR provider %q", cfg.ASRProvider)
+	}
+}
+
+func buildLLMProvider(cfg config.Config) (minutes.LLMProvider, error) {
+	if !cfg.TranscriptionEnabled && cfg.LLMAPIKey == "" && cfg.LLMProvider == minutes.ProviderDeepSeek {
+		return minutes.NewFakeLLMProvider(cfg.LLMModel), nil
+	}
+	switch cfg.LLMProvider {
+	case "", minutes.ProviderFake:
+		return minutes.NewFakeLLMProvider(cfg.LLMModel), nil
+	case minutes.ProviderDeepSeek:
+		return minutes.NewDeepSeekProvider(minutes.DeepSeekConfig{
+			BaseURL: cfg.LLMAPIBaseURL,
+			APIKey:  cfg.LLMAPIKey,
+			Model:   cfg.LLMModel,
+		})
+	default:
+		return nil, fmt.Errorf("unsupported LLM provider %q", cfg.LLMProvider)
+	}
 }

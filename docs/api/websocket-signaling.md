@@ -61,6 +61,10 @@ Both directions use the same JSON envelope shape:
 | `ready_check.started` | `{ "round": { ... } }` | Ready check started |
 | `ready_check.updated` | `{ "round": { ... } }` | Ready check updated |
 | `ready_check.finished` | `{ "round": { ... } }` | Ready check finished |
+| `transcription.status` | `{ "transcription": { "enabled": true, "enabledByParticipantId": "...", "enabledAt": "..." } }` | AI 助理实时记录状态变化 |
+| `transcription.segment` | `{ "id": "...", "participantId": "...", "nickname": "...", "startedAt": "...", "endedAt": "...", "text": "..." }` | 新增实时转写段落 |
+| `minutes.job_created` | `{ "id": "...", "meetingNumber": "...", "status": "pending" }` | 主持人主动创建 AI 纪要任务 |
+| `minutes.job_completed` | `{ "id": "...", "meetingNumber": "...", "status": "succeeded", "minutesId": "..." }` | AI 纪要后台生成完成 |
 | `meeting.ended` | `{ "endedByParticipantId": "..." }` | Meeting ended |
 | `error` | `{ "code": "...", "message": "..." }` | Invalid message or processing error |
 
@@ -70,6 +74,9 @@ Both directions use the same JSON envelope shape:
 - `capability.grant`, `capability.revoke`, and `role.assign_assistant` are enforced by the meeting service; the server rejects unauthorized actors
 - `capability.request` currently supports runtime requests for `microphone` / `camera` / `screen_share` / `record`; the broadcast chat message uses `message.kind = capability_request` and an `action` object so the host UI can open the permission panel directly
 - `whiteboard.clear` and `ready_check.start` are host / capability guarded through the meeting service
+- `transcription.status` can only be triggered by the host through REST; non-host users clicking AI 助理 only receive a frontend prompt
+- `transcription.segment` comes from REST audio chunk uploads; raw audio is not sent over WebSocket
+- `minutes.job_created` is emitted before the host ends the meeting, while `minutes.job_completed` is best-effort for online clients because the host may have already closed the room
 - `meeting.ended` is broadcast after the host ends the room and the signaling hub closes the room
 
 ## Example session

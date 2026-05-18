@@ -18,6 +18,236 @@
   --shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
 }
 
+.ai-meeting-tool .tool-icon {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.attached-panel--ai {
+  width: min(360px, calc(100vw - 32px));
+}
+
+.ai-assistant-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.ai-assistant-panel p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.78);
+  line-height: 1.55;
+}
+
+.transcript-mini-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.transcript-mini-list strong {
+  font-size: 13px;
+}
+
+.transcript-mini-list p {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.transcript-mini-list b,
+.transcript-strip-list b {
+  color: #dbeafe;
+  font-size: 12px;
+}
+
+.transcript-strip {
+  position: absolute;
+  left: 24px;
+  bottom: 18px;
+  width: min(520px, calc(100% - 48px));
+  z-index: 4;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: rgba(10, 15, 23, 0.86);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+}
+
+.transcript-strip-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.transcript-strip-head strong {
+  font-size: 13px;
+}
+
+.transcript-strip-head span {
+  color: rgba(148, 163, 184, 0.92);
+  font-size: 12px;
+}
+
+.transcript-strip-list {
+  display: grid;
+  gap: 8px;
+}
+
+.transcript-strip-list p {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  color: rgba(226, 232, 240, 0.88);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ai-minutes-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.1);
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.meeting-history-modal {
+  max-width: min(1040px, calc(100vw - 40px));
+}
+
+.meeting-history-layout {
+  min-height: 480px;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.meeting-history-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.meeting-history-list button {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-height: 68px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  text-align: left;
+  color: #e5edf8;
+  background: rgba(15, 23, 42, 0.72);
+  cursor: pointer;
+}
+
+.meeting-history-list button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.meeting-history-list button.is-active {
+  border-color: rgba(96, 165, 250, 0.72);
+  background: rgba(37, 99, 145, 0.38);
+}
+
+.meeting-history-list span,
+.minutes-detail-head span {
+  color: rgba(148, 163, 184, 0.92);
+  font-size: 12px;
+}
+
+.meeting-minutes-detail {
+  min-width: 0;
+  max-height: 520px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.minutes-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.minutes-share-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.minutes-share-controls select {
+  min-width: 160px;
+  height: 36px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  color: #e5edf8;
+  background: rgba(2, 6, 23, 0.76);
+}
+
+.minutes-markdown-view {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: rgba(226, 232, 240, 0.9);
+  font: 13px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (max-width: 760px) {
+  .transcript-strip {
+    left: 8px;
+    right: 8px;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    width: auto;
+    max-height: 148px;
+    overflow: auto;
+  }
+
+  .transcript-strip-list p {
+    grid-template-columns: 56px 1fr;
+  }
+
+  .meeting-history-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .meeting-history-list {
+    display: flex;
+    overflow-x: auto;
+    max-height: none;
+  }
+
+  .meeting-history-list button {
+    min-width: 220px;
+  }
+
+  .minutes-detail-head,
+  .minutes-share-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

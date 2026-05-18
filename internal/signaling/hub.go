@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/misterchenleiya/meeting/internal/meeting"
+	"github.com/misterchenleiya/meeting/internal/storage/sqlite"
 )
 
 const (
@@ -136,6 +137,40 @@ type whiteboardActionPayload struct {
 
 type readyCheckRoundPayload struct {
 	Round *meeting.ReadyCheckRound `json:"round"`
+}
+
+type transcriptionStatusPayload struct {
+	Transcription meeting.TranscriptionState `json:"transcription"`
+}
+
+type transcriptionSegmentPayload struct {
+	ID            string `json:"id"`
+	MeetingNumber string `json:"meetingNumber"`
+	ParticipantID string `json:"participantId"`
+	UserID        string `json:"userId"`
+	Nickname      string `json:"nickname"`
+	Language      string `json:"language"`
+	Sequence      int64  `json:"sequence"`
+	StartedAt     string `json:"startedAt"`
+	EndedAt       string `json:"endedAt"`
+	Text          string `json:"text"`
+	IsFinal       bool   `json:"isFinal"`
+	ASRProvider   string `json:"asrProvider"`
+	CreatedAt     string `json:"createdAt"`
+}
+
+type minutesJobPayload struct {
+	ID                       string `json:"id"`
+	MeetingNumber            string `json:"meetingNumber"`
+	RequestedByUserID        string `json:"requestedByUserId"`
+	RequestedByParticipantID string `json:"requestedByParticipantId"`
+	Status                   string `json:"status"`
+	ErrorMessage             string `json:"errorMessage"`
+	EmailError               string `json:"emailError"`
+	CreatedAt                string `json:"createdAt"`
+	UpdatedAt                string `json:"updatedAt"`
+	CompletedAt              string `json:"completedAt,omitempty"`
+	MinutesID                string `json:"minutesId,omitempty"`
 }
 
 type targetedPayload struct {
@@ -365,6 +400,36 @@ func (h *Hub) NotifyMeetingEnded(meetingID string, endedByParticipantID string) 
 	})
 }
 
+func (h *Hub) NotifyTranscriptionStatus(meetingID string, state meeting.TranscriptionState) {
+	h.broadcast(meetingID, serverEnvelope{
+		Type: "transcription.status",
+		Payload: transcriptionStatusPayload{
+			Transcription: state,
+		},
+	}, "")
+}
+
+func (h *Hub) NotifyTranscriptionSegment(meetingID string, segment sqlite.TranscriptSegmentRecord) {
+	h.broadcast(meetingID, serverEnvelope{
+		Type:    "transcription.segment",
+		Payload: transcriptionSegmentPayloadFromRecord(segment),
+	}, "")
+}
+
+func (h *Hub) NotifyMinutesJobCreated(meetingID string, job sqlite.MinutesJobRecord) {
+	h.broadcast(meetingID, serverEnvelope{
+		Type:    "minutes.job_created",
+		Payload: minutesJobPayloadFromRecord(job, ""),
+	}, "")
+}
+
+func (h *Hub) NotifyMinutesJobCompleted(meetingID string, job sqlite.MinutesJobRecord, record sqlite.MeetingMinutesRecord) {
+	h.broadcast(meetingID, serverEnvelope{
+		Type:    "minutes.job_completed",
+		Payload: minutesJobPayloadFromRecord(job, record.ID),
+	}, "")
+}
+
 func (h *Hub) register(clientValue *client) []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -580,6 +645,43 @@ func (h *Hub) cancelDisconnectCleanupsByMeetingLocked(meetingID string) {
 
 func disconnectCleanupKey(meetingID string, participantID string) string {
 	return meetingID + "\x00" + participantID
+}
+
+func transcriptionSegmentPayloadFromRecord(record sqlite.TranscriptSegmentRecord) transcriptionSegmentPayload {
+	return transcriptionSegmentPayload{
+		ID:            record.ID,
+		MeetingNumber: record.MeetingNumber,
+		ParticipantID: record.ParticipantID,
+		UserID:        record.UserID,
+		Nickname:      record.Nickname,
+		Language:      record.Language,
+		Sequence:      record.Sequence,
+		StartedAt:     record.StartedAt.UTC().Format(time.RFC3339Nano),
+		EndedAt:       record.EndedAt.UTC().Format(time.RFC3339Nano),
+		Text:          record.Text,
+		IsFinal:       record.IsFinal,
+		ASRProvider:   record.ASRProvider,
+		CreatedAt:     record.CreatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func minutesJobPayloadFromRecord(record sqlite.MinutesJobRecord, minutesID string) minutesJobPayload {
+	payload := minutesJobPayload{
+		ID:                       record.ID,
+		MeetingNumber:            record.MeetingNumber,
+		RequestedByUserID:        record.RequestedByUserID,
+		RequestedByParticipantID: record.RequestedByParticipantID,
+		Status:                   record.Status,
+		ErrorMessage:             record.ErrorMessage,
+		EmailError:               record.EmailError,
+		CreatedAt:                record.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:                record.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		MinutesID:                minutesID,
+	}
+	if record.CompletedAt != nil {
+		payload.CompletedAt = record.CompletedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return payload
 }
 
 func (h *Hub) sendToParticipant(meetingID string, participantID string, event serverEnvelope) error {
