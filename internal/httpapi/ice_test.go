@@ -75,7 +75,7 @@ func TestHandleGetICEServersForAnonymousParticipant(t *testing.T) {
 		t.Fatalf("NewService() error = %v", err)
 	}
 
-	server := NewServer(logger, nil, meetingService, nil, nil, turnService)
+	server := NewServer(logger, nil, meetingService, nil, nil, nil, turnService)
 
 	ctx := context.Background()
 	meetingValue, _, err := meetingService.CreateMeeting(ctx, meeting.CreateMeetingInput{

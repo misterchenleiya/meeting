@@ -157,6 +157,11 @@ type AuditReportInput struct {
 	Details          map[string]any
 }
 
+type StartTranscriptionInput struct {
+	MeetingID     string
+	ParticipantID string
+}
+
 func NewService(logger *slog.Logger, store PreferenceStore) *Service {
 	return &Service{
 		logger:   logger,
@@ -436,6 +441,45 @@ func (s *Service) EndMeeting(ctx context.Context, meetingID string, endedByParti
 	delete(s.numbers, meeting.MeetingNumber)
 
 	return nil
+}
+
+func (s *Service) StartTranscription(ctx context.Context, input StartTranscriptionInput) (*Meeting, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meetingValue, actor, err := s.meetingActorLocked(input.MeetingID, input.ParticipantID)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role != RoleHost {
+		return nil, ErrUnauthorized
+	}
+	if meetingValue.Status != StatusActive {
+		return nil, ErrMeetingNotFound
+	}
+
+	now := time.Now().UTC()
+	if !meetingValue.Transcription.Enabled {
+		meetingValue.Transcription = TranscriptionState{
+			Enabled:                true,
+			EnabledByParticipantID: actor.ID,
+			EnabledAt:              &now,
+		}
+		addMinuteLocked(meetingValue, now, fmt.Sprintf("%s 开启了 AI 助理实时记录。", actor.Nickname))
+		if err := s.insertAudit(ctx, sqlite.AuditEvent{
+			MeetingID:       meetingValue.ID,
+			MeetingNumber:   meetingValue.MeetingNumber,
+			ParticipantID:   actor.ID,
+			UserID:          actor.UserID,
+			ParticipantRole: string(actor.Role),
+			EventType:       "transcription_started",
+			CreatedAt:       now,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	return copyMeeting(meetingValue), nil
 }
 
 func (s *Service) GrantCapability(ctx context.Context, input GrantCapabilityInput) error {
@@ -1334,6 +1378,10 @@ func copyMeeting(value *Meeting) *Meeting {
 	copied.WhiteboardActions = whiteboardActions
 	copied.ActiveReadyCheck = copyReadyCheckRound(value.ActiveReadyCheck)
 	copied.TemporaryMinutes = minutes
+	if value.Transcription.EnabledAt != nil {
+		enabledAt := *value.Transcription.EnabledAt
+		copied.Transcription.EnabledAt = &enabledAt
+	}
 	return &copied
 }
 

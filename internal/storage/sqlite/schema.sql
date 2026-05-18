@@ -125,3 +125,83 @@ CREATE TABLE IF NOT EXISTS meeting_usage_participants (
 CREATE INDEX IF NOT EXISTS idx_meeting_usage_participants_meeting_id ON meeting_usage_participants(meeting_id);
 CREATE INDEX IF NOT EXISTS idx_meeting_usage_participants_joined_at ON meeting_usage_participants(joined_at);
 CREATE INDEX IF NOT EXISTS idx_meeting_usage_participants_user_id ON meeting_usage_participants(user_id);
+
+CREATE TABLE IF NOT EXISTS meeting_transcript_segments (
+    id TEXT PRIMARY KEY,
+    meeting_id TEXT NOT NULL,
+    meeting_number TEXT NOT NULL DEFAULT '',
+    participant_id TEXT NOT NULL,
+    user_id TEXT NOT NULL DEFAULT '',
+    nickname TEXT NOT NULL DEFAULT '',
+    language TEXT NOT NULL DEFAULT '',
+    sequence INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL,
+    ended_at TEXT NOT NULL,
+    text TEXT NOT NULL,
+    is_final INTEGER NOT NULL DEFAULT 1,
+    asr_provider TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_meeting_transcript_segments_unique_chunk
+ON meeting_transcript_segments(meeting_id, participant_id, sequence);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_transcript_segments_meeting_time
+ON meeting_transcript_segments(meeting_id, started_at, sequence);
+
+CREATE TABLE IF NOT EXISTS meeting_minutes_jobs (
+    id TEXT PRIMARY KEY,
+    meeting_id TEXT NOT NULL,
+    meeting_number TEXT NOT NULL DEFAULT '',
+    requested_by_user_id TEXT NOT NULL,
+    requested_by_participant_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT NOT NULL DEFAULT '',
+    email_error TEXT NOT NULL DEFAULT '',
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_jobs_meeting_id
+ON meeting_minutes_jobs(meeting_id);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_jobs_status
+ON meeting_minutes_jobs(status, updated_at);
+
+CREATE TABLE IF NOT EXISTS meeting_minutes (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL UNIQUE,
+    meeting_id TEXT NOT NULL,
+    meeting_number TEXT NOT NULL DEFAULT '',
+    host_user_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    markdown_content TEXT NOT NULL,
+    outline_json TEXT NOT NULL DEFAULT '{}',
+    llm_provider TEXT NOT NULL DEFAULT '',
+    llm_model TEXT NOT NULL DEFAULT '',
+    generated_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_meeting_id
+ON meeting_minutes(meeting_id);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_host_user_id
+ON meeting_minutes(host_user_id, generated_at DESC);
+
+CREATE TABLE IF NOT EXISTS meeting_minutes_shares (
+    minutes_id TEXT NOT NULL,
+    shared_by_user_id TEXT NOT NULL,
+    shared_with_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (minutes_id, shared_with_user_id),
+    FOREIGN KEY(minutes_id) REFERENCES meeting_minutes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_meeting_minutes_shares_user_id
+ON meeting_minutes_shares(shared_with_user_id, created_at DESC);

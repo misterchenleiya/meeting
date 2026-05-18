@@ -4,7 +4,7 @@ English | [简体中文](README.zh-CN.md)
 
 `Meeting` is a browser-first multi-party video meeting system for desktop browsers and mobile H5. The project follows a `P2P-first` WebRTC model with `WSS` signaling, local-only recording, and immediate deletion of meeting runtime data after the session ends.
 
-Current capabilities include video meetings, whiteboard collaboration, screen sharing, local recording, chat, ready checks, temporary meeting minutes, host/assistant/participant roles, anonymous display names, and a browser-friendly `WSS + WebRTC` communication model.
+Current capabilities include video meetings, whiteboard collaboration, screen sharing, local recording, chat, ready checks, temporary meeting minutes, host-controlled AI assistant transcription, persistent AI meeting minutes, host/assistant/participant roles, anonymous display names, and a browser-friendly `WSS + WebRTC` communication model.
 
 ![Meeting login preview](docs/meeting_login.png)
 
@@ -25,6 +25,8 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - The host can promote a participant to assistant, and assistants receive the granted host-side capabilities
 - Recording stays local by default and is not uploaded to the server
 - Temporary chat history, whiteboard state, ready check results, and temporary minutes live only until the meeting ends
+- The AI assistant is off by default and can only be started by the host; audio chunks are used only for ASR and are not persisted after successful transcription
+- Persistent AI minutes must be explicitly requested by the host, are stored as Markdown, cannot be deleted by the host, and are emailed only to the host
 - The host cannot leave while other participants are still in the room, and must explicitly end the meeting instead
 
 ## Module Map
@@ -40,6 +42,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 | Meeting domain | `internal/meeting` | Handles rooms, participants, permissions, whiteboard, chat, ready check, and temporary minutes | Core flow implemented |
 | Auth domain | `internal/auth` | Manages register/login verification codes, sessions, password login checks, and mail delivery | Implemented |
 | HTTP API | `internal/httpapi` | Exposes create/join/leave/end, nickname update, minutes query, and audit endpoints | Implemented |
+| AI minutes | `internal/minutes` | Handles ASR transcription, DeepSeek V4 minutes generation, background jobs, email notification, and minutes sharing | Phase 1 implemented |
 | Signaling | `internal/signaling` | Manages WebSocket sessions, broadcasts, capability flow, SDP/ICE forwarding, and collaboration events | Implemented |
 | Frontend API | `web/src/api.ts` | Wraps REST calls | Implemented |
 | Frontend signaling | `web/src/signaling.ts` | Wraps WebSocket connection and event handling | Implemented |
@@ -69,6 +72,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - [x] Anonymous and registered display names
 - [x] Nickname updates with chat trail
 - [x] Public 9-digit meeting numbers, meeting-number copy, and in-room share QR codes
+- [x] Host-only AI assistant, realtime transcription, persistent AI minutes, host email delivery, meeting history, and minutes sharing
 - [x] Runtime state cleanup after meeting end
 
 ### Partially Implemented
@@ -78,7 +82,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - [~] Productized login and scheduling flow
   The dark auth shell, email verification-code login, auto-registration, minimal password-login prompt, quick meeting, scheduled meeting form, and password-gated join flow are implemented. Scheduled meetings still reuse the current create-meeting API instead of a separate persistent scheduler.
 - [~] Meeting minutes
-  Temporary minutes, chat history, whiteboard counts, and ready check summaries can be exported, but there is no host-side save reminder at meeting end yet.
+  Temporary minutes can still be exported locally, and host-triggered AI minutes can now be generated and persisted. Real ASR / LLM providers require environment credentials.
 - [~] Audit logging
   The frontend reports latency, packet loss, frame rate, bitrate, connection summary, and coarse client profile buckets for statistics. It intentionally avoids stable device fingerprinting.
 - [~] TURN / coturn runtime relay access
@@ -91,7 +95,7 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - [ ] Dynamic multi-peer mesh management and performance optimization
 - [ ] WeChat QR-code login and richer account binding flows
 - [ ] Auto-fill the join form when opening an invite link directly
-- [ ] Host reminder to save meeting minutes at meeting end
+- [ ] Richer ASR hotword, retry, interruption, and cost reporting controls
 
 ## Current UI Flow
 
@@ -104,6 +108,9 @@ Current capabilities include video meetings, whiteboard collaboration, screen sh
 - The share window now shows the public 9-digit meeting number, a QR code, and copy actions; the internal room id is no longer shown directly in user-facing UI.
 - When a participant tries to use microphone, camera, screen sharing, or recording without permission, the frontend now shows a confirmation dialog first. Confirming sends a host-facing permission request and appends an `@host` system message to the room chat. The host can click that message to open the permission panel with the participant and capability prefilled.
 - Whiteboard, ready check, temporary minutes, audit summary, and capability management remain available through menus, drawers, and floating panels around the main stage.
+- The in-room `AI Assistant` entry is off by default and can only be started by the host. Other participants get the fixed prompt `该功能只能主持人开启`.
+- When enabled, each browser uploads only its own microphone chunks for ASR. The host can explicitly request AI minutes before ending the meeting; the backend continues the DeepSeek V4 job after the room closes.
+- Registered users can open meeting history from the home screen or in-room toolbar. Hosts can share generated minutes with other registered participants from the same meeting.
 
 ## API Surface
 
@@ -120,6 +127,13 @@ Key endpoints that are already available:
 - `POST /api/meetings`
 - `GET /api/meetings/{meetingNumber}`
 - `GET /api/meetings/{meetingNumber}/minutes`
+- `POST /api/meetings/{meetingNumber}/transcription/start`
+- `GET /api/meetings/{meetingNumber}/transcript`
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/transcription/chunks`
+- `POST /api/meetings/{meetingNumber}/minutes/jobs`
+- `GET /api/users/me/meeting-history`
+- `GET /api/meeting-minutes/{minutesID}`
+- `POST /api/meeting-minutes/{minutesID}/shares`
 - `POST /api/meetings/{meetingNumber}/join`
 - `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers`
 - `POST /api/meetings/{meetingNumber}/participants/{participantID}/leave`
@@ -167,6 +181,17 @@ Optional environment variables:
 - `MEETING_TURN_URLS`, for example `turn:turn.meeting.07c2.com.cn:3478?transport=udp,...`
 - `MEETING_TURN_SHARED_SECRET`, required when you want runtime TURN relay credentials
 - `MEETING_TURN_TTL_SECONDS`, default `43200`
+- `MEETING_TRANSCRIPTION_ENABLED`, default `false`
+- `MEETING_ASR_PROVIDER`, default `tencent`; use `fake` for local flow tests
+- `MEETING_TENCENT_ASR_SECRET_ID`, `MEETING_TENCENT_ASR_SECRET_KEY`, `MEETING_TENCENT_ASR_REGION`
+- `MEETING_TENCENT_ASR_ENGINE_MODEL_TYPE`, default `16k_zh`
+- `MEETING_ASR_CHUNK_MAX_BYTES`, default `1048576`
+- `MEETING_TRANSCRIPTION_MEETING_LIMIT_SECONDS`, `MEETING_TRANSCRIPTION_DAILY_LIMIT_SECONDS`, `MEETING_TRANSCRIPTION_CONCURRENT_PARTICIPANTS`
+- `MEETING_LLM_PROVIDER`, default `deepseek`; use `fake` for local flow tests
+- `MEETING_LLM_API_BASE_URL`, default `https://api.deepseek.com`
+- `MEETING_LLM_API_KEY`
+- `MEETING_LLM_MODEL`, default `deepseek-v4-flash`; can be changed to `deepseek-v4-pro` or another compatible model
+- `MEETING_MINUTES_JOB_TIMEOUT_SECONDS`, default `600`
 
 ### Production Mail Delivery
 

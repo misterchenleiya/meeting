@@ -4,9 +4,14 @@ import type { ClientProfile } from "./clientProfile";
 import type {
   AuthUser,
   ChatMessage,
+  MeetingHistoryRecord,
+  MinutesJob,
+  MinutesParticipant,
   Meeting,
   Participant,
+  PersistentMeetingMinutes,
   ReadyCheckRound,
+  TranscriptSegment,
   WhiteboardAction
 } from "./types";
 
@@ -78,6 +83,26 @@ export type MeetingMinutesSnapshot = {
   activeReadyCheck?: ReadyCheckRound;
 };
 
+export type TranscriptResponse = {
+  meetingNumber: string;
+  segments: TranscriptSegment[];
+};
+
+export type MinutesJobResponse = {
+  job: MinutesJob;
+  created?: boolean;
+  minutes?: PersistentMeetingMinutes;
+};
+
+export type MeetingHistoryResponse = {
+  records: MeetingHistoryRecord[];
+};
+
+export type PersistentMinutesResponse = {
+  minutes: PersistentMeetingMinutes;
+  participants: MinutesParticipant[];
+};
+
 const logger = createClientLogger("frontend.api");
 
 export class ApiError extends Error {
@@ -118,6 +143,40 @@ async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
     }
+  });
+
+  const data = (await response.json()) as T & { error?: string };
+  if (!response.ok) {
+    logger.warn("request.failed", {
+      method,
+      url,
+      status: response.status,
+      error: data.error ?? `Request failed with status ${response.status}`
+    });
+    throw new ApiError(data.error ?? `Request failed with status ${response.status}`, response.status);
+  }
+
+  logger.debug("request.succeeded", {
+    method,
+    url,
+    status: response.status
+  });
+
+  return data;
+}
+
+async function requestFormData<T>(path: string, body: FormData): Promise<T> {
+  const method = "POST";
+  const url = resolveApiUrl(path);
+  logger.debug("request.started", {
+    method,
+    url
+  });
+
+  const response = await fetch(url, {
+    method,
+    credentials: "include",
+    body
   });
 
   const data = (await response.json()) as T & { error?: string };
@@ -316,6 +375,99 @@ export async function getMeetingMinutes(input: {
     participantId: input.participantId
   });
   return requestJSON<MeetingMinutesSnapshot>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/minutes?${query.toString()}`);
+}
+
+export async function startTranscription(input: {
+  meetingNumber: string;
+  hostParticipantId: string;
+}): Promise<{ status: string; transcription: Meeting["transcription"] }> {
+  return requestJSON<{ status: string; transcription: Meeting["transcription"] }>(
+    `/api/meetings/${meetingPathSegment(input.meetingNumber)}/transcription/start`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        hostParticipantId: input.hostParticipantId
+      })
+    }
+  );
+}
+
+export async function getTranscript(input: {
+  meetingNumber: string;
+  participantId: string;
+}): Promise<TranscriptResponse> {
+  const query = new URLSearchParams({
+    participantId: input.participantId
+  });
+  return requestJSON<TranscriptResponse>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/transcript?${query.toString()}`);
+}
+
+export async function uploadTranscriptionChunk(input: {
+  meetingNumber: string;
+  participantId: string;
+  audio: Blob;
+  sequence: number;
+  startedAt: string;
+  endedAt: string;
+  language: string;
+  mimeType: string;
+  sampleRate: number;
+}): Promise<{ status: string; segment?: TranscriptSegment | null }> {
+  const form = new FormData();
+  form.set("audio", input.audio, `chunk-${input.sequence}.wav`);
+  form.set("sequence", String(input.sequence));
+  form.set("startedAt", input.startedAt);
+  form.set("endedAt", input.endedAt);
+  form.set("language", input.language);
+  form.set("mimeType", input.mimeType);
+  form.set("sampleRate", String(input.sampleRate));
+  return requestFormData<{ status: string; segment?: TranscriptSegment | null }>(
+    `/api/meetings/${meetingPathSegment(input.meetingNumber)}/participants/${input.participantId}/transcription/chunks`,
+    form
+  );
+}
+
+export async function createMinutesJob(input: {
+  meetingNumber: string;
+  hostParticipantId: string;
+}): Promise<MinutesJobResponse> {
+  return requestJSON<MinutesJobResponse>(`/api/meetings/${meetingPathSegment(input.meetingNumber)}/minutes/jobs`, {
+    method: "POST",
+    body: JSON.stringify({
+      hostParticipantId: input.hostParticipantId
+    })
+  });
+}
+
+export async function getMinutesJob(input: {
+  meetingNumber: string;
+  jobId: string;
+}): Promise<MinutesJobResponse> {
+  return requestJSON<MinutesJobResponse>(
+    `/api/meetings/${meetingPathSegment(input.meetingNumber)}/minutes/jobs/${input.jobId}`
+  );
+}
+
+export async function fetchMeetingHistory(): Promise<MeetingHistoryResponse> {
+  return requestJSON<MeetingHistoryResponse>("/api/users/me/meeting-history");
+}
+
+export async function fetchPersistentMinutes(input: {
+  minutesId: string;
+}): Promise<PersistentMinutesResponse> {
+  return requestJSON<PersistentMinutesResponse>(`/api/meeting-minutes/${input.minutesId}`);
+}
+
+export async function shareMinutes(input: {
+  minutesId: string;
+  userId: string;
+}): Promise<{ status: string }> {
+  return requestJSON<{ status: string }>(`/api/meeting-minutes/${input.minutesId}/shares`, {
+    method: "POST",
+    body: JSON.stringify({
+      userId: input.userId
+    })
+  });
 }
 
 export async function reportAudit(input: {

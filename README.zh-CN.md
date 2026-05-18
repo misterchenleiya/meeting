@@ -4,7 +4,7 @@
 
 `Meeting` 是一个面向 `PC` 浏览器、移动 `H5` 和微信小程序的多人视频会议系统，支持“`P2P` 优先、`TURN` 兜底、服务端仅保留基础审计数据”。
 
-当前能力包括视频会议、白板、共享屏幕、录屏/录音、文字聊天、就位确认、会议纪要、主持人/助理/参会者权限体系、匿名参会者昵称、会后删除会议过程数据，以及基于浏览器可落地实现的 `WSS + WebRTC` 通信模型。
+当前能力包括视频会议、白板、共享屏幕、录屏/录音、文字聊天、就位确认、会议纪要、AI 助理实时记录、主持人主动触发的 AI 会议纪要、主持人/助理/参会者权限体系、匿名参会者昵称、会后删除会议运行态数据，以及基于浏览器可落地实现的 `WSS + WebRTC` 通信模型。
 
 ![Meeting 登录界面预览](docs/meeting_login.png)
 
@@ -25,6 +25,8 @@
 - 主持人可将参会者设为助理，助理拥有已授予的主持权限
 - 录屏/录音默认本地录制，不上传服务器
 - 临时聊天记录、白板、就位确认结果、临时会议纪要仅保留到会议结束
+- AI 助理默认关闭，只有主持人可开启；音频片段仅用于 ASR 转写，成功转写后不持久化保存
+- AI 会议纪要必须由主持人主动触发，生成后以 Markdown 纯文本持久化保存，不支持主持人删除，邮件只发送给主持人
 - 主持人在仍有其他参会者时不能直接离会，必须显式结束会议，避免房间进入无主持人状态
 
 ## 模块划分
@@ -42,6 +44,7 @@
 | 会议领域模块 | `internal/meeting` | 房间、参与者、权限、白板、临时聊天、就位确认、纪要等运行态管理 | 已实现核心能力，仍待继续完善多人 Mesh 稳定性 |
 | 认证领域模块 | `internal/auth` | 管理注册 / 登录验证码、会话、密码登录校验和邮件发送 | 已实现 |
 | HTTP API 模块 | `internal/httpapi` | 提供创建/加入/离会/结束会议、昵称修改、纪要查询、审计上报等接口 | 已实现基础 API |
+| AI 纪要模块 | `internal/minutes` | 处理 ASR 转写、DeepSeek V4 纪要生成、后台任务、邮件通知和纪要分享 | 已实现第一阶段 |
 | 信令模块 | `internal/signaling` | WebSocket 会话管理、房间广播、能力申请/授权、SDP/ICE 转发、协作事件广播 | 已实现 |
 | 前端 API 层 | `web/src/api.ts` | 封装 REST 请求 | 已实现 |
 | 前端信令层 | `web/src/signaling.ts` | 封装 WebSocket 连接和消息收发 | 已实现 |
@@ -71,6 +74,7 @@
 - [x] 匿名/注册参会者昵称输入
 - [x] 昵称修改并写入聊天留痕
 - [x] 公开 `9` 位数字会议号、会议号复制和会中分享二维码
+- [x] 主持人 AI 助理入口、实时转写、后台 AI 会议纪要、主持人邮件通知、参会记录和纪要分享
 - [x] 会议结束后清理运行态数据
 
 ### 部分实现
@@ -80,7 +84,7 @@
 - [~] 产品化登录与预定会议流程
   当前已实现黑色风格登录壳层、邮箱验证码登录、验证码自动注册、最小密码登录提示、快速会议、预定会议表单、带密码弹窗的加入会议流程，以及 `H5` 的入会预览节点；预定会议仍复用当前创建会议接口，尚未拆分成独立持久化调度模型。
 - [~] 会议纪要
-  当前支持会中临时纪要、聊天记录、白板数量和就位确认摘要导出；“会议结束时提示主持人保存纪要”尚未补齐。
+  当前同时支持会中临时纪要导出和 AI 会议纪要持久化；真实 ASR / LLM provider 需要按环境变量配置密钥后启用。
 - [~] 审计日志
   当前已上报延迟、丢包、帧率、码率和连接摘要；仍可继续丰富设备指纹和更细粒度网络信息。
 - [~] `TURN` / coturn 运行时中继接入
@@ -93,7 +97,7 @@
 - [ ] 多人 Mesh 的动态管理和性能优化
 - [ ] 微信扫码登录与更完整的账号绑定流程
 - [ ] 打开邀请链接后自动回填会议号与密码
-- [ ] 会议结束时主持人的纪要保存提示流
+- [ ] 更完整的 ASR 热词、说话中断、失败片段重试和成本报表
 
 ## 当前 UI 流程
 
@@ -106,6 +110,9 @@
 - 分享窗口会显示公开 `9` 位会议号、分享二维码和复制入口；会议号按 `3-3-3` 形式分组显示，内部 room id 不再直接暴露给用户。
 - 当参会者尝试开启当前无权限的麦克风、摄像头、共享屏幕或录制时，前端会先弹出二次确认；确认后会向主持人发送申请，并在聊天区追加 `@主持人` 的系统消息。主持人可直接点击该消息，把权限窗口带着目标参会者和能力上下文打开。
 - 白板、就位确认、临时纪要、审计摘要和权限管理仍然保留，通过菜单、抽屉和浮动窗口围绕主舞台提供。
+- 会中 `AI 助理` 默认关闭，仅主持人可开启；其他参会者点击会提示“该功能只能主持人开启”。开启后各端只上传自己的麦克风音频片段，实时记录会在会中展示。
+- 主持人结束会议时可主动选择交由 AI 整理会议纪要；确认后可立即关闭会议，后端会继续调用 DeepSeek V4 生成 Markdown 纪要并只邮件发送给主持人。
+- 登录后的首页和会中工具栏提供 `参会记录` 入口，注册用户可查看自己主持或参会的历史会议；主持人可把已生成纪要分享给该会议的其他注册参会用户。
 
 ## API 与运行态说明
 
@@ -114,6 +121,13 @@
 - `POST /api/meetings`：创建会议
 - `GET /api/meetings/{meetingNumber}`：获取会议快照
 - `GET /api/meetings/{meetingNumber}/minutes`：获取会中临时纪要快照
+- `POST /api/meetings/{meetingNumber}/transcription/start`：主持人开启 AI 助理实时记录
+- `GET /api/meetings/{meetingNumber}/transcript`：获取实时转写段落
+- `POST /api/meetings/{meetingNumber}/participants/{participantID}/transcription/chunks`：上传当前参会者的麦克风音频片段
+- `POST /api/meetings/{meetingNumber}/minutes/jobs`：主持人主动创建 AI 会议纪要后台任务
+- `GET /api/users/me/meeting-history`：查询当前注册用户的参会记录
+- `GET /api/meeting-minutes/{minutesID}`：查看有权限访问的持久化会议纪要
+- `POST /api/meeting-minutes/{minutesID}/shares`：主持人分享会议纪要给注册参会用户
 - `POST /api/meetings/{meetingNumber}/join`：加入会议
 - `POST /api/meetings/{meetingNumber}/participants/{participantID}/ice-servers`：获取当前参会者的运行时 ICE / TURN 配置
 - `POST /api/meetings/{meetingNumber}/participants/{participantID}/leave`：离开会议
@@ -165,6 +179,17 @@ go run ./cmd/server
 - `MEETING_TURN_URLS`，例如 `turn:turn.meeting.07c2.com.cn:3478?transport=udp,...`
 - `MEETING_TURN_SHARED_SECRET`，启用运行时 TURN 动态凭据时必填
 - `MEETING_TURN_TTL_SECONDS`，默认 `43200`
+- `MEETING_TRANSCRIPTION_ENABLED`，默认 `false`；开启后展示 AI 助理和转写接口
+- `MEETING_ASR_PROVIDER`，默认 `tencent`；本地可设为 `fake`
+- `MEETING_TENCENT_ASR_SECRET_ID`、`MEETING_TENCENT_ASR_SECRET_KEY`、`MEETING_TENCENT_ASR_REGION`
+- `MEETING_TENCENT_ASR_ENGINE_MODEL_TYPE`，默认 `16k_zh`
+- `MEETING_ASR_CHUNK_MAX_BYTES`，默认 `1048576`
+- `MEETING_TRANSCRIPTION_MEETING_LIMIT_SECONDS`、`MEETING_TRANSCRIPTION_DAILY_LIMIT_SECONDS`、`MEETING_TRANSCRIPTION_CONCURRENT_PARTICIPANTS`
+- `MEETING_LLM_PROVIDER`，默认 `deepseek`；本地可设为 `fake`
+- `MEETING_LLM_API_BASE_URL`，默认 `https://api.deepseek.com`
+- `MEETING_LLM_API_KEY`
+- `MEETING_LLM_MODEL`，默认 `deepseek-v4-flash`，可切换为 `deepseek-v4-pro` 或其他兼容模型
+- `MEETING_MINUTES_JOB_TIMEOUT_SECONDS`，默认 `600`
 
 ### 生产环境邮件发送
 

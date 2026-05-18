@@ -99,6 +99,85 @@ export type Meeting = {
   whiteboardActions?: WhiteboardAction[];
   activeReadyCheck?: ReadyCheckRound;
   temporaryMinutes?: string[];
+  transcription?: {
+    enabled: boolean;
+    enabledByParticipantId?: string;
+    enabledAt?: string;
+  };
+};
+
+export type TranscriptSegment = {
+  id: string;
+  meetingNumber: string;
+  participantId: string;
+  userId: string;
+  nickname: string;
+  language: string;
+  sequence: number;
+  startedAt: string;
+  endedAt: string;
+  text: string;
+  isFinal: boolean;
+  asrProvider: string;
+  createdAt: string;
+};
+
+export type MinutesJob = {
+  id: string;
+  meetingNumber: string;
+  requestedByUserId: string;
+  requestedByParticipantId: string;
+  status: "pending" | "waiting_transcript" | "running" | "succeeded" | "failed";
+  errorMessage: string;
+  emailError: string;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  minutesId?: string;
+};
+
+export type PersistentMeetingMinutes = {
+  id: string;
+  jobId: string;
+  meetingNumber: string;
+  hostUserId: string;
+  title: string;
+  summary: string;
+  markdownContent: string;
+  outlineJson: string;
+  llmProvider: string;
+  llmModel: string;
+  generatedAt: string;
+};
+
+export type MeetingHistoryRecord = {
+  meetingId: string;
+  meetingNumber: string;
+  title: string;
+  meetingType: "quick" | "scheduled";
+  hostUserId: string;
+  hostNickname: string;
+  userRole: "host" | "participant";
+  joinedAt: string;
+  leftAt?: string;
+  createdAt: string;
+  endedAt?: string;
+  minutesId: string;
+  minutesStatus: string;
+  minutesShared: boolean;
+  minutesSharedAt?: string;
+  generatedAt?: string;
+};
+
+export type MinutesParticipant = {
+  participantId: string;
+  userId: string;
+  email: string;
+  nickname: string;
+  role: string;
+  joinedAt: string;
+  leftAt?: string;
 };
 
 export type EventRecord = {

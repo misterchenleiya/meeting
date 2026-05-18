@@ -8,17 +8,24 @@ import {
   completeLogin,
   completePasswordLogin,
   completeRegister,
+  createMinutesJob,
   createMeeting,
   endMeeting,
+  fetchMeetingHistory,
+  fetchPersistentMinutes,
   fetchCurrentUser,
   fetchMeetingIceServers,
   getMeeting,
+  getTranscript,
   joinMeeting,
   leaveMeeting,
   logout as logoutUser,
   reportAudit,
   requestLoginCode,
   requestRegisterCode,
+  shareMinutes,
+  startTranscription,
+  uploadTranscriptionChunk,
   updateNickname
 } from "./api";
 import {
@@ -32,15 +39,21 @@ import {
 import { PeerMesh, type MediaQualityPolicy, type MediaQualityProfile, type PeerStatsSnapshot } from "./rtc";
 import { resolveIceServers } from "./runtime-config";
 import { SignalClient, type SignalEnvelope } from "./signaling";
+import { TranscriptionUploader } from "./transcription";
 import type {
   AuthUser,
   Capability,
   ChatMessage,
   EventRecord,
   Meeting,
+  MeetingHistoryRecord,
+  MinutesJob,
+  MinutesParticipant,
   Participant,
+  PersistentMeetingMinutes,
   ReadyCheckRound,
   ReadyCheckStatus,
+  TranscriptSegment,
   WhiteboardAction
 } from "./types";
 import { WhiteboardPanel } from "./whiteboard";
@@ -153,7 +166,7 @@ type EntryView = "login" | "register" | "home" | "schedule" | "join" | "preview"
 type PrejoinOriginView = "home" | "schedule" | "join";
 type SidebarView = "none" | "members" | "chat";
 type MenuView = "none" | "host" | "participant";
-type AttachedPanelView = "none" | "settings" | "apps" | "more" | "end";
+type AttachedPanelView = "none" | "settings" | "apps" | "more" | "end" | "ai";
 type ModalView =
   | "none"
   | "invite"
@@ -163,6 +176,7 @@ type ModalView =
   | "permissions"
   | "ready_check_panel"
   | "recording_panel"
+  | "meeting_history"
   | "whiteboard_panel"
   | "audit_panel";
 
@@ -278,6 +292,7 @@ function App() {
   const baseMediaStreamRef = useRef<MediaStream | null>(null);
   const screenShareStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<LocalRecordingSession | null>(null);
+  const transcriptionUploaderRef = useRef<TranscriptionUploader | null>(null);
   const auditBaselineRef = useRef<Map<string, AuditCounter>>(new Map());
   const lastAppliedQualityPolicyRef = useRef<MediaQualityPolicy | null>(null);
   const signalReconnectTimerRef = useRef<number | null>(null);
@@ -333,6 +348,18 @@ function App() {
   const [temporaryMinutes, setTemporaryMinutes] = useState<string[]>(
     initialMeetingSession?.meeting.temporaryMinutes ?? []
   );
+  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
+  const [transcriptionActive, setTranscriptionActive] = useState(
+    initialMeetingSession?.meeting.transcription?.enabled ?? false
+  );
+  const [transcriptionUploading, setTranscriptionUploading] = useState(false);
+  const [minutesJob, setMinutesJob] = useState<MinutesJob | null>(null);
+  const [createMinutesOnEnd, setCreateMinutesOnEnd] = useState(true);
+  const [meetingHistory, setMeetingHistory] = useState<MeetingHistoryRecord[]>([]);
+  const [selectedMinutes, setSelectedMinutes] = useState<PersistentMeetingMinutes | null>(null);
+  const [shareableMinutesParticipants, setShareableMinutesParticipants] = useState<MinutesParticipant[]>([]);
+  const [shareTargetUserId, setShareTargetUserId] = useState("");
+  const [meetingHistoryLoading, setMeetingHistoryLoading] = useState(false);
   const [auditSummary, setAuditSummary] = useState<AuditSummary | null>(null);
   const [recordingKind, setRecordingKind] = useState<RecordingKind>("meeting_video");
   const [recordingAsset, setRecordingAsset] = useState<RecordingAsset | null>(null);
@@ -400,6 +427,87 @@ function App() {
   useEffect(() => {
     localStreamRef.current = localStream;
   }, [localStream]);
+
+  useEffect(() => {
+    const session = meetingSession;
+    const audioStream = localStream;
+    if (!session || !transcriptionActive || !audioStream || audioStream.getAudioTracks().length === 0) {
+      void stopTranscriptionUploader();
+      return;
+    }
+
+    const uploader = new TranscriptionUploader({
+      stream: audioStream,
+      onChunk: async (chunk) => {
+        const response = await uploadTranscriptionChunk({
+          meetingNumber: getMeetingPublicNumber(session.meeting),
+          participantId: session.participant.id,
+          audio: chunk.blob,
+          sequence: chunk.sequence,
+          startedAt: chunk.startedAt,
+          endedAt: chunk.endedAt,
+          language: "zh-CN",
+          mimeType: chunk.mimeType,
+          sampleRate: chunk.sampleRate
+        });
+        if (response.segment) {
+          appendTranscriptSegment(response.segment);
+        }
+      },
+      onError: (message) => {
+        setErrorMessage(message);
+      }
+    });
+
+    void stopTranscriptionUploader().then(async () => {
+      try {
+        await uploader.start();
+        transcriptionUploaderRef.current = uploader;
+        setTranscriptionUploading(true);
+      } catch (error) {
+        setErrorMessage(asMessage(error));
+      }
+    });
+
+    return () => {
+      if (transcriptionUploaderRef.current === uploader) {
+        void stopTranscriptionUploader();
+      }
+    };
+  }, [
+    transcriptionActive,
+    localStream,
+    meetingSession ? getMeetingPublicNumber(meetingSession.meeting) : "",
+    meetingSession?.participant.id
+  ]);
+
+  useEffect(() => {
+    if (!meetingSession || !transcriptionActive) {
+      return;
+    }
+    let cancelled = false;
+    void getTranscript({
+      meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
+      participantId: meetingSession.participant.id
+    })
+      .then((response) => {
+        if (!cancelled) {
+          setTranscriptSegments(response.segments);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setErrorMessage(asMessage(error));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    transcriptionActive,
+    meetingSession ? getMeetingPublicNumber(meetingSession.meeting) : "",
+    meetingSession?.participant.id
+  ]);
 
   useEffect(() => {
     currentSidebarRef.current = currentSidebar;
@@ -793,6 +901,18 @@ function App() {
     return true;
   }
 
+  function appendTranscriptSegment(segment: TranscriptSegment): void {
+    setTranscriptSegments((current) => {
+      if (current.some((item) => item.id === segment.id)) {
+        return current;
+      }
+      return [...current, segment].sort((left, right) => {
+        const diff = Date.parse(left.startedAt) - Date.parse(right.startedAt);
+        return diff !== 0 ? diff : left.sequence - right.sequence;
+      });
+    });
+  }
+
   function markCapabilityRequestReviewed(messageId: string) {
     setReviewedCapabilityRequestIds((current) => {
       if (current.has(messageId)) {
@@ -836,6 +956,7 @@ function App() {
     setWhiteboardActions(meeting.whiteboardActions ?? []);
     setActiveReadyCheck(meeting.activeReadyCheck ?? null);
     setTemporaryMinutes(meeting.temporaryMinutes ?? []);
+    setTranscriptionActive(meeting.transcription?.enabled ?? false);
   });
 
   const upsertParticipant = useEffectEvent((participant: Participant) => {
@@ -1174,6 +1295,7 @@ function App() {
 
     if (stopLocalTracks) {
       lastAppliedQualityPolicyRef.current = null;
+      void stopTranscriptionUploader();
       baseMediaStreamRef.current?.getTracks().forEach((track) => track.stop());
       screenShareStreamRef.current?.getTracks().forEach((track) => track.stop());
       recorderRef.current?.cancel();
@@ -1204,6 +1326,10 @@ function App() {
     setWhiteboardActions([]);
     setActiveReadyCheck(null);
     setTemporaryMinutes([]);
+    setTranscriptSegments([]);
+    setTranscriptionActive(false);
+    setMinutesJob(null);
+    setCreateMinutesOnEnd(true);
     setAuditSummary(null);
     setEvents([]);
     setOnlineParticipantIds([]);
@@ -1540,6 +1666,41 @@ function App() {
         if (event.type === "ready_check.finished") {
           appendTemporaryMinute(`就位确认已结束：${summarizeReadyCheckRound(payload.round)}。`);
         }
+        return;
+      }
+      case "transcription.status": {
+        const payload = event.payload as { transcription: Meeting["transcription"] };
+        setMeetingSession((current) =>
+          current
+            ? {
+                ...current,
+                meeting: {
+                  ...current.meeting,
+                  transcription: payload.transcription
+                }
+              }
+            : current
+        );
+        setTranscriptionActive(payload.transcription?.enabled ?? false);
+        appendEvent("transcription.status", payload.transcription?.enabled ? "AI 助理实时记录已开启" : "AI 助理实时记录已关闭");
+        return;
+      }
+      case "transcription.segment": {
+        const segment = event.payload as TranscriptSegment;
+        appendTranscriptSegment(segment);
+        appendEvent("transcription.segment", `${segment.nickname}: ${segment.text}`);
+        return;
+      }
+      case "minutes.job_created": {
+        const job = event.payload as MinutesJob;
+        setMinutesJob(job);
+        appendEvent("minutes.job_created", "AI 会议纪要任务已创建");
+        return;
+      }
+      case "minutes.job_completed": {
+        const job = event.payload as MinutesJob;
+        setMinutesJob(job);
+        appendEvent("minutes.job_completed", "AI 会议纪要已生成");
         return;
       }
       case "chat.message": {
@@ -3072,6 +3233,115 @@ function App() {
     appendEvent("recording.discarded", "已丢弃本地录制缓存");
   }
 
+  async function handleOpenAIAssistant() {
+    if (!meetingSession) {
+      return;
+    }
+    if (meetingSession.participant.role !== "host") {
+      setStatusMessage("该功能只能主持人开启");
+      setErrorMessage("");
+      return;
+    }
+    toggleAttachedWindow("ai");
+  }
+
+  async function handleStartTranscription() {
+    if (!meetingSession) {
+      return;
+    }
+    if (meetingSession.participant.role !== "host") {
+      setStatusMessage("该功能只能主持人开启");
+      return;
+    }
+
+    try {
+      const response = await startTranscription({
+        meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
+        hostParticipantId: meetingSession.participant.id
+      });
+      setMeetingSession((current) =>
+        current
+          ? {
+              ...current,
+              meeting: {
+                ...current.meeting,
+                transcription: response.transcription
+              }
+            }
+          : current
+      );
+      setTranscriptionActive(response.transcription?.enabled ?? true);
+      setCurrentAttachedPanel("none");
+      setStatusMessage("AI 助理已开启实时记录");
+      setErrorMessage("");
+    } catch (error) {
+      setErrorMessage(asMessage(error));
+    }
+  }
+
+  async function stopTranscriptionUploader() {
+    const uploader = transcriptionUploaderRef.current;
+    transcriptionUploaderRef.current = null;
+    if (!uploader) {
+      return;
+    }
+    setTranscriptionUploading(false);
+    try {
+      await uploader.stop();
+    } catch (error) {
+      setErrorMessage(asMessage(error));
+    }
+  }
+
+  async function loadMeetingHistory() {
+    if (!isAuthenticated) {
+      setStatusMessage("请先登录后查看参会记录");
+      return;
+    }
+    setCurrentModal("meeting_history");
+    setMeetingHistoryLoading(true);
+    try {
+      const response = await fetchMeetingHistory();
+      setMeetingHistory(response.records);
+      setErrorMessage("");
+    } catch (error) {
+      setErrorMessage(asMessage(error));
+    } finally {
+      setMeetingHistoryLoading(false);
+    }
+  }
+
+  async function loadPersistentMinutes(minutesId: string) {
+    if (!minutesId) {
+      return;
+    }
+    try {
+      const response = await fetchPersistentMinutes({ minutesId });
+      setSelectedMinutes(response.minutes);
+      setShareableMinutesParticipants(response.participants);
+      setShareTargetUserId(response.participants.find((participant) => participant.userId !== currentUser?.id)?.userId ?? "");
+      setErrorMessage("");
+    } catch (error) {
+      setErrorMessage(asMessage(error));
+    }
+  }
+
+  async function handleShareSelectedMinutes() {
+    if (!selectedMinutes || !shareTargetUserId) {
+      return;
+    }
+    try {
+      await shareMinutes({
+        minutesId: selectedMinutes.id,
+        userId: shareTargetUserId
+      });
+      setStatusMessage("会议纪要已分享");
+      setErrorMessage("");
+    } catch (error) {
+      setErrorMessage(asMessage(error));
+    }
+  }
+
   function handleSendChat(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!chatInput.trim()) {
@@ -3315,6 +3585,14 @@ function App() {
         ...meetingLogFields(meetingSession.meeting),
         participantId: meetingSession.participant.id
       });
+      if (createMinutesOnEnd && meetingSession.participant.role === "host" && transcriptSegments.length > 0) {
+        const response = await createMinutesJob({
+          meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
+          hostParticipantId: meetingSession.participant.id
+        });
+        setMinutesJob(response.job);
+        appendEvent("minutes.job_created", "AI 会议纪要任务已创建，会议关闭后会继续后台生成");
+      }
       await endMeeting({
         meetingNumber: getMeetingPublicNumber(meetingSession.meeting),
         hostParticipantId: meetingSession.participant.id,
@@ -3607,6 +3885,8 @@ function App() {
   const canRecord = meetingSession ? hasCapability(meetingSession, "record") : false;
   const canWhiteboard = meetingSession ? hasCapability(meetingSession, "whiteboard") : false;
   const canReadyCheck = meetingSession ? hasCapability(meetingSession, "ready_check") : false;
+  const meetingTranscriptionEnabled = meetingSession?.meeting.transcription?.enabled ?? transcriptionActive;
+  const hasTranscriptSegments = transcriptSegments.length > 0;
   const prejoinPreference = {
     camera: joinForm.requestCameraEnabled,
     microphone: joinForm.requestMicrophoneEnabled
@@ -3916,7 +4196,66 @@ function App() {
                 <button className="ghost-button" onClick={() => void handleOpenJoinView()} type="button">
                   已有会议号？加入会议
                 </button>
+                <button className="ghost-button" onClick={() => void loadMeetingHistory()} type="button">
+                  我的参会记录
+                </button>
               </section>
+            ) : null}
+
+            {currentModal === "meeting_history" && !meetingSession ? (
+              <div className="modal-layer">
+                <div className="modal-card modal-card--wide meeting-history-modal">
+                  <div>
+                    <h3>我的参会记录</h3>
+                    <p>查看自己主持或参会过的会议，以及有权限访问的 AI 会议纪要。</p>
+                  </div>
+                  <div className="meeting-history-layout">
+                    <div className="meeting-history-list">
+                      {meetingHistoryLoading ? (
+                        <p className="empty-copy">正在加载参会记录...</p>
+                      ) : meetingHistory.length === 0 ? (
+                        <p className="empty-copy">暂无参会记录。</p>
+                      ) : (
+                        meetingHistory.map((record) => (
+                          <button
+                            className={selectedMinutes?.id === record.minutesId ? "is-active" : ""}
+                            disabled={!record.minutesId}
+                            key={record.meetingId}
+                            onClick={() => void loadPersistentMinutes(record.minutesId)}
+                            type="button"
+                          >
+                            <strong>{record.title || record.meetingNumber}</strong>
+                            <span>
+                              {record.userRole === "host" ? "我主持" : "我参会"} ·{" "}
+                              {record.minutesId ? record.minutesStatus || "纪要已生成" : "无会议纪要"}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <div className="meeting-minutes-detail">
+                      {selectedMinutes ? (
+                        <>
+                          <strong>{selectedMinutes.title}</strong>
+                          <pre className="minutes-markdown-view">{selectedMinutes.markdownContent}</pre>
+                        </>
+                      ) : (
+                        <p className="empty-copy">请选择一条已生成纪要的会议。</p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    className="ghost-button"
+                    onClick={() => {
+                      setCurrentModal("none");
+                      setSelectedMinutes(null);
+                    }}
+                    type="button"
+                  >
+                    关闭
+                  </button>
+                </div>
+              </div>
             ) : null}
 
             {entryView === "schedule" ? (
@@ -4747,6 +5086,27 @@ function App() {
             </aside>
           ) : null}
 
+          {meetingTranscriptionEnabled ? (
+            <aside className="transcript-strip" aria-label="实时会议记录">
+              <div className="transcript-strip-head">
+                <strong>AI 助理记录中</strong>
+                <span>{transcriptionUploading ? "正在上传麦克风片段" : "等待本机麦克风音频"}</span>
+              </div>
+              <div className="transcript-strip-list">
+                {transcriptSegments.length === 0 ? (
+                  <p className="empty-copy">暂无转写内容。</p>
+                ) : (
+                  transcriptSegments.slice(-3).map((segment) => (
+                    <p key={segment.id}>
+                      <b>{segment.nickname}</b>
+                      {segment.text}
+                    </p>
+                  ))
+                )}
+              </div>
+            </aside>
+          ) : null}
+
           {currentModal === "invite" ? (
             <div className="modal-layer">
               <div className="modal-card modal-card--wide room-share-modal">
@@ -5104,6 +5464,94 @@ function App() {
             </div>
           ) : null}
 
+          {currentModal === "meeting_history" ? (
+            <div className="modal-layer">
+              <div className="modal-card modal-card--wide meeting-history-modal">
+                <div>
+                  <h3>我的参会记录</h3>
+                  <p>查看自己主持或参会过的会议，以及有权限访问的 AI 会议纪要。</p>
+                </div>
+                <div className="meeting-history-layout">
+                  <div className="meeting-history-list">
+                    {meetingHistoryLoading ? (
+                      <p className="empty-copy">正在加载参会记录...</p>
+                    ) : meetingHistory.length === 0 ? (
+                      <p className="empty-copy">暂无参会记录。</p>
+                    ) : (
+                      meetingHistory.map((record) => (
+                        <button
+                          className={selectedMinutes?.id === record.minutesId ? "is-active" : ""}
+                          disabled={!record.minutesId}
+                          key={record.meetingId}
+                          onClick={() => void loadPersistentMinutes(record.minutesId)}
+                          type="button"
+                        >
+                          <strong>{record.title || record.meetingNumber}</strong>
+                          <span>
+                            {record.userRole === "host" ? "我主持" : "我参会"} ·{" "}
+                            {record.minutesId ? record.minutesStatus || "纪要已生成" : "无会议纪要"}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <div className="meeting-minutes-detail">
+                    {selectedMinutes ? (
+                      <>
+                        <div className="minutes-detail-head">
+                          <div>
+                            <strong>{selectedMinutes.title}</strong>
+                            <span>
+                              {selectedMinutes.llmProvider} / {selectedMinutes.llmModel}
+                            </span>
+                          </div>
+                          {selectedMinutes.hostUserId === currentUser?.id ? (
+                            <div className="minutes-share-controls">
+                              <select
+                                onChange={(event) => setShareTargetUserId(event.target.value)}
+                                value={shareTargetUserId}
+                              >
+                                <option value="">选择注册参会者</option>
+                                {shareableMinutesParticipants
+                                  .filter((participant) => participant.userId && participant.userId !== currentUser?.id)
+                                  .map((participant) => (
+                                    <option key={participant.userId} value={participant.userId}>
+                                      {participant.nickname || participant.email}
+                                    </option>
+                                  ))}
+                              </select>
+                              <button
+                                className="primary-button"
+                                disabled={!shareTargetUserId}
+                                onClick={() => void handleShareSelectedMinutes()}
+                                type="button"
+                              >
+                                分享纪要
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                        <pre className="minutes-markdown-view">{selectedMinutes.markdownContent}</pre>
+                      </>
+                    ) : (
+                      <p className="empty-copy">请选择一条已生成纪要的会议。</p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  className="ghost-button"
+                  onClick={() => {
+                    setCurrentModal("none");
+                    setSelectedMinutes(null);
+                  }}
+                  type="button"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {currentModal === "whiteboard_panel" ? (
             <div className="modal-layer">
               <div className="modal-card modal-card--whiteboard">
@@ -5307,6 +5755,59 @@ function App() {
 
               <div className="attached-anchor attached-anchor--bottom">
                 <button
+                  className={`meeting-tool ai-meeting-tool ${meetingTranscriptionEnabled ? "is-active" : ""}`}
+                  onClick={() => void handleOpenAIAssistant()}
+                  type="button"
+                >
+                  <span className="tool-icon">AI</span>
+                  <span className="tool-label">AI 助理</span>
+                  {meetingTranscriptionEnabled ? <span className="indicator-dot" /> : null}
+                </button>
+                {currentAttachedPanel === "ai" ? (
+                  <div className="attached-panel attached-panel--bottom attached-panel--ai">
+                    <div className="attached-panel-header">
+                      <strong>AI 助理</strong>
+                      <span>{meetingTranscriptionEnabled ? "实时记录已开启" : "实时记录默认关闭"}</span>
+                    </div>
+                    <div className="ai-assistant-panel">
+                      <p>
+                        开启后，参会端只上传自己的麦克风音频片段；音频转写成功后立即删除。
+                      </p>
+                      <button
+                        className="primary-button"
+                        disabled={meetingTranscriptionEnabled}
+                        onClick={() => void handleStartTranscription()}
+                        type="button"
+                      >
+                        {meetingTranscriptionEnabled ? "实时记录已开启" : "开启实时记录"}
+                      </button>
+                      <div className="transcript-mini-list">
+                        <strong>会议记录</strong>
+                        {transcriptSegments.length === 0 ? (
+                          <span className="empty-copy">暂无转写内容。</span>
+                        ) : (
+                          transcriptSegments.slice(-4).map((segment) => (
+                            <p key={segment.id}>
+                              <b>{segment.nickname}</b>
+                              {segment.text}
+                            </p>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <button className="meeting-tool" onClick={() => void loadMeetingHistory()} type="button">
+                <span className="tool-icon">
+                  <MeetingIcon name="layout" />
+                </span>
+                <span className="tool-label">参会记录</span>
+              </button>
+
+              <div className="attached-anchor attached-anchor--bottom">
+                <button
                   className={`meeting-tool apps-tool ${currentAttachedPanel === "apps" ? "is-active" : ""}`}
                   onClick={() => toggleAttachedWindow("apps")}
                   type="button"
@@ -5364,6 +5865,16 @@ function App() {
                 </button>
                 {currentAttachedPanel === "end" ? (
                   <div className="attached-panel attached-panel--bottom attached-panel--end">
+                    {hasTranscriptSegments ? (
+                      <label className="ai-minutes-check">
+                        <input
+                          checked={createMinutesOnEnd}
+                          onChange={(event) => setCreateMinutesOnEnd(event.target.checked)}
+                          type="checkbox"
+                        />
+                        <span>交由 AI 整理会议纪要，完成后邮件发送给主持人</span>
+                      </label>
+                    ) : null}
                     <AttachedActionButton
                       danger
                       description="结束后所有参会者都会退出当前会议。"
@@ -5476,6 +5987,18 @@ function App() {
                       title="录制与纪要"
                     />
                     <AttachedActionButton
+                      description={meetingTranscriptionEnabled ? "查看实时会议记录。" : "由主持人开启实时会议记录。"}
+                      icon="apps"
+                      onClick={() => void (meetingTranscriptionEnabled ? setCurrentAttachedPanel("none") : handleStartTranscription())}
+                      title="AI 助理"
+                    />
+                    <AttachedActionButton
+                      description="查看自己主持或参会过的会议。"
+                      icon="layout"
+                      onClick={() => void loadMeetingHistory()}
+                      title="参会记录"
+                    />
+                    <AttachedActionButton
                       description="打开共享白板。"
                       icon="apps"
                       onClick={() => openMeetingModal("whiteboard_panel")}
@@ -5529,6 +6052,16 @@ function App() {
 
             {currentAttachedPanel === "end" ? (
               <div className="attached-panel attached-panel--bottom attached-panel--end mobile-end-panel">
+                {hasTranscriptSegments ? (
+                  <label className="ai-minutes-check">
+                    <input
+                      checked={createMinutesOnEnd}
+                      onChange={(event) => setCreateMinutesOnEnd(event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>交由 AI 整理会议纪要，完成后邮件发送给主持人</span>
+                  </label>
+                ) : null}
                 <AttachedActionButton
                   danger
                   description="结束后所有参会者都会退出当前会议。"
